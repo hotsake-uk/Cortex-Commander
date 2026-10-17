@@ -335,7 +335,7 @@ window.MS = window.MS || {};
 			const all = presetsOf(module, (p) => p.cls === 'SoundContainer').sort((x, y) => x.name.localeCompare(y.name));
 			const q = s.filter.trim().toLowerCase();
 			const list = all.filter((p) => !q || p.name.toLowerCase().includes(q));
-			const keyOf = (p) => p.doc.path + ':' + p.node.line + ':' + p.name;
+			const keyOf = (p) => p.doc.path + ':' + p.name;
 			const selected = all.find((p) => keyOf(p) === s.selected) || list[0] || null;
 			const filter = el('input', { type: 'search', placeholder: 'Filter ' + all.length + ' sounds…', value: s.filter, className: 'ed-input' });
 			filter.dataset.fk = 'filter';
@@ -439,7 +439,7 @@ window.MS = window.MS || {};
 					change('New sound ' + n, () => doc.addTopLevel('AddSoundContainer', 'SoundContainer').add('PresetName', n));
 					const made = app().lib.presets.find((p) => p.doc === doc && p.name === n);
 					if (made) {
-						tab.state = Object.assign(tab.state || {}, { selected: made.doc.path + ':' + made.node.line + ':' + made.name, filter: '' });
+						tab.state = Object.assign(tab.state || {}, { selected: made.doc.path + ':' + made.name, filter: '' });
 					}
 					MS.ide.refreshForm();
 				},

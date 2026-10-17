@@ -202,7 +202,7 @@ window.MS = window.MS || {};
 			const all = a.lib.presets.filter((p) => p.topLevel && p.module === module && p.cls === 'Scene').sort((x, y) => x.name.localeCompare(y.name));
 			const q = s.filter.trim().toLowerCase();
 			const list = all.filter((p) => !q || p.name.toLowerCase().includes(q));
-			const keyOf = (p) => p.doc.path + ':' + p.node.line + ':' + p.name;
+			const keyOf = (p) => p.doc.path + ':' + p.name;
 			const selected = all.find((p) => keyOf(p) === s.selected) || list[0] || null;
 			const filter = el('input', { type: 'search', placeholder: 'Filter ' + all.length + ' scenes…', value: s.filter, className: 'ed-input' });
 			filter.dataset.fk = 'filter';
@@ -214,6 +214,7 @@ window.MS = window.MS || {};
 			const items = list.slice(0, 500).map((p) => el('button', { className: 'ed-item' + (p === selected ? ' sel' : ''), textContent: p.name, onclick: () => { s.selected = keyOf(p); s.view = { x: 0, y: 0 }; MS.ide.refreshForm(); } }));
 			host.replaceChildren(el('div', { className: 'ed ed-split' },
 				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Scenes · ' + module }), el('span', { className: 'spacer' }),
+					el('button', { className: 'tb', textContent: 'Edit the map in the game ▾', title: "Open the game's own map editors: they run from Studio, and what you save there shows here straight away", onclick: (e) => gameEditorsMenu(e.currentTarget) }),
 					el('button', { className: 'tb primary', textContent: '+ New scene…', title: "Make a scene: pick its terrain and backdrops, as the game's own scene editor does", disabled: !!(all[0] && locked(all[0].doc)), onclick: () => newScene(module, s) })),
 				all[0] && locked(all[0].doc) ? el('div', { className: 'ed-banner', textContent: module + ' is read only: its scenes can be looked at. Copy one into your mod (New… → Scene) to change it.' }) : null,
 				el('div', { className: 'ed-panes' },
@@ -470,7 +471,7 @@ window.MS = window.MS || {};
 				});
 				const made = a.lib.presets.find((p) => p.doc === doc && p.name === n);
 				if (made) {
-					s.selected = made.doc.path + ':' + made.node.line + ':' + made.name;
+					s.selected = made.doc.path + ':' + made.name;
 				}
 				await a.save(true, [doc, a.lib.docFor(module + '/Index.ini')].filter(Boolean));
 				MS.ide.refreshForm();
@@ -480,9 +481,35 @@ window.MS = window.MS || {};
 		]);
 	}
 
+	// The game's map editors (placing buildings and units, drawing areas, assemblies) are best done in the game, which has the whole editing
+	// interface; this starts one from Studio. What it saves is picked up here as soon as it is written.
+	function gameEditorsMenu(anchor) {
+		const choices = [
+			['sceneeditor', 'Scene Editor', 'Place buildings, doors, units and brains on a map, and save it'],
+			['areaeditor', 'Area Editor', 'Draw the named areas of a map'],
+			['assemblyeditor', 'Assembly Editor', 'Build bunker assemblies out of pieces'],
+			['gibeditor', 'Gib Editor', 'Place the gibs of something'],
+		];
+		const box = el('div', { className: 'ed-menu' }, ...choices.map(([mode, label, help]) => el('button', { className: 'ed-menu-item', onclick: () => {
+			box.remove();
+			MS.launcher.launch(mode);
+		} }, el('b', { textContent: label }), el('small', { textContent: help }))));
+		const r = anchor.getBoundingClientRect();
+		box.style.left = Math.max(8, r.left) + 'px';
+		box.style.top = r.bottom + 4 + 'px';
+		document.body.append(box);
+		const close = (ev) => {
+			if (!box.contains(ev.target)) {
+				box.remove();
+				document.removeEventListener('pointerdown', close, true);
+			}
+		};
+		setTimeout(() => document.addEventListener('pointerdown', close, true), 0);
+	}
+
 	// Joins the Data view's list.
 	if (MS.editors && MS.editors.register) {
 		MS.editors.register(['scenes', 'Scenes', 'Maps: terrain, backdrop layers and areas', '▤', renderScenes, (module) => app().lib.presets.filter((p) => p.topLevel && p.module === module && p.cls === 'Scene').length]);
 	}
-	MS.scenes = { renderScenes };
+	MS.scenes = { renderScenes, forgetAsked: (paths) => paths.forEach((p) => asked.delete(String(p).toLowerCase())) };
 })();

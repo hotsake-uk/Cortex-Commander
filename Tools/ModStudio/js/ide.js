@@ -1359,6 +1359,7 @@ window.MS = window.MS || {};
 		const kept = [];
 		const sprites = [];
 		let inisChanged = false;
+		const rescan = new Set();
 		for (const { path: disk, kind } of changes) {
 			const path = disk.replace(/^(Data|Mods)\//i, '');
 			const ext = extOf(path);
@@ -1395,7 +1396,13 @@ window.MS = window.MS || {};
 				const doc = app.lib.docFor(path);
 				app.fs.texts.delete(disk.toLowerCase());
 				if (!doc) {
-					continue; // A file no loaded mod includes yet: Reload in the File menu picks it up.
+					// A file no loaded mod lists yet (a scene the game's editor has just saved): its mod is read again below, which picks it up
+					// if the mod's Index.ini now lists it.
+					const module = path.split('/')[0];
+					if (/[.]rte$/i.test(module)) {
+						rescan.add(module.toLowerCase());
+					}
+					continue;
 				}
 				if (doc.dirty) {
 					kept.push(baseName(path));
@@ -1404,6 +1411,17 @@ window.MS = window.MS || {};
 				doc.reset(await app.fs.readText(disk));
 				doc.savedText = doc.serialize();
 				doc.dirty = false;
+				inisChanged = true;
+				if (/^[^/]+[/]index[.]ini$/i.test(path)) {
+					rescan.add(path.split('/')[0].toLowerCase()); // the list of files may have changed
+				}
+			}
+		}
+		for (const name of rescan) {
+			const module = app.lib.modules.find((m) => m.name.toLowerCase() === name);
+			if (module) {
+				module.docs = [];
+				await app.lib.loadModule(module);
 				inisChanged = true;
 			}
 		}
@@ -1424,6 +1442,9 @@ window.MS = window.MS || {};
 			app.requestDraw();
 		}
 		renderTabs();
+		if (inisChanged || sprites.length) {
+			ide.refreshForm(); // an open data editor (Scenes, Weapons...) shows what is on disk now
+		}
 		consoleLine('— ' + (why || 'saved outside Studio') + ': ' + names.join(', ') + ' —', 'studio');
 		if (kept.length) {
 			app.toast(kept.join(', ') + (kept.length > 1 ? ' were' : ' was') + ' changed on disk, but has unsaved edits in Studio, so Studio kept yours. Saving replaces the outside change.', 'bad');
