@@ -264,10 +264,13 @@ window.MS = window.MS || {};
 	// The game colour nearest to a light colour (never the see-through number, so a faint glow still shows).
 	function nearestIndex(r, g, b) {
 		const p = app().images.palette;
+		const sat = (a, b2, c) => { const m = Math.max(a, b2, c); return m ? (m - Math.min(a, b2, c)) / m : 0; };
+		const wantSat = sat(r, g, b);
 		let best = 1;
 		let bestDist = Infinity;
 		for (let i = 1; i < 256; i++) {
-			const d = (p[i * 3] - r) ** 2 + (p[i * 3 + 1] - g) ** 2 + (p[i * 3 + 2] - b) ** 2;
+			// Plain closeness picks grey for colours the palette lacks (purple, pink), so losing colour costs extra.
+			const d = (p[i * 3] - r) ** 2 + (p[i * 3 + 1] - g) ** 2 + (p[i * 3 + 2] - b) ** 2 + 2 * 255 * 255 * Math.max(0, wantSat - sat(p[i * 3], p[i * 3 + 1], p[i * 3 + 2])) ** 2;
 			if (d < bestDist) {
 				bestDist = d;
 				best = i;
@@ -572,9 +575,12 @@ window.MS = window.MS || {};
 		const data = gctx.createImageData(g.w, g.h);
 		for (let i = 0; i < g.w * g.h; i++) {
 			if (lit(g, i)) {
-				data.data[i * 4] = g.rgb[i * 3];
-				data.data[i * 4 + 1] = g.rgb[i * 3 + 1];
-				data.data[i * 4 + 2] = g.rgb[i * 3 + 2];
+				// The game's glow picture uses its palette, so show the palette colour that will be saved.
+				const pal = app().images.palette;
+				const idx = nearestIndex(g.rgb[i * 3], g.rgb[i * 3 + 1], g.rgb[i * 3 + 2]);
+				data.data[i * 4] = pal[idx * 3];
+				data.data[i * 4 + 1] = pal[idx * 3 + 1];
+				data.data[i * 4 + 2] = pal[idx * 3 + 2];
 				data.data[i * 4 + 3] = 255;
 			}
 		}
