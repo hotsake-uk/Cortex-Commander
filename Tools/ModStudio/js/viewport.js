@@ -21,6 +21,13 @@ window.MS = window.MS || {};
 
 	const { rotate, flipX, add, sub, len } = MS.geom;
 
+	// A colour for each part: spread round the colour wheel by its place in the unit, so neighbours differ and a part keeps its colour.
+	MS.partColor = (part) => {
+		const parts = MS.app && MS.app.rig ? MS.app.rig.parts : [];
+		const i = Math.max(0, parts.indexOf(part));
+		return 'hsl(' + Math.round((i * 137.508 + 20) % 360) + ', 85%, 62%)';
+	};
+
 	class Viewport {
 		constructor(canvas, app) {
 			this.canvas = canvas;
@@ -34,7 +41,7 @@ window.MS = window.MS || {};
 			this.drawList = [];
 			this.poses = null;
 			this.masks = new WeakMap();
-			this.options = { grid: true, joints: true, ground: true, ghosts: false, reach: true, skeleton: false }
+			this.options = { grid: true, joints: true, ground: true, ghosts: false, reach: true, skeleton: false, outlines: false }
 			// With the skeleton on, the pictures are 'faded', 'hidden' or 'shown' (skeleton.js's Pictures switch).
 			this.skeletonPictures = readPictures();
 			this.skeletonHits = [];;
@@ -169,6 +176,14 @@ window.MS = window.MS || {};
 				this.drawItem(ctx, item);
 			}
 			ctx.globalAlpha = 1;
+			// One outline a part, each in its own colour, as bracket colouring does: it follows the picture's own shape (the see-through
+			// is left out).
+			if (this.options.outlines) {
+				for (const item of this.drawList) {
+					const color = MS.partColor(item.part);
+					this.drawItem(ctx, item, (frame) => this.silhouette(frame, color));
+				}
+			}
 			ctx.restore();
 			if (this.options.skeleton) {
 				this.drawSkeleton(ctx, poses);
@@ -356,11 +371,13 @@ window.MS = window.MS || {};
 			return s.offset;
 		}
 
-		drawItem(ctx, item) {
+		drawItem(ctx, item, tint) {
 			const frame = this.frameFor(item);
 			if (!frame) {
 				return;
 			}
+			const image = tint ? tint(frame) : frame.canvas;
+			const pad = tint ? 1 : 0;
 			const pose = item.pose;
 			ctx.save();
 			if (item.kind === 'hand') {
@@ -369,9 +386,9 @@ window.MS = window.MS || {};
 				if (pose.flip) {
 					ctx.translate(x + frame.width, y);
 					ctx.scale(-1, 1);
-					ctx.drawImage(frame.canvas, 0, 0);
+					ctx.drawImage(image, -pad, -pad);
 				} else {
-					ctx.drawImage(frame.canvas, x, y);
+					ctx.drawImage(image, x - pad, y - pad);
 				}
 			} else {
 				const so = this.spriteOffset(item, frame);
@@ -381,9 +398,42 @@ window.MS = window.MS || {};
 				if (pose.flip) {
 					ctx.scale(-1, 1);
 				}
-				ctx.drawImage(frame.canvas, so.x, so.y);
+				ctx.drawImage(image, so.x - pad, so.y - pad);
 			}
 			ctx.restore();
+		}
+
+		// A one pixel ring just outside a picture's solid pixels, in a colour (cached by picture and colour), for the part outlines.
+		silhouette(frame, color) {
+			if (!this.rings) {
+				this.rings = new WeakMap();
+			}
+			let byColor = this.rings.get(frame.canvas);
+			if (!byColor) {
+				byColor = new Map();
+				this.rings.set(frame.canvas, byColor);
+			}
+			if (byColor.has(color)) {
+				return byColor.get(color);
+			}
+			const w = frame.width;
+			const h = frame.height;
+			const alpha = frame.canvas.getContext('2d').getImageData(0, 0, w, h).data;
+			const solid = (x, y) => x >= 0 && y >= 0 && x < w && y < h && alpha[(y * w + x) * 4 + 3] > 0;
+			const out = document.createElement('canvas');
+			out.width = w + 2;
+			out.height = h + 2;
+			const octx = out.getContext('2d');
+			octx.fillStyle = color;
+			for (let y = -1; y <= h; y++) {
+				for (let x = -1; x <= w; x++) {
+					if (!solid(x, y) && (solid(x - 1, y) || solid(x + 1, y) || solid(x, y - 1) || solid(x, y + 1))) {
+						octx.fillRect(x + 1, y + 1, 1, 1);
+					}
+				}
+			}
+			byColor.set(color, out);
+			return out;
 		}
 
 		// The four corners of an item's picture, in world space.

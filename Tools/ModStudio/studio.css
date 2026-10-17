@@ -1015,3 +1015,4 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 #app.popout > #topbar, #app.popout > #activity, #app.popout > #side, #app.popout > #left, #app.popout > #center, #app.popout > #right, #app.popout > #bottom { display: none !important; }
 #app.popout #tabbar { display: flex !important; }
 #app.popout #codeWrap { display: flex !important; grid-area: code !important; }
+.tree-row .swatch { width: 8px; height: 8px; border-radius: 2px; flex: none; margin: 0 4px 0 2px; }

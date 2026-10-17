@@ -1129,6 +1129,9 @@ window.MS = window.MS || {};
 				const opt = btn.dataset.opt;
 				app.view.options[opt] = !app.view.options[opt];
 				btn.classList.toggle('sel', app.view.options[opt]);
+				if (opt === 'outlines') {
+					MS.panels.refresh();
+				}
 				app.requestDraw();
 			};
 		}
