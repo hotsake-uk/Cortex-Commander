@@ -12,6 +12,11 @@
 // an objective marker for the players, what happens when it starts, when it is done (the next stage then begins), and optionally a time limit with
 // what happens when it runs out. "Reach the bunker, then hold the hill for two minutes, then bring the case back, then win" is four stages. Rules run
 // alongside the stages and can look at which stage it is.
+//
+// Battles: the game's own battle modes (capture the flag, king of the hill, assault, last team standing, VIP hunt, one flag, capture the ship, wave defence,
+// escort, extraction, the point) can be started by an action, and what happens in them (a score, an objective taken, the end) can start a rule or finish a
+// stage. The game runs the battle, with its objectives lit up and its AI; the mission only says when it begins and what follows. This needs a game built
+// with the battle events (SandboxBattleEvent); on an older build the actions say so in the console and do nothing.
 'use strict';
 window.MS = window.MS || {};
 
@@ -38,6 +43,8 @@ window.MS = window.MS || {};
 	// Each kind: label (a sentence with the parameters after it), and the parameters: [key, type, label, default]. Types: team, area, number, text, op,
 	// bool, player, fn, preset.
 
+	const BATTLE_MODES = [[1, 'Capture the flag'], [2, 'King of the hill'], [3, 'Assault'], [4, 'Last team standing'], [5, 'VIP hunt'], [6, 'One flag'], [7, 'Capture the ship'], [8, 'Wave defence'], [9, 'Escort'], [10, 'Extraction'], [11, 'The point']];
+
 	const OPS = [['>=', 'is at least'], ['<=', 'is at most'], ['==', 'is exactly'], ['>', 'is more than'], ['<', 'is less than']];
 
 	const WHEN = {
@@ -48,6 +55,10 @@ window.MS = window.MS || {};
 		empty: { label: 'an area is emptied', params: [['area', 'area', 'area', ''], ['team', 'team', 'of', -1]] },
 		teamGone: { label: 'a team has no units left', params: [['team', 'team', 'team', 0]] },
 		brainGone: { label: 'a team\'s brain is destroyed', params: [['team', 'team', 'team', 0]] },
+		battleStarted: { label: 'a battle begins', params: [] },
+		battleScore: { label: 'a team scores in the battle (a capture, goal or hill)', params: [['team', 'team', 'team', -1]] },
+		battleObjective: { label: 'an objective is taken in the battle (assault)', params: [['team', 'team', 'team', -1]] },
+		battleEnded: { label: 'the battle ends', params: [['team', 'team', 'won by', -1]] },
 		funds: { label: 'a team\'s gold reaches', params: [['team', 'team', 'team', 0], ['op', 'op', '', '>='], ['amount', 'number', 'gold', 1000]] },
 		always: { label: 'every moment (use conditions)', params: [] },
 	};
@@ -59,6 +70,7 @@ window.MS = window.MS || {};
 		inArea: { label: 'units of a team in an area', params: [['team', 'team', 'team', 0], ['area', 'area', 'area', ''], ['op', 'op', '', '>='], ['count', 'number', 'count', 1]] },
 		flag: { label: 'a flag', params: [['name', 'text', 'name', 'flag'], ['value', 'bool', 'is set', true]] },
 		stage: { label: 'the stage it is on', params: [['op', 'op', '', '=='], ['n', 'number', 'stage number', 1]] },
+		battleScore: { label: 'a team\'s score in the battle', params: [['team', 'team', 'team', 0], ['op', 'op', '', '>='], ['count', 'number', 'points', 1]] },
 	};
 
 	// What finishes a stage.
@@ -69,6 +81,8 @@ window.MS = window.MS || {};
 		brain: { label: 'a team\'s brain is destroyed', params: [['team', 'team', 'team', 1]] },
 		fetch: { label: 'an item is brought to an area', params: [['item', 'item', 'item', ''], ['from', 'area', 'put it in', ''], ['area', 'area', 'bring it to', '']] },
 		survive: { label: 'time passes', params: [['seconds', 'number', 'seconds', 120]] },
+		battle: { label: 'the battle is won', params: [['team', 'team', 'by', -1]] },
+		battleScore: { label: 'a team scores in the battle', params: [['team', 'team', 'team', 0], ['count', 'number', 'points', 1]] },
 	};
 
 	const THEN = {
@@ -81,6 +95,8 @@ window.MS = window.MS || {};
 		end: { label: 'end it with no winner', params: [] },
 		call: { label: 'run my own function', params: [['fn', 'fn', 'function', 'MyFunction']] },
 		stage: { label: 'jump to a stage', params: [['n', 'number', 'stage number', 1]] },
+		battle: { label: 'start a battle', params: [['mode', 'mode', 'mode', 2], ['size', 'number', 'units a side', 12], ['byShip', 'bool', 'they arrive by ship', false], ['layout', 'bool', 'lay the map out for me', true], ['seed', 'number', 'layout seed', 1]] },
+		battleStop: { label: 'stop the battle', params: [] },
 	};
 
 	let defaultArea = ''; // the scene's first area, for new blocks that need one
@@ -102,6 +118,7 @@ window.MS = window.MS || {};
 			case 'inArea': return 'studioCount(' + luaNum(c.team) + ', ' + area(c.area) + ') ' + opOf(c.op) + ' ' + luaNum(c.count);
 			case 'flag': return '(st.flags[' + luaStr(c.name) + '] == true) == ' + (c.value ? 'true' : 'false');
 			case 'stage': return '(st.stage or 1) ' + opOf(c.op) + ' ' + luaNum(c.n);
+			case 'battleScore': return '((st.battle and st.battle.scores[' + luaNum(c.team) + ']) or 0) ' + opOf(c.op) + ' ' + luaNum(c.count);
 			default: return 'true';
 		}
 	}
@@ -124,6 +141,16 @@ window.MS = window.MS || {};
 			case 'end': return ['ActivityMan:EndActivity()'];
 			case 'call': return ['self:' + ident(a.fn) + '()'];
 			case 'stage': return ['st.stage = ' + luaNum(a.n), 'st.stageStarted = false'];
+			case 'battle': return [
+				'st.battle = { started = false, ended = false, winner = -1, scores = {} }',
+				'if SandboxBattleMode then',
+				...(a.layout ? ['\tSandboxBattleLayout(' + luaNum(a.mode) + ', ' + luaNum(a.seed) + ', 1)'] : []),
+				'\tSandboxBattleMode(' + luaNum(a.mode) + ', ' + luaNum(a.size) + ', ' + (a.byShip ? 'true' : 'false') + ')',
+				'else',
+				'\tConsoleMan:PrintString("Studio: this game build has no battle modes to start (SandboxBattleMode).")',
+				'end',
+			];
+			case 'battleStop': return ['if SandboxBattleMode then SandboxBattleMode(0, 2, false) end'];
 			default: return [];
 		}
 	}
@@ -149,6 +176,10 @@ window.MS = window.MS || {};
 				return lines;
 			}
 			case 'teamGone': return ['local alive = studioCount(' + team + ', nil)', 'if alive > 0 then st.seen[' + i + '] = true end', 'if st.seen[' + i + '] and alive == 0 then fire = true end'];
+			case 'battleStarted': return ['if studioBattleEvent(st, "started", -1) then fire = true end'];
+			case 'battleScore': return ['if studioBattleEvent(st, "score", ' + team + ') then fire = true end'];
+			case 'battleObjective': return ['if studioBattleEvent(st, "objective", ' + team + ') then fire = true end'];
+			case 'battleEnded': return ['if studioBattleEvent(st, "ended", ' + team + ') then fire = true end'];
 			case 'brainGone': return ['local alive = studioBrains(' + team + ')', 'if alive > 0 then st.seen[' + i + '] = true end', 'if st.seen[' + i + '] and alive == 0 then fire = true end'];
 			case 'funds': return ['local reached = self:GetTeamFunds(' + team + ') ' + opOf(w.op) + ' ' + luaNum(w.amount), 'if reached and not st.prev[' + i + '] then fire = true end', 'st.prev[' + i + '] = reached'];
 			default: return ['fire = true'];
@@ -183,6 +214,8 @@ window.MS = window.MS || {};
 				L.push('\tlocal where = ' + area(g.area), '\tif where then self:AddObjectivePoint(' + text + ', where.Center, ' + viewer + ', GameActivity.ARROWDOWN) end');
 			} else if (g.kind === 'fetch') {
 				L.push('\tlocal where = ' + area(g.area), '\tif where then self:AddObjectivePoint(' + text + ', where.Center, ' + viewer + ', GameActivity.ARROWDOWN) end');
+			} else if (g.kind === 'battle' || g.kind === 'battleScore') {
+				L.push('\t-- (the game lights up the battle\'s own objectives)');
 			} else if (g.kind === 'destroy' || g.kind === 'brain') {
 				L.push('\tfor actor in MovableMan.Actors do', '\t\tif actor.Team == ' + luaNum(g.team) + ' and actor.Health > 0' + (g.kind === 'brain' ? ' and actor:IsInGroup("Brains")' : '') + ' then self:AddObjectivePoint(' + text + ', actor.AboveHUDPos, ' + viewer + ', GameActivity.ARROWDOWN) end', '\tend');
 			} else {
@@ -200,6 +233,8 @@ window.MS = window.MS || {};
 				L.push('\tlocal region = ' + area(g.area), '\tlocal held = region ~= nil and studioCount(' + luaNum(g.team) + ', region) > 0 and studioEnemies(' + luaNum(g.team) + ', region) == 0', '\tif not held then st.holdFrom = nil elseif not st.holdFrom then st.holdFrom = elapsed end', '\treturn st.holdFrom ~= nil and elapsed - st.holdFrom >= ' + luaNum(g.seconds));
 				break;
 			case 'destroy': L.push('\treturn elapsed > 1 and studioCount(' + luaNum(g.team) + ', nil) == 0'); break;
+			case 'battle': L.push('\treturn st.battle ~= nil and st.battle.ended and (' + luaNum(g.team) + ' < 0 or st.battle.winner == ' + luaNum(g.team) + ')'); break;
+			case 'battleScore': L.push('\treturn ((st.battle and st.battle.scores[' + luaNum(g.team) + ']) or 0) >= ' + luaNum(g.count)); break;
 			case 'brain': L.push('\treturn elapsed > 1 and studioBrains(' + luaNum(g.team) + ') == 0'); break;
 			case 'fetch': L.push('\treturn studioItemIn(' + luaStr(g.area) + ', ' + luaStr(String(g.item).split('|')[1] || '') + ')'); break;
 			default: L.push('\treturn elapsed >= ' + luaNum(g.seconds));
@@ -216,6 +251,13 @@ window.MS = window.MS || {};
 		L.push('local function studioArea(name)', '\tif name ~= "" and SceneMan.Scene:HasArea(name) then return SceneMan.Scene:GetArea(name) end', '\treturn nil', 'end', '');
 		L.push('local function studioCount(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and (region == nil or region:IsInside(actor.Pos)) then n = n + 1 end', '\tend', '\treturn n', 'end', '');
 		L.push('local function studioInside(name, team)', '\tlocal region = studioArea(name)', '\tlocal now, count = {}, 0', '\tif region then', '\t\tfor actor in MovableMan.Actors do', '\t\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and region:IsInside(actor.Pos) then now[actor.UniqueID] = actor; count = count + 1 end', '\t\tend', '\tend', '\treturn now, count', 'end', '');
+		L.push('-- What the game\'s battle mode reports (an older game build has none): kept in st.battle, with this frame\'s events in st.battleNow.',
+			'local function studioPump(st)', '\tst.battleNow = {}', '\tif not SandboxBattleEvent then return end', '\tlocal line = SandboxBattleEvent()', '\twhile line ~= "" do',
+			'\t\tlocal parts = {}', '\t\tfor token in line:gmatch("%S+") do parts[#parts + 1] = token end', '\t\tlocal name, a, b = parts[1], tonumber(parts[2]) or -1, tonumber(parts[3]) or 0',
+			'\t\tst.battle = st.battle or { started = false, ended = false, winner = -1, scores = {} }',
+			'\t\tif name == "started" then st.battle = { started = true, ended = false, winner = -1, scores = {} }', '\t\telseif name == "score" or name == "objective" then st.battle.scores[a] = b', '\t\telseif name == "ended" then st.battle.ended = true; st.battle.winner = a end',
+			'\t\ttable.insert(st.battleNow, { name = name, team = a })', '\t\tline = SandboxBattleEvent()', '\tend', 'end', '');
+		L.push('local function studioBattleEvent(st, name, team)', '\tfor _, e in ipairs(st.battleNow or {}) do', '\t\tif e.name == name and (team < 0 or e.team == team) then return true end', '\tend', '\treturn false', 'end', '');
 		L.push('local function studioEnemies(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team >= 0 and actor.Team ~= team and region:IsInside(actor.Pos) then n = n + 1 end', '\tend', '\treturn n', 'end', '');
 		L.push('local function studioBrains(team)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor.Team == team and actor:IsInGroup("Brains") then n = n + 1 end', '\tend', '\treturn n', 'end', '');
 		L.push('local function studioItemIn(areaName, itemName)', '\tlocal region = studioArea(areaName)', '\tif not region then return false end', '\tfor item in MovableMan.Items do', '\t\tif item.PresetName == itemName and region:IsInside(item.Pos) then return true end', '\tend', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and region:IsInside(actor.Pos) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '');
@@ -237,6 +279,7 @@ window.MS = window.MS || {};
 		L.push('function ' + cls + ':RunStudioRules()');
 		L.push('\tself.StudioState = self.StudioState or { clock = Timer(), flags = {}, inside = {}, who = {}, seen = {}, prev = {}, next = {}, done = {}, started = false }');
 		L.push('\tlocal st = self.StudioState');
+		L.push('\tstudioPump(st)');
 		if (stages.length) {
 			L.push('\tst.stage = st.stage or 1');
 			L.push('\tif st.stage <= ' + stages.length + ' then');
@@ -390,6 +433,9 @@ window.MS = window.MS || {};
 			} else if (type === 'number') {
 				input = el('input', { type: 'number', step: 'any', className: 'ed-input num', value, disabled: ro });
 				input.onchange = () => set(Number(input.value) || 0);
+			} else if (type === 'mode') {
+				input = el('select', { className: 'ed-input', disabled: ro }, ...BATTLE_MODES.map(([v, t]) => el('option', { value: String(v), textContent: t, selected: Number(value) === v })));
+				input.onchange = () => set(Number(input.value));
 			} else if (type === 'item') {
 				const name = String(value).split('|')[1] || '(pick one)';
 				input = el('button', { className: 'tb', textContent: name, disabled: ro, onclick: () => host.pickItem((chosen) => set(chosen.cls + '|' + chosen.name + '|' + chosen.module)) });
