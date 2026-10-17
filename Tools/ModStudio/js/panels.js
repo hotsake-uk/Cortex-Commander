@@ -568,8 +568,11 @@ window.MS = window.MS || {};
 			row.append(twist, canvas, txt);
 			row.onclick = (e) => category.open(p, e);
 			row.title = 'Open ' + p.name;
+			// its buttons sit over the end of the row when the mouse is on it, so the name has the whole row until then
+			const acts = document.createElement('div');
+			acts.className = 'lib-acts';
 			for (const button of category.actions ? category.actions(p) : []) {
-				row.append(button);
+				acts.append(button);
 			}
 			if (app.libraryOn && app.project && p.module.toLowerCase() !== app.project.toLowerCase() && (category.thumb === 'rig' || category.id === 'items' || category.id === 'more')) {
 				// In the Library: clone it into the project (a copy in your mod you can change), then open it.
@@ -581,7 +584,10 @@ window.MS = window.MS || {};
 					e.stopPropagation();
 					MS.dialogs.copyUnit({ name: p.name, cls: p.cls, path: p.doc.path });
 				};
-				row.append(clone);
+				acts.append(clone);
+			}
+			if (acts.children.length) {
+				row.append(acts);
 			}
 			list.append(row);
 		}

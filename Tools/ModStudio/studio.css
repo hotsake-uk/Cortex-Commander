@@ -1509,3 +1509,36 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* the parts tree's solo button: shown while on (like the eye when off) */
 .tree-row .row-btn.solo { font-size: 10px; font-weight: 700; width: 16px; justify-content: center; }
 .tree-row .row-btn.solo.on { display: inline-flex; visibility: visible; color: var(--accent-ink); background: var(--accent); border-radius: 3px; }
+/* ---- tabs split in two: a right group of tabs in a column of its own, in every mode ---- */
+#group2 { grid-area: g2; display: flex; flex-direction: column; min-width: 0; min-height: 0; position: relative; border-left: 1px solid var(--line); background: var(--view-bg); }
+#group2[hidden] { display: none; }
+#g2Grip { position: absolute; left: -3px; top: 0; bottom: 0; width: 6px; cursor: ew-resize; z-index: 5; }
+#g2Grip:hover, #g2Grip:active { background: var(--accent); opacity: .45; }
+#tabbar2 { flex: none; height: 34px; display: flex; align-items: stretch; background: var(--bg); border-bottom: 1px solid var(--line); overflow-x: auto; overflow-y: hidden; }
+#tabbar2.drop-on, #tabbar.drop-on { box-shadow: inset 0 -2px 0 var(--accent); }
+#g2Host { flex: 1; min-height: 0; position: relative; display: flex; flex-direction: column; }
+#g2Host > div { flex: 1; min-height: 0; }
+#g2Host > div[hidden] { display: none; }
+#g2View { position: relative; }
+#g2View canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#g2Form { overflow: auto; }
+#g2Image { display: flex; flex-direction: column; }
+.tab.focus-elsewhere { opacity: .85; }
+.tab .tab-move { display: none; background: none; border: 0; color: var(--faint); cursor: pointer; padding: 0 3px; font-size: 12px; }
+.tab:hover .tab-move { display: inline-flex; }
+.tab .tab-move:hover { color: var(--text); }
+/* the grid with the right group as a column of its own (the group's width: --g2-w) */
+#app.split2:not(.deep) { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(320px, 1fr) minmax(220px, var(--right-w, 320px)) var(--g2-w, 38vw); grid-template-areas: "top top top top" "left tabs tabs g2" "left center right g2" "status status status status"; grid-template-rows: 46px 34px minmax(0, 1fr) 26px; }
+#app.split2.no-view:not(.deep) { grid-template-columns: minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 260px))) minmax(0, 1fr) var(--g2-w, 38vw); grid-template-areas: "top top top" "left tabs g2" "left right g2" "status status status"; }
+#app.split2:not(.deep) #tabbar { display: flex; }
+#app.split2:not(.deep).sprite-tab #codeWrap { grid-area: 3 / 2 / 4 / -2; }
+#app.split2.deep { grid-template-columns: 44px minmax(var(--lib-min, 160px), var(--lib-w, var(--lib-size, 270px))) minmax(320px, 1fr) minmax(220px, var(--right-w-script, 360px)) var(--g2-w, 38vw); grid-template-areas: "top top top top top" "act side tabs tabs g2" "act side center right g2" "act side bottom bottom bottom" "status status status status status"; }
+#app.split2.deep.no-view { grid-template-areas: "top top top top top" "act side tabs tabs g2" "act side right right g2" "act side bottom bottom bottom" "status status status status status"; }
+#app.split2.deep #codeWrap, #app.split2.deep.no-view #codeWrap { grid-area: 3 / 3 / 4 / 5; }
+#app.split2 #group2 { grid-row: 2 / 4; }
+/* a library row's buttons: over the end of the row while the mouse is on it (the name has the whole row until then) */
+.lib-row { position: relative; }
+.lib-row .lib-acts { position: absolute; right: 4px; top: 50%; transform: translateY(-50%); display: none; align-items: center; gap: 4px; padding-left: 22px; background: linear-gradient(to right, transparent, var(--panel2) 20px); }
+.lib-row.sel .lib-acts { background: linear-gradient(to right, transparent, var(--sel) 20px); }
+.lib-row:hover .lib-acts { display: flex; }
+.lib-row .lib-acts .add { visibility: visible; }

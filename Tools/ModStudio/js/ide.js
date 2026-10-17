@@ -52,6 +52,7 @@ window.MS = window.MS || {};
 		ide.ini = new MS.IniIntel(app);
 		MS.nav = new MS.Nav(app);
 		pollBridge();
+		bindGroups();
 		for (const b of document.querySelectorAll('#modeSwitch button')) {
 			b.onclick = () => ide.setMode(b.dataset.mode);
 		}
@@ -162,17 +163,15 @@ window.MS = window.MS || {};
 				startDeep();
 			}
 			renderTabs();
-			if (!ide.active) {
-				ide.activate(designerTab());
-			} else {
-				ide.activate(ide.active);
-			}
+			const main = ide.mainActive && ide.tabs.includes(ide.mainActive) ? ide.mainActive : null;
+			ide.activate(main || designerTab());
 		} else {
 			$('app').classList.remove('code-active');
-			if (!ide.active || (ide.active.kind !== 'designer' && !ide.active.sprite)) {
+			const main = ide.mainActive && ide.tabs.includes(ide.mainActive) ? ide.mainActive : null;
+			if (!main || (main.kind !== 'designer' && !main.sprite)) {
 				ide.activate(designerTab());
 			} else {
-				ide.activate(ide.active);
+				ide.activate(main);
 			}
 		}
 		MS.panels.refresh && app.lib && MS.panels.refresh();
@@ -674,7 +673,7 @@ window.MS = window.MS || {};
 	}
 
 	function designerTab() {
-		let tab = ide.tabs.find((t) => t.kind === 'designer');
+		let tab = ide.tabs.find((t) => t.kind === 'designer' && t.group !== 1);
 		if (!tab) {
 			tab = makeDesignerTab(!ide.tabs.some((t) => t.kind === 'designer'));
 			ide.tabs.unshift(tab);
@@ -800,13 +799,15 @@ window.MS = window.MS || {};
 				MS.popout.drop(e, null);
 			});
 		}
-		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
-		const shown = ide.tabs.filter(tabShown);
+		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all. (The right group, when the tabs are
+		// split, shows all its tabs in its own bar.)
+		const shown = ide.tabs.filter((t) => t.group !== 1 && tabShown(t));
 		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite) || shown.filter((t) => t.kind === 'designer').length > 1);
-		for (const tab of shown) {
+		// one tab in a bar: current, the one its group shows (and it has the focus unless the other group's has)
+		const tabItem = (tab, current) => {
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
-			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tabTooltip(tab) }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
+			const item = el('div', { className: 'tab' + (tab === current ? ' sel' : '') + (tab === current && ide.active !== tab ? ' focus-elsewhere' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tabTooltip(tab) }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
 			// tabs drag along the bar, into another Studio window's bar, or out of the window into one of their own
 			if (tab.kind === 'designer' && app.split && app.panes.some((p) => p.tab === tab)) {
 				item.classList.add('on-screen'); // shown side by side
@@ -828,6 +829,11 @@ window.MS = window.MS || {};
 				const after = item.classList.contains('drop-after');
 				item.classList.remove('drop-before', 'drop-after');
 				e.stopPropagation();
+				// dropped on a tab of the other group: it moves into that group, before or after it
+				const moved = MS.popout.draggingTab && MS.popout.draggingTab();
+				if (moved && (moved.group === 1) !== (tab.group === 1)) {
+					ide.moveToGroup(moved, tab.group === 1 ? 1 : 0, true);
+				}
 				MS.popout.drop(e, after ? ide.tabs[ide.tabs.indexOf(tab) + 1] || null : tab);
 			};
 			if (tab.kind === 'designer' && (tab === ide.currentDesigner ? app.actor : tab.state && tab.state.actor)) {
@@ -840,6 +846,15 @@ window.MS = window.MS || {};
 				};
 				item.append(game);
 				item.classList.toggle('game-linked', linked);
+			}
+			if (!MS.popout.request) {
+				// into the other group of tabs (the split), or back
+				const move = el('button', { className: 'tab-move', textContent: tab.group === 1 ? '⇤' : '⇥', title: tab.group === 1 ? 'Move to the left group of tabs (Ctrl+\\)' : 'Move to a group of tabs on the right, side by side (Ctrl+\\)' });
+				move.onclick = (e) => {
+					e.stopPropagation();
+					ide.moveToGroup(tab, tab.group === 1 ? 0 : 1);
+				};
+				item.append(move);
 			}
 			if (MS.popout.canMove(tab)) {
 				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window (or drag the tab out of the window, or into another one)' });
@@ -863,11 +878,227 @@ window.MS = window.MS || {};
 					ide.closeTab(tab);
 				}
 			};
-			bar.append(item);
+			return item;
+		};
+		for (const tab of shown) {
+			bar.append(tabItem(tab, ide.mainActive || ide.active));
 		}
-		const sel = bar.querySelector('.tab.sel');
-		if (sel) {
-			sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // a tab opened past the end of a full bar comes into view
+		const bar2 = $('tabbar2');
+		bar2.innerHTML = '';
+		if (!bar2.dataset.dropBound) {
+			bar2.dataset.dropBound = '1';
+			bar2.addEventListener('dragover', (e) => {
+				if (MS.popout.isTabDrag(e)) {
+					e.preventDefault();
+					e.dataTransfer.dropEffect = 'move';
+					bar2.classList.add('drop-on');
+				}
+			});
+			bar2.addEventListener('dragleave', (e) => {
+				if (!bar2.contains(e.relatedTarget)) {
+					bar2.classList.remove('drop-on');
+				}
+			});
+			bar2.addEventListener('drop', (e) => {
+				bar2.classList.remove('drop-on');
+				const moved = MS.popout.draggingTab && MS.popout.draggingTab();
+				if (moved) {
+					e.preventDefault();
+					ide.moveToGroup(moved, 1);
+				}
+			});
+		}
+		for (const tab of ide.tabs.filter((t) => t.group === 1)) {
+			bar2.append(tabItem(tab, ide.g2.active));
+		}
+		for (const b of [bar, bar2]) {
+			const sel = b.querySelector('.tab.sel');
+			if (sel) {
+				sel.scrollIntoView({ block: 'nearest', inline: 'nearest' }); // a tab opened past the end of a full bar comes into view
+			}
+		}
+		layoutGroups();
+	}
+
+	// ---- the tabs split in two: a right group of tabs beside the main one ----
+	// Each tab is in the main group or, with group 1, the right one. Each group shows one of its tabs (ide.mainActive, ide.g2.active); ide.active
+	// is the one with the focus (what saving, undo and the inspector go by). The right group has its own hosts: a second code editor (on the same
+	// files), a form, a picture, and the designer's second view (two designers drawn side by side, as before).
+	ide.g2 = { active: null };
+	ide.mainActive = null;
+	function layoutGroups() {
+		const on = !MS.popout.request && ide.tabs.some((t) => t.group === 1);
+		const was = $('app').classList.contains('split2');
+		$('app').classList.toggle('split2', on);
+		$('group2').hidden = !on;
+		if (on) {
+			const saved = Number(app.readLocal('ms.g2w'));
+			if (saved > 0) {
+				$('app').style.setProperty('--g2-w', saved + 'px');
+			}
+		} else if (ide.g2.active || app.split) {
+			ide.g2.active = null;
+			app.secondPane(null);
+		}
+		if (was !== on) {
+			setTimeout(() => {
+				if (ide.editor) {
+					ide.editor.layout();
+				}
+				if (ide.editor2) {
+					ide.editor2.layout();
+				}
+				app.requestDraw();
+			}, 0);
+		}
+	}
+
+	// What the right group shows: its tab in its own host (the others hidden).
+	function showInGroup2(tab) {
+		const host = { designer: 'g2View', code: 'g2Code', image: 'g2Image', form: 'g2Form' }[tab.kind];
+		for (const id of ['g2View', 'g2Code', 'g2Image', 'g2Form']) {
+			$(id).hidden = id !== host;
+		}
+		if (tab.kind !== 'designer') {
+			app.secondPane(null);
+		}
+		if (tab.kind === 'code') {
+			ensureEditor2().then((editor) => {
+				if (!editor || ide.g2.active !== tab) {
+					return;
+				}
+				editor.setModel(tab.model);
+				editor.updateOptions({ readOnly: !!tab.readOnly });
+				if (tab.viewState2) {
+					editor.restoreViewState(tab.viewState2);
+				}
+				setTimeout(() => {
+					editor.layout();
+					editor.focus();
+				}, 0);
+			});
+		} else if (tab.kind === 'image') {
+			showImage(tab, $('g2Image'));
+		} else if (tab.kind === 'form') {
+			renderForm(tab, $('g2Form'));
+		} else if (tab.kind === 'designer') {
+			app.secondPane(tab);
+		}
+	}
+
+	// The right group's code editor: a second editor on the same files, made the first time it is needed, like the main one.
+	async function ensureEditor2() {
+		if (ide.editor2) {
+			return ide.editor2;
+		}
+		await loadMonaco();
+		if (!ide.editor) {
+			return null;
+		}
+		const options = Object.assign({}, ide.editor.getRawOptions(), { model: null, automaticLayout: true });
+		ide.editor2 = monaco.editor.create($('g2Code'), options);
+		MS.live.attach(ide.editor2);
+		MS.nav.attach(ide.editor2);
+		// typing in one editor or the other gives its tab the focus
+		ide.editor2.onDidFocusEditorText(() => focusGroup(1));
+		ide.editor.onDidFocusEditorText(() => focusGroup(0));
+		return ide.editor2;
+	}
+
+	// The focus to a group (clicked into): its tab becomes the one saving, undo and the inspector go by.
+	function focusGroup(group) {
+		const tab = group ? ide.g2.active : ide.mainActive;
+		if (!tab || ide.active === tab) {
+			return;
+		}
+		if (tab.kind === 'designer') {
+			ide.activate(tab); // its designer comes up for the inspector
+			return;
+		}
+		ide.active = tab;
+		renderTabs();
+		markExplorer();
+	}
+
+	// Moves a tab into a group (1: the right one, 0: the main one); the group it left shows another of its tabs. quiet: don't show it (a drop
+	// that goes on to put it in place).
+	ide.moveToGroup = function (tab, group, quiet) {
+		if (MS.popout.request || !tab) {
+			return;
+		}
+		group = group ? 1 : 0;
+		if ((tab.group === 1 ? 1 : 0) === group) {
+			if (!quiet) {
+				ide.activate(tab);
+			}
+			return;
+		}
+		const fromMain = ide.mainActive === tab;
+		const fromTwo = ide.g2.active === tab;
+		if (tab.kind === 'code' && ide.editor && group === 1 && ide.editor.getModel() === tab.model) {
+			tab.viewState2 = ide.editor.saveViewState();
+		}
+		tab.group = group === 1 ? 1 : undefined;
+		if (fromMain) {
+			ide.mainActive = null;
+			const next = ide.tabs.filter((t) => t.group !== 1 && tabShown(t)).pop() || designerTab();
+			ide.activate(next);
+		}
+		if (fromTwo) {
+			ide.g2.active = null;
+			const next = ide.tabs.filter((t) => t.group === 1).pop();
+			if (next) {
+				ide.activate(next);
+			}
+		}
+		if (tab.kind === 'designer' && group === 0 && app.panes[1] && app.panes[1].tab === tab) {
+			app.secondPane(null);
+		}
+		renderTabs();
+		if (!quiet) {
+			ide.activate(tab);
+		}
+	};
+
+	// Clicking into a group gives it the focus; the handle between the groups shares the room (kept); Ctrl+\ moves the tab with the focus
+	// to the other group, in either mode.
+	function bindGroups() {
+		$('group2').addEventListener('pointerdown', () => focusGroup(1), true);
+		for (const id of ['center', 'codeWrap', 'right']) {
+			$(id).addEventListener('pointerdown', () => focusGroup(0), true);
+		}
+		const grip = $('g2Grip');
+		grip.addEventListener('pointerdown', (e) => {
+			grip.setPointerCapture(e.pointerId);
+			const right = $('group2').getBoundingClientRect().right;
+			const move = (ev) => {
+				const w = Math.round(Math.max(260, Math.min(window.innerWidth - 520, right - ev.clientX)));
+				$('app').style.setProperty('--g2-w', w + 'px');
+				app.writeLocal('ms.g2w', w);
+				app.requestDraw();
+			};
+			grip.addEventListener('pointermove', move);
+			grip.addEventListener('pointerup', () => grip.removeEventListener('pointermove', move), { once: true });
+		});
+		document.addEventListener('keydown', (e) => {
+			if ((e.ctrlKey || e.metaKey) && e.key === '\\' && ide.active && !MS.popout.request) {
+				e.preventDefault();
+				ide.moveToGroup(ide.active, ide.active.group === 1 ? 0 : 1);
+			}
+		}, true);
+	}
+
+	// A form (a data editor, the Mission Editor, the sprite editor) drawn in its host, keeping the field you were in and the scroll.
+	function renderForm(tab, host) {
+		const focused = document.activeElement && host.contains(document.activeElement) ? document.activeElement.dataset.fk : null;
+		const scroll = host.scrollTop;
+		tab.render(host, tab);
+		host.scrollTop = scroll;
+		if (focused) {
+			const again = host.querySelector('[data-fk="' + CSS.escape(focused) + '"]');
+			if (again) {
+				again.focus();
+			}
 		}
 	}
 
@@ -932,6 +1163,28 @@ window.MS = window.MS || {};
 		if (ide.active && ide.active.kind === 'code' && ide.editor && ide.editor.getModel() === ide.active.model) {
 			ide.active.viewState = ide.editor.saveViewState();
 		}
+		if (ide.g2.active && ide.g2.active.kind === 'code' && ide.editor2 && ide.editor2.getModel() === ide.g2.active.model) {
+			ide.g2.active.viewState2 = ide.editor2.saveViewState();
+		}
+		if (tab.group === 1 && !MS.popout.request) {
+			// the right group: shown in its own hosts; the main group stays as it is
+			ide.g2.active = tab;
+			if (tab.kind === 'designer') {
+				app.secondPane(tab);
+				if (ide.currentDesigner !== tab || app.designer !== tab.designer) {
+					app.focusDesigner(tab);
+				}
+			}
+			ide.active = tab;
+			showInGroup2(tab);
+			markExplorer();
+			renderTabs();
+			if (MS.panels && MS.panels.markLibrary && app.lib) {
+				MS.panels.markLibrary();
+			}
+			return;
+		}
+		ide.mainActive = tab;
 		if (tab.kind === 'designer' && (ide.currentDesigner !== tab || app.designer !== tab.designer)) {
 			// Another design tab: its own designer comes up (in the view it is in, side by side, or the view being edited).
 			app.focusDesigner(tab);
@@ -1010,20 +1263,13 @@ window.MS = window.MS || {};
 
 	// Draws the open data editor again (after an edit, an undo or a reload), keeping the field you were in.
 	ide.refreshForm = function () {
-		const tab = ide.active;
-		if (!tab || tab.kind !== 'form' || $('formHost').hidden) {
-			return;
+		const tab = ide.mainActive || ide.active;
+		if (tab && tab.kind === 'form' && tab.group !== 1 && !$('formHost').hidden) {
+			renderForm(tab, $('formHost'));
 		}
-		const host = $('formHost');
-		const focused = document.activeElement && host.contains(document.activeElement) ? document.activeElement.dataset.fk : null;
-		const scroll = host.scrollTop;
-		tab.render(host, tab);
-		host.scrollTop = scroll;
-		if (focused) {
-			const again = host.querySelector('[data-fk="' + CSS.escape(focused) + '"]');
-			if (again) {
-				again.focus();
-			}
+		const two = ide.g2.active;
+		if (two && two.kind === 'form' && !$('group2').hidden) {
+			renderForm(two, $('g2Form'));
 		}
 	};
 
@@ -1054,6 +1300,8 @@ window.MS = window.MS || {};
 			MS.shortcuts.remember(tab); // Ctrl+Shift+T opens it again
 		}
 		const index = ide.tabs.indexOf(tab);
+		const group = ide.tabs.filter((t) => (t.group === 1) === (tab.group === 1));
+		const inGroup = group.indexOf(tab);
 		ide.tabs.splice(index, 1);
 		if (ide.gameTab === tab) {
 			ide.gameTab = null;
@@ -1077,8 +1325,25 @@ window.MS = window.MS || {};
 			MS.popout.closeWindow();
 			return;
 		}
-		if (ide.active === tab) {
-			ide.activate(ide.tabs[Math.max(0, index - 1)] || designerTab());
+		const rest = group.filter((t) => t !== tab);
+		const neighbour = rest[Math.max(0, Math.min(rest.length - 1, inGroup - 1))];
+		if (tab.group === 1) {
+			if (ide.g2.active === tab) {
+				ide.g2.active = null;
+				if (neighbour) {
+					ide.activate(neighbour);
+				} else {
+					renderTabs(); // the right group is gone
+					if (ide.active === tab) {
+						ide.activate(ide.mainActive && ide.tabs.includes(ide.mainActive) ? ide.mainActive : designerTab());
+					}
+				}
+			} else {
+				renderTabs();
+			}
+		} else if (ide.mainActive === tab || ide.active === tab) {
+			ide.mainActive = null;
+			ide.activate(neighbour || designerTab());
 		} else {
 			renderTabs();
 		}
@@ -1192,8 +1457,8 @@ window.MS = window.MS || {};
 	// A picture in a tab: zoom with the wheel (at the cursor), the buttons or + − 0 1, drag to move it, and the pixel under the cursor.
 	const IMAGE_ZOOMS = [0.25, 0.5, 1, 2, 3, 4, 6, 8, 12, 16, 24, 32, 48, 64];
 
-	function showImage(tab) {
-		const host = $('imageHost');
+	function showImage(tab, into) {
+		const host = into || $('imageHost');
 		host.innerHTML = '';
 		const canvas = el('canvas', { className: 'image-view' });
 		const holder = el('div', { className: 'image-holder' }, canvas);
