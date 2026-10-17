@@ -129,6 +129,32 @@ wire(s4, 'started', node('captureSet', { target: doorsPoint.id, do: 'on', team: 
 wire(s5, 'started', node('captureSet', { target: shield.id, do: 'on', team: 0 }));
 wire(s6, 'done', node('win', { team: 0, after: 6, text: 'Decision Day: the fortress has fallen.' }));
 
+// ---- reinforcements from inside the bunkers ----
+// As in Decision Day: while the Defenders hold a bunker, fresh troops come out of the doors behind it (its "Internal Reinforcements" area)
+// every so often, and go to defend what you are trying to take. They stop once you take it.
+const reinforce = (seconds, point, inside, defend, group) => {
+	const every = node('timer', { seconds, repeat: true });
+	const check = node('branch', {});
+	wire(every, 'then', check);
+	check.lists.conds.push(Object.assign(F.condDefaults('captureOwner'), { target: point.id, team: 1 }));
+	check.lists.conds.push(Object.assign(F.condDefaults('unitsWho'), { team: 1, which: 'any', op: '<', count: 45 }));
+	wire(check, 'true', node('spawn', { source: 'group', group: group || 'Actors - Light', team: 1, area: inside, count: num(2, true), arrive: 'appear', facing: 'auto', ai: 'goto', goTo: defend, tag: 'Defenders', arm: group ? 'heavy' : 'light' }));
+};
+reinforce(40, front, 'Front Bunker Internal Reinforcements', 'Front Bunker Operations');
+reinforce(55, vault, 'Front Bunker Small Vault Internal Reinforcements', 'Front Bunker Small Vault');
+reinforce(45, middle, 'Middle Bunker Internal Reinforcements', 'Middle Bunker Operations');
+reinforce(50, middle, 'Middle Bunker Operations Internal Reinforcements', 'Middle Bunker Operations', 'Actors - Heavy');
+reinforce(45, doorsPoint, 'Main Bunker Door Controls Internal Reinforcements', 'Main Bunker Door Controls');
+reinforce(50, doorsPoint, 'Main Bunker Barracks Internal Reinforcements', 'Main Bunker Door Controls');
+reinforce(45, shield, 'Main Bunker Internal Reinforcements', 'Main Bunker Shield Generator', 'Actors - Heavy');
+reinforce(55, shield, 'Main Bunker Armory Internal Reinforcements', 'Main Bunker Shield Generator');
+// the brain's own guard, while it lives
+const guard = node('timer', { seconds: 50, repeat: true });
+const brainAlive = node('branch', {});
+wire(guard, 'then', brainAlive);
+brainAlive.lists.conds.push(Object.assign(F.condDefaults('group'), { group: 'Enemy Brain', op: '>=', count: 1 }));
+wire(brainAlive, 'true', node('spawn', { source: 'group', group: 'Actors - Heavy', team: 1, area: 'Main Bunker Command Center Internal Reinforcements', count: num(2, true), arrive: 'appear', facing: 'auto', ai: 'goto', goTo: 'Main Bunker Command Center', tag: 'Defenders', arm: 'heavy' }));
+
 // ---- enemy waves ----
 const wave = node('timer', { seconds: 60, repeat: true });
 const notTooMany = node('branch', {});
