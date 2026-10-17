@@ -882,6 +882,9 @@ window.MS = window.MS || {};
 	}
 
 	function renderTree() {
+		eachSet(renderTreeOne);
+	}
+	function renderTreeOne() {
 		const tree = $('tree');
 		tree.innerHTML = '';
 		updateTreeTools();
@@ -1385,6 +1388,9 @@ window.MS = window.MS || {};
 	}
 
 	function renderInspector() {
+		eachSet(renderInspectorOne);
+	}
+	function renderInspectorOne() {
 		// Sections go in an inner box, which wide screens lay out in columns (the scrolling box itself can't be: its columns would run off sideways).
 		const box = $('inspector');
 		box.innerHTML = '';
@@ -2078,6 +2084,43 @@ window.MS = window.MS || {};
 
 	// ---- public ----
 
+	// ---- two sets of panels when the tabs are split: the main one (#right) for the left group's designer, the right group's (#g2Panels) for
+	// its own. Each is drawn with its designer as the one on show; the right set's elements take the main ids while it is drawn, so everything
+	// here draws into either. Its inspector's live values are kept apart too.
+	const PANEL_IDS = ['tree', 'inspector', 'inspHead', 'btnShowParts', 'btnFoldParts'];
+	let g2Updaters = [];
+	function panelTabs() {
+		const right = app.split && app.panes[1] && app.panes[1].tab;
+		return right && $('g2Panels') ? { left: app.panes[0] && app.panes[0].tab, right } : null;
+	}
+	function withRightSet(fn) {
+		for (const id of PANEL_IDS) {
+			$(id).id = id + '__main';
+			$('g2-' + id).id = id;
+		}
+		const mainUpdaters = fieldUpdaters;
+		fieldUpdaters = g2Updaters;
+		try {
+			fn();
+		} finally {
+			g2Updaters = fieldUpdaters;
+			fieldUpdaters = mainUpdaters;
+			for (const id of PANEL_IDS) {
+				$(id).id = 'g2-' + id;
+				$(id + '__main').id = id;
+			}
+		}
+	}
+	function eachSet(fn) {
+		const tabs = panelTabs();
+		if (!tabs) {
+			return fn();
+		}
+		const as = (tab, pane) => (tab && tab.designer && tab.designer !== app.designer ? app.withDesigner(tab.designer, fn, pane.view) : fn());
+		as(tabs.left, app.panes[0]);
+		withRightSet(() => as(tabs.right, app.panes[1]));
+	}
+
 	function refresh() {
 		if (MS.friendly) {
 			MS.friendly.update();
@@ -2103,6 +2146,10 @@ window.MS = window.MS || {};
 		valuesQueued = true;
 		requestAnimationFrame(() => {
 			valuesQueued = false;
+			const tabs = panelTabs();
+			if (tabs && tabs.right.designer) {
+				app.withDesigner(tabs.right.designer, () => g2Updaters.forEach((f) => f()), app.panes[1].view);
+			}
 			for (const f of fieldUpdaters) {
 				f();
 			}
@@ -2111,6 +2158,8 @@ window.MS = window.MS || {};
 
 	function init(theApp) {
 		app = theApp;
+		$('g2-btnShowParts').onclick = () => $('btnShowParts').onclick();
+		$('g2-btnFoldParts').onclick = () => $('btnFoldParts').onclick();
 		$('btnShowParts').onclick = () => {
 			app.hidden.clear();
 			app.soloed.clear();

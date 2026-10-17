@@ -1520,7 +1520,7 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 #g2Host > div { flex: 1; min-height: 0; }
 #g2Host > div[hidden] { display: none; }
 #g2View { position: relative; }
-#g2View canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#g2View { position: relative; }
 #g2Form { overflow: auto; }
 #g2Image { display: flex; flex-direction: column; }
 .tab.focus-elsewhere { opacity: .85; }
@@ -1542,3 +1542,11 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .lib-row.sel .lib-acts { background: linear-gradient(to right, transparent, var(--sel) 20px); }
 .lib-row:hover .lib-acts { display: flex; }
 .lib-row .lib-acts .add { visibility: visible; }
+/* the right group's designer: its view, and its own parts and properties beside it */
+#g2View { display: flex; }
+#g2View[hidden] { display: none; }
+#g2Canvas { flex: 1; min-width: 0; position: relative; }
+#g2Canvas > canvas { position: absolute; inset: 0; width: 100%; height: 100%; }
+#g2Panels { flex: none; width: clamp(240px, 42%, 380px); display: flex; flex-direction: column; min-height: 0; border-left: 1px solid var(--line); background: var(--panel); }
+#g2-tree.tree { max-height: 38%; overflow: auto; padding: 6px; border-bottom: 1px solid var(--line); flex: none; }
+#g2-inspector { container-type: inline-size; }
