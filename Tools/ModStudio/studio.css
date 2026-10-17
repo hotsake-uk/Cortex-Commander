@@ -1158,6 +1158,19 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .mission-field { gap: 4px; }
 .mission-add { display: flex; gap: 6px; margin: 6px 0 0 56px; }
 .mono { font-family: ui-monospace, Consolas, monospace; }
+.me { display: flex; flex-direction: column; height: 100%; min-height: 0; }
+.me-head { display: flex; align-items: center; gap: 12px; padding: 8px 12px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.me-head h2 { margin: 0; font-size: 16px; }
+.me-body { flex: 1; min-height: 0; display: grid; }
+.me-left { display: flex; flex-direction: column; min-width: 0; min-height: 0; }
+.me-right { overflow: auto; min-width: 0; min-height: 0; padding: 8px 12px; border-left: 1px solid var(--line); }
+.me-splitter { cursor: col-resize; background: var(--line); }
+.me-splitter:hover { background: var(--accent); }
+.me-areabar { display: flex; align-items: center; gap: 8px; padding: 6px 10px; min-height: 34px; border-bottom: 1px solid var(--line); flex-wrap: wrap; }
+.me-areabar .tb { padding: 2px 9px; }
+.me-map { position: relative; flex: 1; min-height: 200px; overflow: hidden; }
+.me-canvas { position: absolute; inset: 0; outline: none; cursor: crosshair; touch-action: none; }
+.me-pick { display: flex; flex-direction: column; gap: 2px; max-height: 380px; overflow: auto; min-width: 380px; }
 .ed-menu { position: fixed; z-index: 60; min-width: 280px; background: var(--panel); border: 1px solid var(--line2); border-radius: 8px; padding: 4px; box-shadow: 0 8px 24px rgba(0,0,0,.4); }
 .ed-menu-item { display: flex; flex-direction: column; align-items: flex-start; width: 100%; background: none; border: 0; border-radius: 6px; padding: 7px 10px; color: var(--text); text-align: left; cursor: pointer; font: inherit; }
 .ed-menu-item small { color: var(--faint); }
