@@ -1141,3 +1141,5 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .scn-setting .ed-input:nth-child(2) { width: 170px; }
 .scn-warn { color: #ef6a5b; }
 .ed-row.inherited { opacity: .7; }
+.scn-trigger { flex-wrap: wrap; gap: 6px; }
+.scn-trigger .ed-input { width: 130px; }
