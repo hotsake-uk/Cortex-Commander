@@ -5,9 +5,11 @@
 	"description": "Mod Studio's page. `npm run build` makes dist/, which Cortex Studio serves (and builds into the app).",
 	"scripts": {
 		"build": "vite build",
-		"watch": "vite build --watch"
+		"watch": "vite build --watch",
+		"test": "node --test tests/flow.test.js"
 	},
 	"devDependencies": {
+		"fengari": "^0.1.5",
 		"vite": "8.3.2"
 	}
 }

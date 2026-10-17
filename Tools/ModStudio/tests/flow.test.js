@@ -1,0 +1,457 @@
+// Tests for mission logic: the graph (js/flowmodel.js) and the Lua made from it (js/flowlua.js). The Lua is run, in a Lua interpreter (fengari), against a
+// small stand-in for the game: units with teams and positions, scene areas, gold, a clock, messages, objective markers and battle events. Each test builds a
+// mission, runs it frame by frame while moving units about, and checks what the mission did. Run with: npm test
+import { test } from 'node:test';
+import assert from 'node:assert/strict';
+import fs from 'node:fs';
+import vm from 'node:vm';
+import { createRequire } from 'node:module';
+
+const require = createRequire(import.meta.url);
+const { lua, lauxlib, lualib, to_luastring, to_jsstring } = require('fengari');
+
+globalThis.window = globalThis;
+window.MS = {};
+for (const file of ['flowmodel.js', 'flowlua.js']) {
+	vm.runInThisContext(fs.readFileSync(new URL('../js/' + file, import.meta.url), 'utf8'), { filename: file });
+}
+const F = window.MS.flow;
+
+// ---- the stand-in for the game ----
+
+const GAME = String.raw`
+Log = {}
+function log(s) Log[#Log + 1] = s end
+Clock = 0
+Timer = function()
+	local t = { start = Clock }
+	return setmetatable(t, { __index = function(self, k) if k == "ElapsedSimTimeS" then return Clock - self.start end end })
+end
+Actors = {}
+Items = {}
+local function iter(list) local i = 0 return function() i = i + 1 return list[i] end end
+local ActorMeta = { __index = function(a, k)
+	if k == "IsInGroup" then return function(self, g) return self.groups[g] == true end
+	elseif k == "GibThis" then return function(self) self.Health = 0; log("gib " .. self.UniqueID) end
+	elseif k == "Inventory" then return iter(rawget(a, "inv"))
+	elseif k == "AboveHUDPos" then return rawget(a, "Pos") end
+end }
+NextID = 0
+function MakeActor(team, x, y, extra)
+	NextID = NextID + 1
+	local a = { Team = team, Pos = { X = x, Y = y }, Health = 100, UniqueID = NextID, groups = {}, inv = {}, PresetName = "Unit" }
+	if extra then for k, v in pairs(extra) do a[k] = v end end
+	setmetatable(a, ActorMeta)
+	Actors[#Actors + 1] = a
+	return a
+end
+MovableMan = setmetatable({
+	AddActor = function(self, a) setmetatable(a, ActorMeta); Actors[#Actors + 1] = a; log("spawn " .. a.PresetName .. " team " .. a.Team) end,
+	AddItem = function(self, it) Items[#Items + 1] = it; log("item " .. it.PresetName) end,
+}, { __index = function(t, k) if k == "Actors" then return iter(Actors) elseif k == "Items" then return iter(Items) end end })
+local function made(name) NextID = NextID + 1; return { PresetName = name, Team = -1, Pos = { X = 0, Y = 0 }, Health = 100, UniqueID = NextID, groups = {}, inv = {} } end
+CreateAHuman = function(name, module) return made(name) end
+CreateACrab = function(name, module) return made(name) end
+CreateHDFirearm = function(name, module) return { PresetName = name, Pos = { X = 0, Y = 0 } } end
+Areas = {}
+SceneMan = { Scene = {
+	HasArea = function(self, n) return Areas[n] ~= nil end,
+	GetArea = function(self, n)
+		local b = Areas[n]
+		return {
+			IsInside = function(self, p) return p.X >= b.x and p.X < b.x + b.w and p.Y >= b.y and p.Y < b.y + b.h end,
+			Center = { X = b.x + b.w / 2, Y = b.y + b.h / 2 },
+			RandomPoint = { X = b.x + 1, Y = b.y + 1 },
+		}
+	end,
+} }
+FrameMan = { ClearScreenText = function(self, s) end, SetScreenText = function(self, text, screen, blink, ms, centred) log("msg " .. text) end }
+ConsoleMan = { PrintString = function(self, s) log("console " .. s) end }
+ActivityMan = { EndActivity = function(self) log("end winner " .. tostring(Act.WinnerTeam)) end }
+GameActivity = { ARROWDOWN = 0 }
+BattleQueue = {}
+Marks = 0
+Test = {}
+Act = setmetatable({ Funds = {} }, { __index = Test })
+function Test:GetTeamFunds(t) return self.Funds[t] or 0 end
+function Test:ChangeTeamFunds(amount, t) self.Funds[t] = (self.Funds[t] or 0) + amount; log("gold " .. amount .. " to " .. t) end
+function Test:PlayerActive(p) return p == 0 end
+function Test:PlayerHuman(p) return p == 0 end
+function Test:ScreenOfPlayer(p) return p end
+function Test:AddObjectivePoint(text, pos, team, dir) Marks = Marks + 1; LastMark = text end
+function Step(seconds) Clock = Clock + (seconds or 0.1); Act:RunStudioFlow() end
+function Logged() local s = table.concat(Log, "\n"); Log = {}; return s end
+`;
+
+const BATTLE = String.raw`
+function SandboxBattleEvent() if #BattleQueue == 0 then return "" end return table.remove(BattleQueue, 1) end
+function SandboxBattleMode(mode, size, ship) log("battle " .. mode .. " " .. size) end
+function SandboxBattleLayout(mode, seed, zones) log("layout " .. mode .. " " .. seed) end
+`;
+
+// A Lua state with the stand-in game and a mission's block loaded; run(code) runs Lua and returns what it returns, as a string.
+function game(graph, opts) {
+	const L = lauxlib.luaL_newstate();
+	lualib.luaL_openlibs(L);
+	const run = (code) => {
+		if (lauxlib.luaL_loadstring(L, to_luastring(code)) !== lua.LUA_OK || lua.lua_pcall(L, 0, 1, 0) !== lua.LUA_OK) {
+			const message = to_jsstring(lua.lua_tostring(L, -1));
+			lua.lua_pop(L, 1);
+			throw new Error('Lua: ' + message);
+		}
+		const out = lua.lua_isnil(L, -1) ? '' : to_jsstring(lua.lua_tostring(L, -1) || to_luastring(''));
+		lua.lua_pop(L, 1);
+		return out;
+	};
+	run(GAME + (opts && opts.noBattle ? '' : BATTLE));
+	const block = F.compile(graph, 'Test');
+	run(block);
+	return {
+		run,
+		block,
+		step: (seconds, times) => {
+			for (let i = 0; i < (times || 1); i++) {
+				run('Step(' + (seconds === undefined ? 0.1 : seconds) + ')');
+			}
+			return run('return Logged()');
+		},
+	};
+}
+
+// A graph made by a small description: [kind, params, {pin: index}] for each node, in order (ids n1, n2...).
+function graph(nodes) {
+	const g = F.create();
+	const made = nodes.map(([kind, p]) => F.addNode(g, kind, 0, 0, p));
+	nodes.forEach(([, , out, conds], i) => {
+		for (const [pin, j] of Object.entries(out || {})) {
+			const why = F.connect(g, made[i].id, pin, made[j].id);
+			assert.equal(why, '', 'wire ' + made[i].kind + '.' + pin + ' -> ' + made[j].kind + ': ' + why);
+		}
+		for (const c of conds || []) {
+			made[i].lists.conds.push(Object.assign(F.condDefaults(c.kind), c));
+		}
+	});
+	return g;
+}
+
+const lines = (log) => log.split('\n').filter(Boolean);
+
+// ---- events ----
+
+test('the start runs its chain once, on the first frame', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['message', { text: 'Hello' }, { then: 2 }], ['gold', { team: 0, amount: 100 }]]));
+	assert.deepEqual(lines(m.step()), ['msg Hello', 'gold 100 to 0']);
+	assert.equal(m.step(0.1, 5), '');
+});
+
+test('entering an area: once per unit that comes in, and only the team asked for', () => {
+	const m = game(graph([['enter', { area: 'Gate', team: 0 }, { then: 1 }], ['message', { text: 'In' }]]));
+	m.run('Areas["Gate"] = { x = 100, y = 0, w = 50, h = 50 }');
+	m.run('A = MakeActor(0, 0, 10); E = MakeActor(1, 0, 10)');
+	assert.equal(m.step(), '');
+	m.run('E.Pos.X = 110');
+	assert.equal(m.step(), '', 'the other team does not count');
+	m.run('A.Pos.X = 120');
+	assert.deepEqual(lines(m.step()), ['msg In']);
+	assert.equal(m.step(0.1, 3), '', 'staying inside does not fire again');
+	m.run('A.Pos.X = 0');
+	m.step();
+	m.run('A.Pos.X = 120');
+	assert.deepEqual(lines(m.step()), ['msg In'], 'coming back in fires again');
+});
+
+test('leaving and emptying an area', () => {
+	const m = game(graph([['leave', { area: 'Room', team: -1 }, { then: 1 }], ['message', { text: 'Left' }], ['empty', { area: 'Room', team: -1 }, { then: 3 }], ['message', { text: 'Empty' }]]));
+	m.run('Areas["Room"] = { x = 0, y = 0, w = 100, h = 100 }; A = MakeActor(0, 10, 10); B = MakeActor(1, 20, 20)');
+	assert.equal(m.step(), '');
+	m.run('A.Pos.X = 500');
+	assert.deepEqual(lines(m.step()), ['msg Left']);
+	m.run('B.Pos.X = 500');
+	assert.deepEqual(lines(m.step()).sort(), ['msg Empty', 'msg Left']);
+});
+
+test('a team gone fires once (it latches), or every moment if told to run again', () => {
+	const once = game(graph([['teamGone', { team: 1 }, { then: 1 }], ['message', { text: 'Gone' }]]));
+	once.run('E = MakeActor(1, 0, 0)');
+	assert.equal(once.step(), '', 'not before the team was ever seen');
+	once.run('E.Health = 0');
+	assert.deepEqual(lines(once.step(0.1, 4)), ['msg Gone']);
+	const again = game(graph([['teamGone', { team: 1, again: true }, { then: 1 }], ['message', { text: 'Gone' }]]));
+	again.run('E = MakeActor(1, 0, 0)');
+	again.step();
+	again.run('E.Health = 0');
+	assert.equal(lines(again.step(0.1, 3)).length, 3);
+});
+
+test('a brain destroyed: only units in the Brains group count', () => {
+	const m = game(graph([['brainGone', { team: 1 }, { then: 1 }], ['win', { team: 0 }]]));
+	m.run('B = MakeActor(1, 0, 0); B.groups["Brains"] = true; S = MakeActor(1, 5, 5)');
+	assert.equal(m.step(), '');
+	m.run('B.Health = 0');
+	assert.deepEqual(lines(m.step()), ['end winner 0']);
+});
+
+test('timers: once after the seconds, or again and again', () => {
+	const once = game(graph([['timer', { seconds: 1 }, { then: 1 }], ['message', { text: 'T' }]]));
+	assert.equal(once.step(0.5), '');
+	assert.deepEqual(lines(once.step(0.6, 5)), ['msg T']);
+	const repeat = game(graph([['timer', { seconds: 1, repeat: true }, { then: 1 }], ['message', { text: 'R' }]]));
+	// the mission's clock starts on its first frame, so 17 frames of a quarter second is 4 s of it
+	assert.equal(lines(repeat.step(0.25, 17)).length, 4);
+});
+
+test('gold reaching an amount fires as it gets there, not while it stays there', () => {
+	const m = game(graph([['funds', { team: 0, op: '>=', amount: 100 }, { then: 1 }], ['message', { text: 'Rich' }]]));
+	m.run('Act.Funds[0] = 50');
+	assert.equal(m.step(), '');
+	m.run('Act.Funds[0] = 150');
+	assert.deepEqual(lines(m.step(0.1, 3)), ['msg Rich']);
+	m.run('Act.Funds[0] = 10');
+	m.step();
+	m.run('Act.Funds[0] = 200');
+	assert.deepEqual(lines(m.step()), ['msg Rich']);
+});
+
+// ---- flow ----
+
+test('a branch takes the true or the false side', () => {
+	const g = graph([['always', {}, { then: 1 }], ['branch', {}, { true: 2, false: 3 }, [{ kind: 'funds', team: 0, op: '>=', amount: 100 }]], ['message', { text: 'Yes' }], ['message', { text: 'No' }]]);
+	const m = game(g);
+	assert.deepEqual(lines(m.step()), ['msg No']);
+	m.run('Act.Funds[0] = 100');
+	assert.deepEqual(lines(m.step()), ['msg Yes']);
+});
+
+test('every condition of a branch has to hold', () => {
+	const g = graph([['always', {}, { then: 1 }], ['branch', {}, { true: 2 }, [{ kind: 'flag', name: 'a', value: true }, { kind: 'inArea', team: 0, area: 'Z', op: '>=', count: 2 }]], ['message', { text: 'Both' }]]);
+	const m = game(g);
+	m.run('Areas["Z"] = { x = 0, y = 0, w = 10, h = 10 }; MakeActor(0, 1, 1); MakeActor(0, 2, 2)');
+	assert.equal(m.step(), '');
+	m.run('Act.StudioState.flags["a"] = true');
+	assert.deepEqual(lines(m.step()), ['msg Both']);
+});
+
+test('do once lets a chain through the first time only', () => {
+	const m = game(graph([['always', {}, { then: 1 }], ['doOnce', {}, { then: 2 }], ['message', { text: 'Once' }]]));
+	assert.deepEqual(lines(m.step(0.1, 10)), ['msg Once']);
+});
+
+test('flags set by one chain are seen by another', () => {
+	const g = graph([['start', {}, { then: 1 }], ['flag', { name: 'ready', value: true }], ['timer', { seconds: 1 }, { then: 3 }], ['branch', {}, { true: 4 }, [{ kind: 'flag', name: 'ready', value: true }]], ['message', { text: 'Go' }]]);
+	const m = game(g);
+	assert.deepEqual(lines(m.step(1.5, 2)), ['msg Go']);
+});
+
+test('spawning puts units of the team in the area', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['spawn', { preset: 'AHuman|Soldier Light|Base.rte', team: 1, area: 'Drop', count: 3 }]]));
+	m.run('Areas["Drop"] = { x = 200, y = 0, w = 10, h = 10 }');
+	assert.equal(lines(m.step()).filter((l) => l === 'spawn Soldier Light team 1').length, 3);
+	assert.equal(m.run('local n = 0 for a in MovableMan.Actors do if a.Team == 1 and a.Pos.X >= 200 then n = n + 1 end end return tostring(n)'), '3');
+});
+
+test('killing a team gibs each of its units', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['killAll', { team: 1 }]]));
+	m.run('MakeActor(1, 0, 0); MakeActor(1, 0, 0); MakeActor(0, 0, 0)');
+	assert.equal(lines(m.step()).filter((l) => l.startsWith('gib')).length, 2);
+});
+
+// ---- stages ----
+
+test('stages run in order: start, the goal, done, then the next', () => {
+	const g = graph([
+		['stageReach', { name: 'Reach', area: 'A', team: 0, text: 'Go there' }, { started: 1, done: 2, next: 3 }],
+		['message', { text: 'Start 1' }],
+		['message', { text: 'Done 1' }],
+		['stageHold', { name: 'Hold', area: 'B', team: 0, seconds: 2 }, { started: 4, done: 5 }],
+		['message', { text: 'Start 2' }],
+		['win', { team: 0 }],
+	]);
+	const m = game(g);
+	m.run('Areas["A"] = { x = 0, y = 0, w = 10, h = 10 }; Areas["B"] = { x = 100, y = 0, w = 10, h = 10 }; U = MakeActor(0, 50, 5)');
+	assert.deepEqual(lines(m.step()), ['msg Start 1']);
+	assert.ok(Number(m.run('return tostring(Marks)')) > 0, 'the objective is marked');
+	m.run('U.Pos.X = 5');
+	assert.deepEqual(lines(m.step()), ['msg Done 1']);
+	assert.deepEqual(lines(m.step()), ['msg Start 2']);
+	m.run('U.Pos.X = 105');
+	assert.equal(m.step(1, 1), '', 'held for a second: not yet');
+	m.run('E = MakeActor(1, 106, 5)');
+	assert.equal(m.step(1.5, 2), '', 'an enemy in the area stops the hold');
+	m.run('E.Health = 0');
+	assert.deepEqual(lines(m.step(1, 4)), ['end winner 0']);
+});
+
+test('a stage that runs out of time runs its time-out chain, then goes on', () => {
+	const g = graph([
+		['stageSurvive', { seconds: 100, failAfter: 2 }, { timeout: 1, next: 2 }],
+		['message', { text: 'Too slow' }],
+		['stageSurvive', { seconds: 0.5 }, { started: 3 }],
+		['message', { text: 'Second stage' }],
+	]);
+	const m = game(g);
+	assert.equal(m.step(1), '', 'the stage starts (its clock with it)');
+	assert.equal(m.step(1.5), '');
+	assert.deepEqual(lines(m.step(1)), ['msg Too slow']);
+	assert.deepEqual(lines(m.step()), ['msg Second stage']);
+});
+
+test('a jump goes to another stage instead of the next one', () => {
+	const g = graph([
+		['stageSurvive', { seconds: 1 }, { done: 1, next: 2 }],
+		['jump', { target: '' }],
+		['stageSurvive', { seconds: 1 }, { started: 4 }],
+		['stageSurvive', { seconds: 1 }, { started: 5 }],
+		['message', { text: 'Skipped to' }],
+		['message', { text: 'Third' }],
+	]);
+	g.nodes[1].p.target = g.nodes[3].id; // jump to the third stage
+	const m = game(g);
+	m.step();
+	assert.deepEqual(lines(m.step(1.5, 2)), ['msg Third']);
+});
+
+test('fetch: the item appears, and the stage is done when a unit carries it into the area', () => {
+	const g = graph([['stageFetch', { item: 'HDFirearm|Case|Base.rte', from: 'Vault', area: 'Base' }, { done: 1 }], ['message', { text: 'Delivered' }]]);
+	const m = game(g);
+	m.run('Areas["Vault"] = { x = 0, y = 0, w = 10, h = 10 }; Areas["Base"] = { x = 100, y = 0, w = 10, h = 10 }; U = MakeActor(0, 50, 5)');
+	assert.deepEqual(lines(m.step()), ['item Case']);
+	m.run('U.inv = { Items[1] }; Items = {}; U.Pos.X = 105');
+	assert.deepEqual(lines(m.step()), ['msg Delivered']);
+});
+
+test('stage conditions: a branch can ask which stage it is', () => {
+	const g = graph([
+		['stageSurvive', { seconds: 1 }, { next: 1 }],
+		['stageSurvive', { seconds: 100 }],
+		['always', {}, { then: 3 }],
+		['branch', {}, { true: 4 }, []],
+		['doOnce', {}, { then: 5 }],
+		['message', { text: 'On stage 2' }],
+	]);
+	g.nodes[3].lists.conds.push({ kind: 'stage', target: g.nodes[1].id, is: true });
+	const m = game(g);
+	assert.equal(m.step(0.5), '');
+	assert.deepEqual(lines(m.step(0.6, 3)), ['msg On stage 2']);
+});
+
+// ---- battles ----
+
+test('battle events start rules and finish stages', () => {
+	const g = graph([
+		['stageBattle', { team: 0 }, { started: 1, done: 2 }],
+		['battle', { mode: 2, size: 10, layout: true, seed: 4 }],
+		['win', { team: 0 }],
+		['battleScore', { team: 0 }, { then: 4 }],
+		['message', { text: 'Scored' }],
+	]);
+	const m = game(g);
+	assert.deepEqual(lines(m.step()), ['layout 2 4', 'battle 2 10']);
+	m.run('table.insert(BattleQueue, "started 2"); table.insert(BattleQueue, "score 1 1")');
+	assert.equal(m.step(), '', 'the other team scoring is not ours');
+	m.run('table.insert(BattleQueue, "score 0 1")');
+	assert.deepEqual(lines(m.step()), ['msg Scored']);
+	m.run('table.insert(BattleQueue, "ended 0")');
+	assert.deepEqual(lines(m.step()), ['end winner 0']);
+});
+
+test('on a game without battle modes the battle step says so and nothing breaks', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['battle', { mode: 1 }]]), { noBattle: true });
+	assert.match(m.step(), /console Studio: this game build has no battle modes/);
+	assert.equal(m.step(0.1, 3), '');
+});
+
+// ---- the model ----
+
+test('wires: no loops, nothing into an event, next only to a stage', () => {
+	const g = F.create();
+	const e = F.addNode(g, 'start', 0, 0);
+	const a = F.addNode(g, 'message', 0, 0);
+	const b = F.addNode(g, 'message', 0, 0);
+	const s = F.addNode(g, 'stageSurvive', 0, 0);
+	assert.equal(F.connect(g, e.id, 'then', a.id), '');
+	assert.equal(F.connect(g, a.id, 'then', b.id), '');
+	assert.match(F.connect(g, b.id, 'then', a.id), /loop/);
+	assert.match(F.connect(g, a.id, 'then', e.id), /starts a chain/);
+	assert.match(F.connect(g, s.id, 'next', a.id), /has to be a stage/);
+	assert.match(F.connect(g, a.id, 'nope', b.id), /does not exist/);
+});
+
+test('removing a step joins up the chain when asked', () => {
+	const g = graph([['start', {}, { then: 1 }], ['message', { text: 'a' }, { then: 2 }], ['message', { text: 'b' }]]);
+	F.removeNode(g, g.nodes[1].id, true);
+	assert.equal(g.nodes[0].out.then, g.nodes[1].id);
+	F.removeNode(g, g.nodes[1].id, false);
+	assert.equal(g.nodes[0].out.then, undefined);
+});
+
+test('problems: missing areas, things that never run, an event with nothing after it', () => {
+	const g = graph([['enter', { area: 'Nowhere' }, {}], ['message', {}]]);
+	const found = F.problems(g, { areas: ['Gate'] });
+	assert.ok(found.some((p) => p.id === g.nodes[0].id && /no area called "Nowhere"/.test(p.message)));
+	assert.ok(found.some((p) => p.id === g.nodes[0].id && /does nothing/.test(p.message)));
+	assert.ok(found.some((p) => p.id === g.nodes[1].id && /never runs/.test(p.message)));
+});
+
+// ---- the older data, and the script ----
+
+test('older rules and stages become a graph that behaves the same', () => {
+	const old = {
+		rules: [
+			// a timer with a condition, fired once: it waited until the condition held
+			{ name: 'Late gold', once: true, when: { kind: 'timer', seconds: 1 }, ifs: [{ kind: 'funds', team: 0, op: '>=', amount: 100 }], then: [{ kind: 'message', text: 'Paid' }] },
+			{ name: 'Every entry', once: false, when: { kind: 'enter', area: 'G', team: -1 }, ifs: [], then: [{ kind: 'message', text: 'Hi' }] },
+		],
+		stages: [
+			{ name: 'One', goal: { kind: 'survive', seconds: 1 }, text: '', marker: false, viewer: 0, failAfter: 0, onStart: [], onDone: [{ kind: 'message', text: 'One done' }], onFail: [] },
+			{ name: 'Two', goal: { kind: 'survive', seconds: 1 }, text: '', marker: false, viewer: 0, failAfter: 0, onStart: [{ kind: 'message', text: 'Two begins' }], onDone: [{ kind: 'stage', n: 1 }], onFail: [] },
+		],
+	};
+	const g = F.migrate(old);
+	assert.equal(F.problems(g, { areas: ['G'] }).filter((p) => p.level === 'error').length, 0);
+	const m = game(g);
+	m.run('Areas["G"] = { x = 0, y = 0, w = 10, h = 10 }');
+	assert.equal(m.step(0.5), '', 'stage one starts');
+	assert.deepEqual(lines(m.step(1.1)), ['msg One done'], 'past 1 s: stage one done, and the gold timer waits for its condition');
+	assert.deepEqual(lines(m.step()), ['msg Two begins']);
+	m.run('Act.Funds[0] = 150');
+	assert.deepEqual(lines(m.step(0.1, 3)), ['msg Paid']);
+	assert.ok(lines(m.step(1, 3)).includes('msg One done'), 'stage two jumps back to stage one, which runs again');
+});
+
+test('writing the script: the block goes before UpdateActivity, which runs it; written twice it is the same; your functions are added and kept', () => {
+	const script = 'function Test:StartActivity(isNewGame)\nend\n\nfunction Test:UpdateActivity()\n\tself:Mine()\nend\n\nfunction Test:Mine()\nend\n';
+	const g = graph([['start', {}, { then: 1 }], ['call', { fn: 'Opening' }]]);
+	const once = F.apply(script, 'Test', g);
+	const twice = F.apply(once, 'Test', g);
+	assert.equal(twice, once);
+	assert.ok(once.indexOf(F.MARK_BEGIN) < once.indexOf('function Test:UpdateActivity()'));
+	assert.match(once, /function Test:UpdateActivity\(\)\n\tself:RunStudioFlow\(\)/);
+	assert.match(once, /function Test:Opening\(actor\)/);
+	assert.match(once, /function Test:Mine\(\)/);
+	assert.deepEqual(F.parse(once), JSON.parse(JSON.stringify(g)));
+});
+
+test('a script from the first versions (rules block, trigger block) is converted and their calls removed', () => {
+	const old = 'function Test:UpdateActivity()\n\tself:RunStudioRules()\n\tself:RunStudioTriggers()\nend\n-- >>> Studio rules: x\n-- studio-rules-data: {"v":2,"rules":[{"name":"R","once":false,"when":{"kind":"start"},"ifs":[],"then":[{"kind":"message","text":"Old"}]}],"stages":[]}\nfunction Test:RunStudioRules() end\n-- <<< Studio rules\n';
+	const g = F.parse(old);
+	assert.ok(g && g.nodes.some((n) => n.kind === 'message' && n.p.text === 'Old'));
+	const text = F.apply(old, 'Test', g);
+	assert.doesNotMatch(text, /RunStudioRules|RunStudioTriggers|studio-rules-data/);
+	const m = game(g);
+	assert.deepEqual(lines(m.step()), ['msg Old']);
+});
+
+test('every kind of node compiles to Lua that loads', () => {
+	const g = F.create();
+	for (const name of F.ORDER) {
+		const n = F.addNode(g, name, 0, 0);
+		if (n.p.area !== undefined) {
+			n.p.area = 'A';
+		}
+		if (n.p.from !== undefined) {
+			n.p.from = 'A';
+		}
+	}
+	const m = game(g);
+	assert.ok(m.block.length > 1000);
+});
