@@ -75,6 +75,22 @@ type PopoutHook = Box<dyn Fn(&str) + Send + Sync>;
 static POPOUT_HOOK: std::sync::OnceLock<PopoutHook> = std::sync::OnceLock::new();
 
 
+/// Closes a pop-out window, by the name it was given ("popout-3"): the page asks when its last tab is closed. Only pop-outs, never the main window.
+static POPOUT_CLOSE_HOOK: std::sync::OnceLock<PopoutHook> = std::sync::OnceLock::new();
+
+pub fn close_popout(label: &str) -> bool {
+	if !label.starts_with("popout-") {
+		return false;
+	}
+	match POPOUT_CLOSE_HOOK.get() {
+		Some(hook) => {
+			hook(label);
+			true
+		}
+		None => false,
+	}
+}
+
 /// Opens a window for `what`. False when there is no app to open one in.
 pub fn open_popout(what: &str) -> bool {
 	match POPOUT_HOOK.get() {
@@ -219,10 +235,22 @@ fn main() {
 			let popout_handle = app.handle().clone();
 			let popout_base = external.clone();
 			let popout_count = std::sync::atomic::AtomicUsize::new(0);
+			let close_handle = app.handle().clone();
+			let _ = POPOUT_CLOSE_HOOK.set(Box::new(move |label| {
+				let handle = close_handle.clone();
+				let label = label.to_string();
+				let on_main = handle.clone();
+				let _ = on_main.run_on_main_thread(move || {
+					if let Some(window) = tauri::Manager::get_webview_window(&handle, &label) {
+						let _ = window.close();
+					}
+				});
+			}));
 			let _ = POPOUT_HOOK.set(Box::new(move |what| {
-				let mut url = popout_base.clone();
-				url.query_pairs_mut().append_pair("popout", what);
 				let n = popout_count.fetch_add(1, std::sync::atomic::Ordering::SeqCst) + 1;
+				let mut url = popout_base.clone();
+				// the window's own name goes with it, so it can ask to be closed
+				url.query_pairs_mut().append_pair("popout", what).append_pair("win", &format!("popout-{n}"));
 				let handle = popout_handle.clone();
 				let on_main = handle.clone();
 				// A window is made on the main thread, whichever thread (the server's) asked.
