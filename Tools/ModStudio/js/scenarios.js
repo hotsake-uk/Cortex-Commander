@@ -79,6 +79,17 @@ window.MS = window.MS || {};
 		MS.ide.refreshForm();
 	}
 
+	// The mission in a line, and the way into the Mission Editor, where it is built (and its areas drawn).
+	function missionSummary(p) {
+		const g = MS.missionLogic ? MS.missionLogic.docFor(p).g : null;
+		const count = (cat) => (g ? g.nodes.filter((n) => MS.flow.KINDS[n.kind] && MS.flow.KINDS[n.kind].category === cat).length : 0);
+		const stages = count('stage');
+		const events = count('event');
+		return el('div', { className: 'ed-row' },
+			el('span', { textContent: g && g.nodes.length ? stages + (stages === 1 ? ' stage, ' : ' stages, ') + events + (events === 1 ? ' trigger' : ' triggers') + ', ' + g.nodes.length + ' nodes in all.' : 'No mission logic yet.' }),
+			el('button', { className: 'tb primary', textContent: '⚑ Open in the Mission Editor', onclick: () => MS.missionEditor.open(p) }));
+	}
+
 	// What the mission logic needs from this editor: the script's text and a way to change it, to jump to code or open it beside, and a unit picker.
 	const missionHost = {
 		scriptText,
@@ -260,7 +271,7 @@ window.MS = window.MS || {};
 			...settingRows, el('div', { className: 'ed-row' }, addSetting),
 			el('div', { className: 'ed-label', textContent: 'Areas the scene must have (' + areas.length + ')' }), ...areaRows,
 			el('div', { className: 'ed-row' }, areaChoice, el('button', { className: 'tb', textContent: '+ Require it', disabled: ro || !sceneAreas.length, onclick: () => areaChoice.value && change('Require the area ' + areaChoice.value, () => p.node.add('AddRequiredArea', areaChoice.value)) }), el('small', { textContent: sceneAreas.length ? 'areas of ' + sceneName : 'pick a scene to list its areas' })),
-			el('div', { className: 'ed-label', textContent: 'Mission logic: when this happens, and if these hold, do these things' }), MS.missions.section(p, e, ro, sceneAreas, missionHost),
+			el('div', { className: 'ed-label', textContent: 'Mission' }), missionSummary(p),
 			el('div', { className: 'ed-label', textContent: 'Script' }),
 			text('ScriptPath', 'Script file', 'The Lua file that runs it'), text('LuaClassName', 'Script class', 'The name its functions start with (Class:StartActivity)'),
 			code === null && scriptPath ? el('p', { className: 'ed-note', textContent: 'Studio has not read ' + scriptPath + ' (it is not in a mod it knows, or is not there).' }) : null,
