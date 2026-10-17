@@ -68,7 +68,7 @@ window.MS = window.MS || {};
 	}
 
 	// Open shows the marks and the selected part's numbers; closed is one line, so the bones stay in view on a narrow screen.
-	let open = app() && app().readLocal ? app().readLocal('ms.skeletonHelpOpen') !== false : true;
+	let open = app() && app().readLocal ? app().readLocal('ms.skeletonHelpOpen') === true : false;
 
 	function setPictures(id, box, part) {
 		app().view.skeletonPictures = id;
@@ -93,7 +93,7 @@ window.MS = window.MS || {};
 	};
 
 	MS.skeletonHelp = function (box, part) {
-		if (app().readLocal('ms.skeletonHelpOpen') === false) {
+		if (app().readLocal('ms.skeletonHelpOpen') !== true) {
 			open = false;
 		}
 		const toggle = el('button', { className: 'ico-btn', textContent: open ? '▾' : '▸', title: open ? 'Fold this away' : 'What the marks mean, and the selected part\'s numbers', onclick: () => {
@@ -104,13 +104,14 @@ window.MS = window.MS || {};
 		box.classList.toggle('closed', !open);
 		// The pictures under the bones: faded (the default), hidden (just the skeleton) or shown as they are.
 		const view = app().view;
-		const pictures = el('span', { className: 'sk-pictures', title: 'The pictures under the skeleton (Shift+K steps through these)' }, 'Pictures',
+		const pictures = el('span', { className: 'sk-pictures', title: 'The pictures under the skeleton (Shift+K steps through these)' },
 			...[['faded', 'Faded'], ['hidden', 'Hidden'], ['shown', 'Shown']].map(([id, text]) => el('button', { className: view.skeletonPictures === id ? 'sel' : '', textContent: text, onclick: () => setPictures(id, box, part) })));
-		box.replaceChildren(
-			el('div', { className: 'sk-head' }, toggle, el('b', { textContent: 'Skeleton' }), part ? el('span', { className: 'sk-sel', textContent: '· ' + roleName(part) }) : null, el('span', { className: 'spacer' }), el('button', { className: 'ico-btn', textContent: 'How a unit is put together…', onclick: explain })),
-			pictures,
+		// One slim row (fold arrow, name, the pictures buttons, ?), and below it the marks and the part's numbers when it is open.
+		box.replaceChildren(...[
+			el('div', { className: 'sk-head' }, toggle, el('b', { textContent: 'Skeleton' }), part ? el('span', { className: 'sk-sel', textContent: roleName(part) }) : null, pictures,
+				el('button', { className: 'ico-btn sk-help', textContent: '?', title: 'How a unit is put together: the whole unit as a tree, with each part\'s offsets', onclick: explain })),
 			open ? legend() : null,
-			open ? (part ? el('div', { className: 'sk-part' }, ...partWords(part)) : el('p', { className: 'sk-tip', textContent: 'Click a part, here or in Parts, to see how it joins its parent.' })) : null);
+			open ? (part ? el('div', { className: 'sk-part' }, ...partWords(part)) : el('p', { className: 'sk-tip', textContent: 'Click a part, here or in Parts, to see how it joins its parent.' })) : null].filter(Boolean));
 	};
 
 	// The whole unit as a tree, each part with its offsets; clicking one selects it.
