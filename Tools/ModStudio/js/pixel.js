@@ -1058,5 +1058,5 @@ window.MS = window.MS || {};
 		}
 	}, 160);
 
-	MS.pixel = { open, menu, close: closeMenu, forget, saveTab };
+	MS.pixel = { open, menu, close: closeMenu, forget, saveTab, loadFrames };
 })();

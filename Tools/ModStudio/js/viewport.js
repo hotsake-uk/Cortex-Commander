@@ -189,6 +189,7 @@ window.MS = window.MS || {};
 				this.drawSkeleton(ctx, poses);
 			}
 			this.drawOverlays(ctx, poses);
+			this.drawResize(ctx);
 			this.updateSkeletonHelp();
 		}
 
@@ -359,11 +360,17 @@ window.MS = window.MS || {};
 			if (item.kind === 'hand') {
 				return app.sprite(item.pose.handFile, 1, 0);
 			}
+			if (this.resizePreview && item.part === this.resizePreview.part) {
+				return this.resizePreview.frameAt(item.pose.frame || 0);
+			}
 			const s = item.part.sprite;
 			return app.sprite(s.file, s.frameCount, item.pose.frame || 0);
 		}
 
 		spriteOffset(item, frame) {
+			if (this.resizePreview && item.part === this.resizePreview.part) {
+				return this.resizePreview.offset() || { x: -frame.width / 2, y: -frame.height / 2 };
+			}
 			const s = item.part.sprite;
 			if (!s.offset || (s.offset.x === 0 && s.offset.y === 0)) {
 				return { x: -frame.width / 2, y: -frame.height / 2 };
@@ -451,6 +458,35 @@ window.MS = window.MS || {};
 			const so = this.spriteOffset(item, frame);
 			const local = [so, { x: so.x + frame.width, y: so.y }, { x: so.x + frame.width, y: so.y + frame.height }, { x: so.x, y: so.y + frame.height }];
 			return local.map((p) => add(pose.pos, rotate(flipX(p, pose.flip), pose.rot)));
+		}
+
+		// While a picture is being resized: its new box (dashed) with a square on the corner to drag.
+		drawResize(ctx) {
+			this.resizeHandle = null;
+			const rp = this.resizePreview;
+			if (!rp) {
+				return;
+			}
+			const item = this.drawList.find((i) => i.part === rp.part && i.kind === 'sprite');
+			const corners = item && this.itemRect(item);
+			if (!corners) {
+				return;
+			}
+			const screen = corners.map((p) => this.toScreen(p));
+			ctx.save();
+			ctx.strokeStyle = '#f2b63d';
+			ctx.lineWidth = 1.5;
+			ctx.setLineDash([5, 4]);
+			ctx.beginPath();
+			screen.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+			ctx.closePath();
+			ctx.stroke();
+			ctx.setLineDash([]);
+			const h = screen[2];
+			ctx.fillStyle = '#f2b63d';
+			ctx.fillRect(h.x - 5, h.y - 5, 10, 10);
+			ctx.restore();
+			this.resizeHandle = { x: h.x, y: h.y, origin: screen[0] };
 		}
 
 		drawOverlays(ctx, poses) {
@@ -665,6 +701,10 @@ window.MS = window.MS || {};
 
 		onDown(e) {
 			this.canvas.setPointerCapture(e.pointerId);
+			if (this.resizePreview && this.resizeHandle && e.button === 0 && Math.hypot(e.offsetX - this.resizeHandle.x, e.offsetY - this.resizeHandle.y) < 12) {
+				this.drag = { kind: 'resize' };
+				return;
+			}
 			const pan = e.button === 1 || e.button === 2;
 			if (!pan && this.app.rig) {
 				const handle = this.handleAt(e.offsetX, e.offsetY);
@@ -696,6 +736,17 @@ window.MS = window.MS || {};
 					this.hover = part;
 					this.app.onHover(part);
 					this.app.requestDraw();
+				}
+				return;
+			}
+			if (d.kind === 'resize') {
+				// How far the pointer is from the picture's top-left corner, against how far the corner is at full size.
+				const rp = this.resizePreview;
+				const o = this.resizeHandle && this.resizeHandle.origin;
+				if (rp && o) {
+					const now = Math.hypot(e.offsetX - o.x, e.offsetY - o.y);
+					const full = Math.hypot(rp.baseW(), rp.baseH()) * this.zoom;
+					rp.onDrag(Math.max(0.05, now / full));
 				}
 				return;
 			}
