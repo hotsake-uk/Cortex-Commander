@@ -42,6 +42,8 @@ window.MS = window.MS || {};
 	const PIE_WHO = [['brain', 'a player\'s brain'], ['team', 'a team\'s units'], ['group', 'units in a group']];
 	// colours for shading an area (indices into the game's palette)
 	const SHADES = [['13', 'red'], ['147', 'green'], ['210', 'blue'], ['122', 'yellow'], ['48', 'orange'], ['254', 'white']];
+	// What units of a group are given to carry (a random unit of a group comes with nothing in its hands).
+	const ARMS = [['light', 'a rifle and a pistol'], ['heavy', 'a heavy weapon, a pistol and grenades'], ['none', 'nothing more']];
 	const AI_MODES = [['sentry', 'stand guard'], ['goto', 'go to an area'], ['brainhunt', 'hunt the enemy brain'], ['patrol', 'patrol'], ['stay', 'stay put'], ['return', 'go back'], ['golddig', 'dig for gold']];
 
 	// ---- the registry ----
@@ -140,10 +142,20 @@ window.MS = window.MS || {};
 		['ai', 'choice', 'then they', 'sentry', AI_MODES],
 		['goTo', 'area', 'going to', ''],
 		['tag', 'text', 'put in the group', ''],
+		['arm', 'choice', 'arm them with', 'light', ARMS],
 	], STEP, {
 		optional: ['goTo', 'tag'],
-		relevant: (p, key) => (key === 'preset' ? (p.source || 'preset') === 'preset' : key === 'group' ? p.source === 'group' : key === 'loadout' ? p.source === 'loadout' : key === 'goTo' ? p.ai === 'goto' : key === 'count' ? !p.perBox : true),
+		relevant: (p, key) => (key === 'preset' ? (p.source || 'preset') === 'preset' : key === 'group' || key === 'arm' ? p.source === 'group' : key === 'loadout' ? p.source === 'loadout' : key === 'goTo' ? p.ai === 'goto' : key === 'count' ? !p.perBox : true),
 	});
+	// The players' start, as the game's own missions do it in their scripts: each human player gets a brain (the team's Infantry Brain
+	// loadout, or a brain of its tech) that is made theirs, with the camera on it, and a squad beside it, all standing on the ground in an area.
+	kind('playerStart', 'action', 'Start the players: a brain each and a squad', [
+		['team', 'team', 'team', 0],
+		['area', 'area', 'in area', ''],
+		['squad', 'value', 'units with each brain', V(4)],
+		['group', 'text', 'squad from group (of the team\'s tech)', 'Actors - Light'],
+		['arm', 'choice', 'squad armed with', 'light', ARMS],
+	], STEP);
 	kind('order', 'action', 'Give orders', [
 		['who', 'choice', 'who', 'group', [['group', 'a group'], ['team', 'a whole team'], ['area', 'a team in an area']]],
 		['group', 'text', 'group', ''],

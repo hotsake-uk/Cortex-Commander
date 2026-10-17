@@ -210,6 +210,24 @@ window.MS = window.MS || {};
 					...(secs > 0 ? ['\tst.camera = { area = ' + luaStr(a.area) + ', untilT = st.clock.ElapsedSimTimeS + ' + luaNum(secs) + ', speed = ' + luaNum(speed) + ', who = ' + (a.who === 'all' || a.who === undefined ? -1 : luaNum(a.who)) + ' }'] : []), 'end'];
 			}
 			case 'tech': return ['self:SetTeamTech(' + luaNum(a.team) + ', ' + luaStr(a.tech) + ')'];
+			case 'playerStart': return [
+				'local zone = ' + area(a.area), 'local team = ' + luaNum(a.team), 'local tech = studioTech(self, team)',
+				'local x = zone and zone.Center.X or 0', 'local top = zone and (zone.Center.Y - 40) or 0',
+				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then',
+				'\t\tlocal brain = PresetMan:GetLoadout("Infantry Brain", tech, false)',
+				'\t\tif brain then', '\t\t\tbrain:RemoveInventoryItem("Constructor")', '\t\telse', '\t\t\tbrain = studioUnit("Brains", tech)', '\t\t\tif brain then studioArm(brain, "light", tech) end', '\t\tend',
+				'\t\tif brain then',
+				'\t\t\tbrain.Team = team', '\t\t\tbrain.AIMode = Actor.AIMODE_SENTRY', '\t\t\tbrain.Pos = studioGround(x, top, 12)', '\t\t\tbrain:AddToGroup("Brain " .. player)',
+				'\t\t\tMovableMan:AddActor(brain)', '\t\t\tself:SetPlayerBrain(brain, player)', '\t\t\tself:SwitchToActor(brain, player, team)', '\t\t\tself:SetObservationTarget(brain.Pos, player)',
+				'\t\tend',
+				'\t\tfor i = 1, math.floor(' + valueLua(a.squad) + ' + 0.5) do',
+				'\t\t\tlocal unit = studioUnit(' + luaStr(a.group || 'Actors - Light') + ', tech)',
+				'\t\t\tif unit then',
+				'\t\t\t\tunit.Team = team', '\t\t\t\tunit.AIMode = Actor.AIMODE_SENTRY',
+				...((a.arm || 'light') !== 'none' ? ['\t\t\t\tstudioArm(unit, ' + luaStr(a.arm || 'light') + ', tech)'] : []),
+				'\t\t\t\tunit.Pos = studioGround(x + ((i % 2 == 0) and 1 or -1) * (20 + 18 * math.floor(i / 2)) + player * 6, top, 12)',
+				'\t\t\t\tMovableMan:AddActor(unit)', '\t\t\tend', '\t\tend',
+				'\tend', 'end'];
 			case 'scriptSet': return ['studioSetField(self, ' + luaStr(a.field) + ', ' + (a.to === 'false' ? 'false' : a.to === 'value' ? valueLua(a.value) : 'true') + ')'];
 			case 'pieAdd': {
 				// what the button is and who gets it, kept in the state so units that come later get it too (studioPieGive, every frame)
@@ -242,13 +260,13 @@ window.MS = window.MS || {};
 	function spawnLua(a) {
 		const source = a.source || 'preset';
 		const parts = String(a.preset || '').split('|');
-		const make = source === 'group' ? 'RandomAHuman(' + luaStr(a.group) + ', tech)'
+		const make = source === 'group' ? 'studioUnit(' + luaStr(a.group) + ', tech)'
 			: source === 'loadout' ? 'PresetMan:GetLoadout(' + luaStr(a.loadout) + ', tech, false)'
 			: 'Create' + (parts[0] === 'ACrab' ? 'ACrab' : 'AHuman') + '(' + luaStr(parts[1] || '') + ', ' + luaStr(parts[2] || 'Base.rte') + ')';
 		const mode = a.ai || 'sentry';
 		const L = [
 			'local where = ' + area(a.area),
-			'local tech = PresetMan:GetModuleID(self:GetTeamTech(' + luaNum(a.team) + '))',
+			'local tech = studioTech(self, ' + luaNum(a.team) + ')',
 			'local target = ' + (mode === 'goto' ? area(a.goTo) : 'nil'),
 			'if where then',
 			'\tlocal spots = {}',
@@ -261,6 +279,9 @@ window.MS = window.MS || {};
 		}
 		const pre = ship ? '\t\t' : '\t';
 		L.push(pre + 'for _, spot in ipairs(spots) do', pre + '\tlocal unit = ' + make, pre + '\tif unit then', pre + '\t\tunit.Team = ' + luaNum(a.team), pre + '\t\tunit.AIMode = ' + aiMode(mode));
+		if (source === 'group' && (a.arm || 'light') !== 'none') {
+			L.push(pre + '\t\tstudioArm(unit, ' + luaStr(a.arm || 'light') + ', tech)');
+		}
 		if (a.facing === 'left' || a.facing === 'right') {
 			L.push(pre + '\t\tunit.HFlipped = ' + (a.facing === 'left' ? 'true' : 'false'));
 		}
@@ -453,7 +474,19 @@ window.MS = window.MS || {};
 		return [
 			'local function studioArea(name)', '\tif name ~= "" and SceneMan.Scene:HasArea(name) then return SceneMan.Scene:GetArea(name) end', '\treturn nil', 'end', '',
 			'local function studioCount(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and (region == nil or region:IsInside(actor.Pos)) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
-			'-- Whether a unit is of the kind asked for: any, a brain, a craft, in a group, or of a name.',
+				'-- A team\'s tech as a module id: the one it plays, or the game\'s own (Base.rte) when it has none.',
+				'local function studioTech(act, team)', '\tlocal id = PresetMan:GetModuleID(act:GetTeamTech(team) or "")', '\tif not id or id < 0 then id = PresetMan:GetModuleID("Base.rte") end', '\treturn id', 'end',
+				'-- A random unit of a group, from the tech if it has one there, else from any.',
+				'local function studioUnit(group, tech)', '\tlocal unit = RandomAHuman(group, tech)', '\tif not unit then unit = RandomAHuman(group, "Base.rte") end', '\tif not unit then unit = RandomAHuman("Actors", tech) end', '\treturn unit', 'end',
+				'-- What a unit carries: a random unit of a group comes with nothing, so it is given weapons of its tech (as the game\'s missions do).',
+				'local function studioItem(make, group, tech)', '\tlocal item = make(group, tech)', '\tif not item then item = make(group, "Base.rte") end', '\treturn item', 'end',
+				'local function studioArm(unit, arm, tech)', '\tif not unit or arm == "none" then return end',
+				'\tlocal first = studioItem(RandomHDFirearm, arm == "heavy" and "Weapons - Heavy" or "Weapons - Primary", tech) or studioItem(RandomHDFirearm, "Weapons - Light", tech)',
+				'\tif first then unit:AddInventoryItem(first) end', '\tlocal second = studioItem(RandomHDFirearm, "Weapons - Secondary", tech)', '\tif second then unit:AddInventoryItem(second) end',
+				'\tif arm == "heavy" then local bomb = studioItem(RandomTDExplosive, "Bombs - Grenades", tech); if bomb then unit:AddInventoryItem(bomb) end end', 'end',
+				'-- A point on the ground below (x, y), for a unit to stand on.',
+				'local function studioGround(x, y, radius)', '\tlocal p = Vector(x, y)', '\tif SceneMan.MovePointToGround then p = SceneMan:MovePointToGround(p, radius or 10, 5) end', '\treturn p', 'end', '',
+				'-- Whether a unit is of the kind asked for: any, a brain, a craft, in a group, or of a name.',
 			'local function studioMatch(actor, which, group, named)', '\tif which == "brain" then return actor:IsInGroup("Brains")', '\telseif which == "craft" then return IsACraft(actor)',
 			'\telseif which == "group" then return actor:IsInGroup(group)', '\telseif which == "named" then return actor.PresetName == named end', '\treturn true', 'end', '',
 			'local function studioInside(name, team, which, group, named)', '\tlocal region = studioArea(name)', '\tlocal now, count = {}, 0', '\tif region then', '\t\tfor actor in MovableMan.Actors do', '\t\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and region:IsInside(actor.Pos) and (which == nil or studioMatch(actor, which, group, named)) then now[actor.UniqueID] = actor; count = count + 1 end', '\t\tend', '\tend', '\treturn now, count', 'end', '',
@@ -579,6 +612,11 @@ window.MS = window.MS || {};
 		L.push('function ' + cls + ':RunStudioFlow()');
 		L.push('\tself.StudioState = self.StudioState or { clock = Timer(), flags = {}, inside = {}, who = {}, seen = {}, prev = {}, next = {}, done = {}, once = {}, started = false }');
 		L.push('\tlocal st = self.StudioState', '\tstudioFill(st)', '\tlocal now = st.clock.ElapsedSimTimeS', '\tst.dt = now - (st.lastT or now)', '\tst.lastT = now', '\tstudioPump(st)');
+		// Objective markers are added afresh every frame, so last frame's go first (else they pile up). In a script with markers of its own,
+		// call RunStudioFlow before adding them.
+		if (stageNodes.length || captures.length) {
+			L.push('\tself:ClearObjectivePoints()');
+		}
 		// pie menu buttons used since the last frame, and buttons for units that have come since
 		L.push('\tst.piePressed = st.pieQueue', '\tst.pieQueue = {}', '\tfor _, spec in pairs(st.pieGive) do studioPieGive(self, spec) end');
 		// capture points, every frame
