@@ -43,7 +43,7 @@ window.MS = window.MS || {};
 	// colours for shading an area (indices into the game's palette)
 	const SHADES = [['13', 'red'], ['147', 'green'], ['210', 'blue'], ['122', 'yellow'], ['48', 'orange'], ['254', 'white']];
 	// What units of a group are given to carry (a random unit of a group comes with nothing in its hands).
-	const ARMS = [['light', 'a rifle and a pistol'], ['heavy', 'a heavy weapon, a pistol and grenades'], ['none', 'nothing more']];
+	const ARMS = [['light', 'a rifle and a pistol (light)'], ['heavy', 'a heavy weapon, a pistol and grenades (heavy)'], ['sniper', 'a sniper rifle and a pistol (sniper)'], ['cqb', 'a close-quarters gun and a pistol (CQB)'], ['mix', 'a mix of all four, as Decision Day'], ['none', 'nothing more']];
 	const AI_MODES = [['sentry', 'stand guard'], ['goto', 'go to an area'], ['brainhunt', 'hunt the enemy brain'], ['patrol', 'patrol'], ['stay', 'stay put'], ['return', 'go back'], ['golddig', 'dig for gold']];
 
 	// ---- the registry ----
@@ -76,6 +76,7 @@ window.MS = window.MS || {};
 	kind('battleObjective', 'event', 'An objective is taken in the battle', [['team', 'team', 'team', -1]], EVENT);
 	kind('battleEnded', 'event', 'The battle ends', [['team', 'team', 'won by', -1]], EVENT);
 	kind('varReaches', 'event', 'A variable reaches a value', [['name', 'text', 'variable', 'count'], ['op', 'op', '', '>='], ['value', 'value', 'value', V(10)]], EVENT);
+	kind('captureAttacked', 'event', 'A capture point comes under attack', [['target', 'capture', 'capture point', ''], ['cooldown', 'value', 'not again for seconds', V(60)]], EVENT);
 	kind('captureChanged', 'event', 'A capture point changes hands', [['target', 'capture', 'capture point', ''], ['team', 'team', 'taken by', -1]], EVENT);
 	kind('groupGone', 'event', 'A group has no units left', [['group', 'text', 'group', ''], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
 	kind('unitDies', 'event', 'A unit dies', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], EVENT, { relevant: relevantWho, optional: ['area'] });
@@ -119,14 +120,26 @@ window.MS = window.MS || {};
 		['active', 'bool', 'switched on from the start', true],
 		['marker', 'bool', 'show an objective marker to the attackers', true],
 		['text', 'text', 'marker text', 'Capture'],
-	], { entrance: false, exits: ['taken', 'retaken'] }, { optional: ['region'] });
+		['markerWhen', 'choice', 'marker shown', 'always', [['always', 'all the time'], ['select', 'while choosing a unit']]],
+		['paint', 'bool', 'paint its area while choosing a unit (over the fog)', false],
+		['ownedText', 'text', 'text on it once taken', ''],
+		['progressDisplay', 'area', 'progress screen in (optional)', ''],
+		['progressScreen', 'text', 'progress screen (a particle preset)', 'Login Screen|Missions.rte'],
+		['idleDisplay', 'area', 'screen while held by the first side, in (optional)', ''],
+		['idleScreen', 'text', 'that screen (a particle preset)', 'Fauxdan Screen|Missions.rte'],
+		['terminalOn', 'text', 'terminal when taken ({side} = Left or Right)', ''],
+		['terminalOff', 'text', 'terminal when taken back', ''],
+	], { entrance: false, exits: ['taken', 'retaken'] }, {
+		optional: ['region', 'ownedText', 'progressDisplay', 'idleDisplay', 'terminalOn', 'terminalOff'],
+		relevant: (p, key) => (key === 'text' || key === 'markerWhen' ? p.marker !== false : key === 'ownedText' ? !!p.paint : key === 'progressScreen' ? !!p.progressDisplay : key === 'idleScreen' ? !!p.idleDisplay : true),
+	});
 
 	// flow control
 	kind('branch', 'flow', 'Branch: if these hold', [], { entrance: true, exits: ['true', 'false'] }, { lists: ['conds'] });
 	kind('doOnce', 'flow', 'Do this only once', [], STEP);
 
 	// actions
-	kind('message', 'action', 'Show a message', [['text', 'text', 'text', 'Well done.'], ['who', 'player', 'to', 'all'], ['seconds', 'number', 'for seconds', 5]], STEP);
+	kind('message', 'action', 'Show a message', [['text', 'text', 'text', 'Well done.'], ['who', 'player', 'to', 'all'], ['seconds', 'number', 'for seconds', 5], ['blink', 'bool', 'blinking', false]], STEP);
 	kind('gold', 'action', 'Give gold', [['team', 'team', 'to team', 0], ['amount', 'value', 'gold (negative takes it)', V(500)]], STEP);
 	kind('spawn', 'action', 'Spawn units', [
 		['source', 'choice', 'what', 'preset', [['preset', 'this unit'], ['group', 'a random unit of a group'], ['loadout', 'a loadout']]],
@@ -137,8 +150,8 @@ window.MS = window.MS || {};
 		['area', 'area', 'in area', ''],
 		['perBox', 'bool', 'one in each box of the area', false],
 		['count', 'value', 'how many', V(1)],
-		['arrive', 'choice', 'arriving', 'appear', [['appear', 'there and then'], ['dropship', 'by dropship'], ['rocket', 'by rocket']]],
-		['facing', 'choice', 'facing', 'auto', [['auto', 'as they come'], ['left', 'left'], ['right', 'right']]],
+		['arrive', 'choice', 'arriving', 'appear', [['appear', 'there and then'], ['door', 'through a door that opens in the wall'], ['dropship', 'by dropship'], ['rocket', 'by rocket']]],
+		['facing', 'choice', 'facing', 'auto', [['auto', 'as they come'], ['left', 'left'], ['right', 'right'], ['middle', 'the middle of the area']]],
 		['ai', 'choice', 'then they', 'sentry', AI_MODES],
 		['goTo', 'area', 'going to', ''],
 		['tag', 'text', 'put in the group', ''],
@@ -167,7 +180,13 @@ window.MS = window.MS || {};
 	kind('setVar', 'action', 'Set a variable', [['name', 'text', 'variable', 'count'], ['op', 'choice', '', 'set', VAR_OPS], ['value', 'value', 'value', V(1)]], STEP);
 	kind('captureSet', 'action', 'Switch a capture point', [['target', 'capture', 'capture point', ''], ['do', 'choice', '', 'on', [['on', 'switch it on'], ['off', 'switch it off'], ['own', 'give it to']]], ['team', 'team', 'team', 0]], STEP, { relevant: (p, key) => (key === 'team' ? p.do === 'own' : true) });
 	kind('doors', 'action', 'Doors', [['area', 'area', 'the doors in', ''], ['do', 'choice', '', 'open', [['open', 'open them'], ['close', 'close them'], ['lock', 'lock them (they stop working)'], ['unlock', 'unlock them']]], ['team', 'team', 'and give them to (any team: leave them)', -1]], STEP);
-	kind('fog', 'action', 'Fog of war', [['do', 'choice', '', 'reveal', [['reveal', 'reveal an area'], ['hide', 'hide an area'], ['hideAll', 'hide the whole map']]], ['area', 'area', 'area', ''], ['team', 'team', 'for team', 0]], STEP, { relevant: (p, key) => (key === 'area' ? p.do !== 'hideAll' : true) });
+	kind('fog', 'action', 'Fog of war', [['do', 'choice', '', 'reveal', [['reveal', 'reveal an area'], ['hide', 'hide an area'], ['hideAll', 'hide the whole map'], ['surface', 'reveal everything above the ground']]], ['area', 'area', 'area', ''], ['team', 'team', 'for team', 0]], STEP, { relevant: (p, key) => (key === 'area' ? p.do !== 'hideAll' && p.do !== 'surface' : true) });
+	kind('placeObject', 'action', 'Place a map object', [
+		['object', 'text', 'object (a terrain object preset)', 'Metal Crate Small A FG|Base.rte'],
+		['area', 'area', 'in area', ''],
+		['at', 'choice', 'at', 'corner', [['corner', 'the corner of its first box'], ['centre', 'the middle of its first box'], ['every', 'the corner of every box']]],
+	], STEP);
+	kind('cameraLimit', 'action', 'Keep the cameras right of a line', [['x', 'number', 'x (0: no limit)', 0]], STEP);
 	kind('lz', 'action', 'Set a landing zone', [['team', 'team', 'team', 0], ['area', 'area', 'their craft land in', '']], STEP);
 	kind('buyMenu', 'action', 'Switch the buy menu', [['on', 'bool', 'players can buy', true]], STEP);
 	kind('setFunds', 'action', 'Set a team\'s gold', [['team', 'team', 'team', 0], ['amount', 'value', 'gold', V(0)]], STEP);

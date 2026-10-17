@@ -147,6 +147,23 @@ function Test:SetObservationTarget(pos, p) end
 RandomHDFirearm = function(group, tech) return { PresetName = group } end
 RandomTDExplosive = function(group, tech) return { PresetName = group } end
 SceneMan.MovePointToGround = function(self, p, radius, step) return { X = p.X, Y = 200 } end
+-- map objects, particles (screens, doors), drawing over the fog, the camera, the ground's surface
+Particles = {}
+function CreateTerrainObject(name, module) return { PresetName = name, Pos = { X = 0, Y = 0 } } end
+SceneMan.SnapPosition = function(self, p, snap) return { X = p.X, Y = p.Y } end
+SceneMan.AddSceneObject = function(self, o) log("placed " .. o.PresetName .. " at " .. math.floor(o.Pos.X) .. "," .. math.floor(o.Pos.Y)) end
+SceneMan.CastTerrainPenetrationRay = function(self, from, dir, out, a, b) out.X = 0; out.Y = 100 end
+SceneMan.Scene.Width = 8; SceneMan.Scene.Height = 200
+function CreateMOSParticle(name, module) return { PresetName = name, Frame = 0, FrameCount = 20, Age = 0, Pos = { X = 0, Y = 0 } } end
+function CreateMOSRotating(name, module) return { PresetName = name, Frame = 0, FrameCount = 4, Pos = { X = 0, Y = 0 } } end
+MovableMan.AddParticle = function(self, p) Particles[#Particles + 1] = p; log("particle " .. p.PresetName) end
+MovableMan.ValidMO = function(self, o) if o.ToDelete then return false end for _, x in ipairs(Particles) do if x == o then return true end end for _, x in ipairs(Actors) do if x == o then return true end end return false end
+FrameMan.PlayerScreenWidth = 960
+Cam = { X = 100, Y = 50 }
+CameraMan = CameraMan or {}
+CameraMan.GetScrollTarget = function(self, screen) return Cam end
+CameraMan.SetScrollTarget = function(self, v, speed, screen) Cam = { X = v.X, Y = v.Y }; log("camera " .. v.X .. "," .. v.Y) end
+function Test:GetTeamOfPlayer(p) return 0 end
 -- a unit gone from the game (dead and removed)
 function Remove(a) for i, x in ipairs(Actors) do if x == a then table.remove(Actors, i) return end end end
 -- pie menus: slices made from a preset, copied into a unit's menu when no slice there has the name; using one calls the function it names
@@ -980,4 +997,65 @@ test('objective markers are cleared each frame, not piled up', () => {
 	m.run('Areas["Far"] = { x = 900, y = 0, w = 10, h = 10 }');
 	m.step(0.1, 20);
 	assert.equal(m.run('return tostring(Marks)'), '1');
+});
+
+test('a capture point\'s look: a screen while held, one filling up as it is taken, a terminal stamped when it changes hands, its area painted while choosing', () => {
+	const g = graph([['capture', { name: 'Ops', area: 'Cap', region: 'Room', owner: 1, attackers: 0, seconds: { k: 'num', n: 2 }, decays: true, active: true, marker: true, text: 'Capture', markerWhen: 'select', paint: true, ownedText: 'Yours', progressDisplay: 'Screen', progressScreen: 'Login Screen|Missions.rte', idleDisplay: 'Screen', idleScreen: 'Fauxdan Screen|Missions.rte', terminalOn: 'Decision Day Computer {side} On|Missions.rte', terminalOff: 'Decision Day Computer {side} Off|Missions.rte' }]]);
+	const m = game(g);
+	m.run('Areas["Cap"] = { x = 100, y = 0, w = 48, h = 48 }; Areas["Room"] = { x = 0, y = 0, w = 200, h = 100 }; Areas["Screen"] = { x = 120, y = 60, w = 10, h = 10 }');
+	let out = lines(m.step());
+	assert.ok(out.includes('particle Fauxdan Screen'), 'the held screen');
+	assert.equal(m.run('return tostring(Marks)'), '0', 'the marker shows only while choosing a unit');
+	m.run('ViewState[0] = Activity.ACTORSELECT');
+	out = lines(m.step());
+	assert.ok(out.includes('shade 0,0-200,100 in 13 for 0'), 'its area painted (not yet ours)');
+	assert.equal(m.run('return tostring(Marks)'), '1');
+	m.run('A = MakeActor(0, 120, 20)');
+	out = lines(m.step(0.5));
+	assert.ok(out.includes('particle Login Screen'), 'the progress screen comes');
+	assert.equal(m.run('for _, p in ipairs(Particles) do if p.PresetName == "Fauxdan Screen" then return tostring(p.ToDelete) end end'), 'true', 'and the held screen goes');
+	out = lines(m.step(1, 2));
+	assert.ok(out.includes('placed Decision Day Computer Left On at 124,24'), 'the terminal for the new owner (Left when the point is right of its room\'s middle, as Decision Day)');
+	const owned = lines(m.step());
+	assert.ok(owned.includes('shade 0,0-200,100 in 147 for 0') && owned.includes('label Yours for 0'), 'painted as ours, with its text');
+});
+
+test('units through a door: the wall piece once, then they step out when the door has opened', () => {
+	const g = graph([['timer', { seconds: 1, repeat: true }, { then: 1 }], ['spawn', { source: 'group', group: 'Actors - Light', team: 1, area: 'Door', count: { k: 'num', n: 2 }, arrive: 'door', ai: 'sentry', arm: 'cqb' }]]);
+	const m = game(g);
+	m.run('Areas["Door"] = { x = 300, y = 100, w = 48, h = 48 }');
+	m.step(1);
+	let out = lines(m.step(1));
+	assert.ok(out.includes('placed Module Back Middle E at 300,100'));
+	assert.ok(out.includes('particle Background Door'));
+	assert.equal(out.filter((l) => l.startsWith('spawn')).length, 0, 'not out until the door has opened');
+	m.run('for _, p in ipairs(Particles) do p.Frame = 3 end');
+	out = lines(m.step(0.1));
+	assert.equal(out.filter((l) => l.startsWith('spawn Random Actors - Light team 1')).length, 2, 'both step out');
+	assert.equal(m.run('for _, a in ipairs(Actors) do if a.Team == 1 then return a.Pos.X .. "," .. a.Pos.Y end end').replace(/\.0/g, ''), '304,124', 'at the door, the first 20 to the left');
+	out = lines(m.step(1));
+	assert.equal(out.filter((l) => l.startsWith('placed')).length, 0, 'the wall piece is placed once');
+});
+
+test('a capture point under attack fires once, then waits its cooldown; map objects, the camera line and the surface fog', () => {
+	const g = graph([
+		['capture', { name: 'P', area: 'Cap', owner: 1, attackers: 0, seconds: { k: 'num', n: 50 }, decays: true, active: true, marker: false }],
+		['captureAttacked', { target: 'n1', cooldown: { k: 'num', n: 30 } }, { then: 2 }], ['message', { text: 'Under attack' }],
+		['start', {}, { then: 4 }],
+		['placeObject', { object: 'Metal Crate Small A FG|Base.rte', area: 'Crate', at: 'corner' }, { then: 5 }],
+		['cameraLimit', { x: 600 }, { then: 6 }],
+		['fog', { do: 'surface', team: 0 }],
+	]);
+	const m = game(g);
+	m.run('Areas["Cap"] = { x = 0, y = 0, w = 48, h = 48 }; Areas["Crate"] = { x = 40, y = 70, w = 23, h = 23 }');
+	let out = lines(m.step());
+	assert.ok(out.includes('placed Metal Crate Small A FG at 40,70'));
+	assert.ok(out.some((l) => /^camera 600(\.0)?,50/.test(l)), 'the camera kept right of the line');
+	assert.ok(out.includes('reveal -10,0 for 0') && out.includes('reveal -6,0 for 0'), 'everything above the ground revealed, a strip at a time');
+	m.run('A = MakeActor(0, 10, 10)');
+	assert.ok(lines(m.step()).includes('msg Under attack'));
+	m.run('Remove(A)');
+	m.step(1, 8);
+	m.run('A = MakeActor(0, 10, 10)');
+	assert.ok(!lines(m.step()).includes('msg Under attack'), 'not again within the cooldown');
 });
