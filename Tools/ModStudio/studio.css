@@ -1127,3 +1127,5 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .limb-tools { display: flex; align-items: center; gap: 10px; margin-top: 6px; }
 .limb-side { overflow: auto; max-height: 420px; }
 .limb-i { width: 16px; color: var(--faint); }
+.fx-canvas { width: 100%; max-width: 640px; display: block; border-radius: 6px; image-rendering: pixelated; }
+.fx-tools { display: flex; align-items: center; gap: 14px; flex-wrap: wrap; margin: 8px 0 12px; }
