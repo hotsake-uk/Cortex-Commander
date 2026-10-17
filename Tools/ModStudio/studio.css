@@ -1165,3 +1165,6 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .replace-row { display: flex; gap: 6px; align-items: center; }
 .replace-row input { flex: 1; min-width: 0; }
 #replaceAll { margin-left: 0; white-space: nowrap; }
+.mission-stage { border-left: 3px solid #f2b63d; }
+.mission-num { display: inline-flex; align-items: center; justify-content: center; width: 22px; height: 22px; border-radius: 50%; background: #f2b63d; color: #1a1a1a; font-size: 12px; flex: none; }
+.mission-stages { margin-bottom: 8px; }
