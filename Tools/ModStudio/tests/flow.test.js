@@ -32,6 +32,12 @@ Items = {}
 local function iter(list) local i = 0 return function() i = i + 1 return list[i] end end
 local ActorMeta = { __index = function(a, k)
 	if k == "IsInGroup" then return function(self, g) return self.groups[g] == true end
+	elseif k == "AddToGroup" then return function(self, g) self.groups[g] = true end
+	elseif k == "ClearAIWaypoints" then return function(self) self.waypoints = {} end
+	elseif k == "AddAISceneWaypoint" then return function(self, p) self.waypoints = self.waypoints or {}; self.waypoints[#self.waypoints + 1] = p end
+	elseif k == "AddInventoryItem" then return function(self, item) self.cargo[#self.cargo + 1] = item end
+	elseif k == "OpenDoor" then return function(self) log("open door " .. self.UniqueID) end
+	elseif k == "CloseDoor" then return function(self) log("close door " .. self.UniqueID) end
 	elseif k == "GibThis" then return function(self) self.Health = 0; log("gib " .. self.UniqueID) end
 	elseif k == "Inventory" then return iter(rawget(a, "inv"))
 	elseif k == "AboveHUDPos" then return rawget(a, "Pos") end
@@ -46,25 +52,54 @@ function MakeActor(team, x, y, extra)
 	return a
 end
 MovableMan = setmetatable({
-	AddActor = function(self, a) setmetatable(a, ActorMeta); Actors[#Actors + 1] = a; log("spawn " .. a.PresetName .. " team " .. a.Team) end,
+	AddActor = function(self, a) setmetatable(a, ActorMeta); Actors[#Actors + 1] = a; log("spawn " .. a.PresetName .. " team " .. a.Team .. (#(a.cargo or {}) > 0 and (" carrying " .. #a.cargo) or "")) end,
+	GetMOsInBox = function(self, box, ignoreTeam, getsHit)
+		local found = {}
+		for _, d in ipairs(Doors) do
+			if d.Pos.X >= box.Corner.X and d.Pos.X < box.Corner.X + box.Width and d.Pos.Y >= box.Corner.Y and d.Pos.Y < box.Corner.Y + box.Height then found[#found + 1] = d end
+		end
+		return iter(found)
+	end,
+	ChangeActorTeam = function(self, a, team) a.Team = team end,
 	AddItem = function(self, it) Items[#Items + 1] = it; log("item " .. it.PresetName) end,
 }, { __index = function(t, k) if k == "Actors" then return iter(Actors) elseif k == "Items" then return iter(Items) end end })
-local function made(name) NextID = NextID + 1; return { PresetName = name, Team = -1, Pos = { X = 0, Y = 0 }, Health = 100, UniqueID = NextID, groups = {}, inv = {} } end
+function made(name) NextID = NextID + 1; return setmetatable({ PresetName = name, Team = -1, Pos = { X = 0, Y = 0 }, Health = 100, UniqueID = NextID, groups = {}, inv = {}, cargo = {} }, ActorMeta) end
 CreateAHuman = function(name, module) return made(name) end
 CreateACrab = function(name, module) return made(name) end
 CreateHDFirearm = function(name, module) return { PresetName = name, Pos = { X = 0, Y = 0 } } end
 Areas = {}
+-- an area may have more boxes (Areas[n].more = { {x,y,w,h}, ... })
 SceneMan = { Scene = {
 	HasArea = function(self, n) return Areas[n] ~= nil end,
 	GetArea = function(self, n)
 		local b = Areas[n]
-		return {
-			IsInside = function(self, p) return p.X >= b.x and p.X < b.x + b.w and p.Y >= b.y and p.Y < b.y + b.h end,
+		local boxes = { { Corner = { X = b.x, Y = b.y }, Width = b.w, Height = b.h, Center = { X = b.x + b.w / 2, Y = b.y + b.h / 2 } } }
+		for _, m in ipairs(b.more or {}) do boxes[#boxes + 1] = { Corner = { X = m.x, Y = m.y }, Width = m.w, Height = m.h, Center = { X = m.x + m.w / 2, Y = m.y + m.h / 2 } } end
+		return setmetatable({
+			IsInside = function(self, p) for _, bx in ipairs(boxes) do if p.X >= bx.Corner.X and p.X < bx.Corner.X + bx.Width and p.Y >= bx.Corner.Y and p.Y < bx.Corner.Y + bx.Height then return true end end return false end,
 			Center = { X = b.x + b.w / 2, Y = b.y + b.h / 2 },
 			RandomPoint = { X = b.x + 1, Y = b.y + 1 },
-		}
+		}, { __index = function(t, k) if k == "Boxes" then return iter(boxes) end end })
 	end,
-} }
+},
+	RevealUnseenBox = function(self, x, y, w, h, team) log("reveal " .. x .. "," .. y .. " for " .. team) end,
+	RestoreUnseenBox = function(self, x, y, w, h, team) log("hide " .. x .. "," .. y .. " for " .. team) end,
+	MakeAllUnseen = function(self, v, team) log("hide all for " .. team) end,
+}
+function Vector(x, y) return { X = x or 0, Y = y or 0 } end
+Actor = { AIMODE_SENTRY = 1, AIMODE_PATROL = 2, AIMODE_GOTO = 3, AIMODE_BRAINHUNT = 4, AIMODE_GOLDDIG = 5, AIMODE_RETURN = 6, AIMODE_STAY = 7, AIMODE_DELIVER = 9, INACTIVE = 5, STABLE = 0 }
+Activity = { MINDIFFICULTY = 0, CAKEDIFFICULTY = 20, EASYDIFFICULTY = 40, MEDIUMDIFFICULTY = 60, HARDDIFFICULTY = 80, NUTSDIFFICULTY = 95, MAXDIFFICULTY = 100 }
+PresetMan = {
+	GetModuleID = function(self, name) return 7 end,
+	GetLoadout = function(self, name, tech, spawnDelivery) local a = made("Loadout " .. name); return a end,
+}
+RandomAHuman = function(group, tech) return made("Random " .. group) end
+RandomACDropShip = function(group, tech) local c = made("Dropship"); c.cargo = {}; return c end
+RandomACRocket = function(group, tech) local c = made("Rocket"); c.cargo = {}; return c end
+MusicMan = { PlayDynamicSong = function(self, name) log("music " .. name) end }
+Doors = {}
+function IsADoor(mo) return mo.isDoor == true end
+function ToADoor(mo) return mo end
 FrameMan = { ClearScreenText = function(self, s) end, SetScreenText = function(self, text, screen, blink, ms, centred) log("msg " .. text) end }
 ConsoleMan = { PrintString = function(self, s) log("console " .. s) end }
 ActivityMan = { EndActivity = function(self) log("end winner " .. tostring(Act.WinnerTeam)) end }
@@ -79,6 +114,14 @@ function Test:PlayerActive(p) return p == 0 end
 function Test:PlayerHuman(p) return p == 0 end
 function Test:ScreenOfPlayer(p) return p end
 function Test:AddObjectivePoint(text, pos, team, dir) Marks = Marks + 1; LastMark = text end
+function Test:SetTeamFunds(amount, t) self.Funds[t] = amount end
+function Test:GetTeamTech(t) return "Base.rte" end
+function Test:GetScenarioSettingOr(key, fallback) if Settings[key] ~= nil then return Settings[key] end return fallback end
+function Test:SetLZArea(team, area) log("lz for " .. team) end
+function Test:SaveString(key, value) Saved[key] = value end
+function Test:LoadString(key) return Saved[key] or "" end
+Settings = {}
+Saved = {}
 function Step(seconds) Clock = Clock + (seconds or 0.1); Act:RunStudioFlow() end
 function Logged() local s = table.concat(Log, "\n"); Log = {}; return s end
 `;
@@ -454,4 +497,195 @@ test('every kind of node compiles to Lua that loads', () => {
 	}
 	const m = game(g);
 	assert.ok(m.block.length > 1000);
+});
+
+// ---- variables and values ----
+
+const V = (n, extra) => Object.assign({ k: 'num', n }, extra || {});
+
+test('variables: set, add and multiply them, test them, and fire when one reaches a value', () => {
+	const g = graph([
+		['start', {}, { then: 1 }],
+		['setVar', { name: 'count', op: 'set', value: V(2) }, { then: 2 }],
+		['setVar', { name: 'count', op: 'mul', value: V(3) }],
+		['timer', { seconds: 1, repeat: true }, { then: 4 }],
+		['setVar', { name: 'count', op: 'add', value: V(1) }],
+		['varReaches', { name: 'count', op: '>=', value: V(8) }, { then: 6 }],
+		['message', { text: 'Eight' }],
+	]);
+	const m = game(g);
+	m.step();
+	assert.equal(m.run('return tostring(Act.StudioState.vars["count"])'), '6');
+	assert.equal(m.step(1, 1), '');
+	assert.deepEqual(lines(m.step(1, 3)), ['msg Eight'], 'fires once, as it gets there');
+});
+
+test('values: a scenario setting, and times the difficulty', () => {
+	const g = graph([['start', {}, { then: 1 }], ['gold', { team: 0, amount: V(0, { k: 'setting', name: 'Bonus', n: 100 }) }, { then: 2 }], ['gold', { team: 0, amount: V(100, { x: true }) }]]);
+	const m = game(g);
+	m.run('Settings["Bonus"] = 250; Act.Difficulty = 90');
+	// (the test's Lua writes 175 as 175.0; the game's writes 175)
+	assert.deepEqual(lines(m.step()).map((l) => l.replace('.0 ', ' ')), ['gold 250 to 0', 'gold 175 to 0'], '100 times 1.75 at nuts difficulty');
+});
+
+// ---- capture points ----
+
+function captureGame(extra) {
+	const g = graph([
+		['capture', Object.assign({ name: 'Ops', area: 'Ops', region: 'Bunker', owner: 1, attackers: 0, seconds: V(2), decays: true, active: true, marker: true, text: 'Capture' }, extra || {}), { taken: 1, retaken: 2 }],
+		['message', { text: 'Taken' }],
+		['message', { text: 'Lost' }],
+		['captureChanged', { target: '', team: -1 }, { then: 4 }],
+		['setVar', { name: 'changes', op: 'add', value: V(1) }],
+	]);
+	g.nodes[3].p.target = g.nodes[0].id;
+	const m = game(g);
+	m.run('Areas["Ops"] = { x = 0, y = 0, w = 10, h = 10 }; Areas["Bunker"] = { x = 0, y = 0, w = 100, h = 100 }');
+	return m;
+}
+
+test('a capture point is taken by standing in it, over its seconds, and taken back the same way', () => {
+	const m = captureGame();
+	m.run('A = MakeActor(0, 500, 5)');
+	m.step();
+	m.run('A.Pos.X = 5');
+	assert.equal(m.step(0.5, 3), '', 'not yet');
+	assert.ok(/Capture \d+%/.test(m.run('return LastMark')), 'the marker shows the progress');
+	assert.deepEqual(lines(m.step(0.5, 2)), ['msg Taken']);
+	assert.equal(m.run('return tostring(Act.StudioState.cap["n1"].owner)'), '0');
+	m.run('A.Health = 0; D = MakeActor(1, 5, 5)');
+	assert.deepEqual(lines(m.step(0.5, 6)), ['msg Lost'], 'the defenders take it back');
+	assert.equal(m.run('return tostring(Act.StudioState.vars["changes"])'), '2', 'the change of hands event fired both times');
+});
+
+test('a defender anywhere in its area stops a capture starting; progress drains when the attackers leave', () => {
+	const m = captureGame();
+	m.run('A = MakeActor(0, 5, 5); D = MakeActor(1, 50, 50)');
+	assert.equal(m.step(0.5, 8), '', 'a defender in the bunker: no capture');
+	m.run('D.Health = 0');
+	m.step(0.5, 2);
+	m.run('A.Pos.X = 500');
+	m.step(0.5, 4);
+	assert.equal(m.run('return tostring(Act.StudioState.cap["n1"].progress)'), '0', 'drained away');
+});
+
+test('a capture point that is switched off does nothing until it is switched on; a stage can wait for one', () => {
+	const g = graph([
+		['capture', { name: 'Ops', area: 'Ops', region: '', owner: 1, attackers: 0, seconds: V(1), decays: false, active: false, marker: false, text: '' }, {}],
+		['stageCapture', { target: '', team: 0 }, { done: 2 }],
+		['message', { text: 'Stage done' }],
+		['timer', { seconds: 2 }, { then: 4 }],
+		['captureSet', { target: '', do: 'on' }],
+	]);
+	g.nodes[1].p.target = g.nodes[0].id;
+	g.nodes[4].p.target = g.nodes[0].id;
+	const m = game(g);
+	m.run('Areas["Ops"] = { x = 0, y = 0, w = 10, h = 10 }; A = MakeActor(0, 5, 5)');
+	assert.equal(m.step(0.5, 4), '', 'switched off');
+	assert.deepEqual(lines(m.step(0.5, 4)), ['msg Stage done'], 'switched on at 2 s, taken a second later');
+});
+
+// ---- spawning and orders ----
+
+test('spawning a random unit of a group in each box of an area, tagged and sent somewhere', () => {
+	const g = graph([['start', {}, { then: 1 }], ['spawn', { source: 'group', group: 'Actors - Heavy', team: 1, area: 'Posts', perBox: true, ai: 'goto', goTo: 'Gate', tag: 'Guards', arrive: 'appear', facing: 'left' }]]);
+	const m = game(g);
+	m.run('Areas["Posts"] = { x = 0, y = 0, w = 10, h = 10, more = { { x = 50, y = 0, w = 10, h = 10 }, { x = 90, y = 0, w = 10, h = 10 } } }; Areas["Gate"] = { x = 500, y = 0, w = 10, h = 10 }');
+	assert.equal(lines(m.step()).filter((l) => l === 'spawn Random Actors - Heavy team 1').length, 3);
+	assert.equal(m.run('local n = 0 for a in MovableMan.Actors do if a.groups["Guards"] and a.AIMode == Actor.AIMODE_GOTO and a.waypoints and a.waypoints[1].X == 505 and a.HFlipped then n = n + 1 end end return tostring(n)'), '3');
+});
+
+test('spawning by dropship puts the units in one craft', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['spawn', { source: 'loadout', loadout: 'Infantry Heavy', team: 1, area: 'LZ', count: V(4), arrive: 'dropship', ai: 'brainhunt' }]]));
+	m.run('Areas["LZ"] = { x = 0, y = 0, w = 10, h = 10 }');
+	assert.deepEqual(lines(m.step()), ['spawn Dropship team 1 carrying 4']);
+});
+
+test('orders: a group, a whole team, or a team in an area', () => {
+	const g = graph([['start', {}, { then: 1 }], ['order', { who: 'area', team: 1, area: 'Room', ai: 'goto', goTo: 'Gate' }, { then: 2 }], ['order', { who: 'group', group: 'Hunters', ai: 'brainhunt' }]]);
+	const m = game(g);
+	m.run('Areas["Room"] = { x = 0, y = 0, w = 10, h = 10 }; Areas["Gate"] = { x = 500, y = 0, w = 10, h = 10 }; In = MakeActor(1, 5, 5); Out = MakeActor(1, 50, 50); H = MakeActor(0, 50, 50); H.groups["Hunters"] = true');
+	m.step();
+	assert.equal(m.run('return tostring(In.AIMode) .. " " .. tostring(Out.AIMode) .. " " .. tostring(H.AIMode)'), '3 nil 4');
+});
+
+// ---- the world ----
+
+test('doors: opened, locked and given to a team', () => {
+	const g = graph([['start', {}, { then: 1 }], ['doors', { area: 'Front', do: 'open', team: 0 }, { then: 2 }], ['doors', { area: 'Front', do: 'lock', team: -1 }]]);
+	const m = game(g);
+	m.run('Areas["Front"] = { x = 0, y = 0, w = 100, h = 100 }; D = MakeActor(1, 5, 5); D.isDoor = true; Doors = { D }; Far = MakeActor(1, 500, 5); Far.isDoor = true; table.insert(Doors, Far)');
+	assert.deepEqual(lines(m.step()), ['open door 1']);
+	assert.equal(m.run('return tostring(D.Team) .. " " .. tostring(D.Status) .. " " .. tostring(Far.Team)'), '0 5 1');
+});
+
+test('fog of war, landing zones, the buy menu and gold', () => {
+	const g = graph([['start', {}, { then: 1 }], ['fog', { do: 'hideAll', team: 0 }, { then: 2 }], ['fog', { do: 'reveal', area: 'Base', team: 0 }, { then: 3 }], ['lz', { team: 0, area: 'Base' }, { then: 4 }], ['buyMenu', { on: false }, { then: 5 }], ['setFunds', { team: 0, amount: V(300) }]]);
+	const m = game(g);
+	m.run('Areas["Base"] = { x = 10, y = 20, w = 10, h = 10 }');
+	assert.deepEqual(lines(m.step()), ['hide all for 0', 'reveal 10,20 for 0', 'lz for 0']);
+	assert.equal(m.run('return tostring(Act.BuyMenuEnabled) .. " " .. tostring(Act.Funds[0])'), 'false 300');
+});
+
+test('income comes in a little every moment', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['income', { team: 0, amount: V(6) }]]));
+	m.run('Act.Funds[0] = 0');
+	m.step(0.5, 21);
+	assert.equal(m.run('return tostring(Act.Funds[0])'), '60');
+});
+
+test('dialogue: lines one after another, each when the one before has had its time', () => {
+	const g = graph([['start', {}, { then: 1 }], ['dialogue', { who: 'all' }]]);
+	g.nodes[1].lists.lines = [{ text: 'First', seconds: 2 }, { text: 'Second', seconds: 3 }, { text: 'Third', seconds: 1 }];
+	const m = game(g);
+	assert.deepEqual(lines(m.step()), ['msg First']);
+	assert.equal(m.step(1, 1), '');
+	assert.deepEqual(lines(m.step(1, 1)), ['msg Second']);
+	assert.equal(m.step(1, 2), '');
+	assert.deepEqual(lines(m.step(1, 1)), ['msg Third']);
+});
+
+test('a win that waits: the message shows, and the game ends after the seconds', () => {
+	const m = game(graph([['start', {}, { then: 1 }], ['win', { team: 0, after: 3, text: 'Victory' }]]));
+	assert.deepEqual(lines(m.step()), ['msg Victory']);
+	assert.equal(m.step(1, 2), '');
+	assert.deepEqual(lines(m.step(1, 2)), ['end winner 0']);
+});
+
+// ---- saved games ----
+
+test('a saved game keeps the mission: the stage, variables, flags, capture points and what has already run', () => {
+	const g = graph([
+		['start', {}, { then: 1 }],
+		['message', { text: 'Opening' }, { then: 2 }],
+		['setVar', { name: 'score', op: 'set', value: V(5) }],
+		['stageSurvive', { seconds: 1 }, { done: 4, next: 5 }],
+		['message', { text: 'One done' }],
+		['stageSurvive', { seconds: 100 }, { started: 6 }],
+		['flag', { name: 'second', value: true }],
+		['capture', { name: 'P', area: 'P', region: '', owner: 1, attackers: 0, seconds: V(10), decays: false, active: true, marker: false, text: '' }, {}],
+	]);
+	const m = game(g);
+	m.run('Areas["P"] = { x = 0, y = 0, w = 10, h = 10 }; A = MakeActor(0, 5, 5)');
+	m.step(0.6, 4);
+	m.run('Act:StudioSave()');
+	const saved = m.run('return Saved["StudioFlow"]');
+	assert.ok(saved.length > 20 && !/[\r\n]/.test(saved), 'saved as one line');
+	// a new game is loaded: a fresh activity reads the save
+	m.run('Old = Act; Act = setmetatable({ Funds = {} }, { __index = Test }); Act:StudioLoad()');
+	assert.equal(m.run('local st = Act.StudioState return st.stage == Old.StudioState.stage and tostring(st.vars["score"]) .. " " .. tostring(st.flags["second"]) or "wrong stage"'), '5 true');
+	assert.ok(Number(m.run('return tostring(Act.StudioState.cap["n8"].progress)')) > 0, 'the capture point carries on from where it was');
+	assert.equal(m.step(0.1, 3), '', 'nothing runs again: no opening message, stage one not done twice');
+});
+
+test('the script saves and loads the mission: OnSave and StartActivity are hooked once, and created when missing', () => {
+	const g = graph([['start', {}, { then: 1 }], ['message', { text: 'Hi' }]]);
+	const withBoth = 'function Test:StartActivity(newGame)\n\tself.x = 1\nend\n\nfunction Test:OnSave()\n\tself:SaveNumber("x", 1)\nend\n\nfunction Test:UpdateActivity()\nend\n';
+	const once = F.apply(withBoth, 'Test', g);
+	assert.match(once, /function Test:StartActivity\(newGame\)\n\tif not newGame then self:StudioLoad\(\) end/);
+	assert.match(once, /function Test:OnSave\(\)\n\tself:StudioSave\(\)/);
+	assert.equal(F.apply(once, 'Test', g), once, 'written twice it is the same');
+	const bare = F.apply('function Test:UpdateActivity()\nend\n', 'Test', g);
+	assert.match(bare, /function Test:OnSave\(\)\n\tself:StudioSave\(\)/);
+	assert.match(bare, /function Test:StartActivity\(isNewGame\)\n\tif not isNewGame then self:StudioLoad\(\) end/);
 });
