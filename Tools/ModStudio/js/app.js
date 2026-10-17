@@ -26,7 +26,7 @@ window.MS = window.MS || {};
 	// What one designer shows and how: the thing open and its rig, what is picked, hidden and folded, the pose. Each design tab has its own
 	// (ide.js); app.actor, app.rig, app.selected and the rest are the designer on show, so switching tabs points at another designer rather
 	// than copying one designer's state in and out. Two can be on screen at once, side by side (the views, below).
-	const DESIGNER_KEYS = ['rig', 'actor', 'actorNode', 'device', 'selected', 'selectedPiece', 'hidden', 'collapsed', 'isolate', 'poseState', 'groundY'];
+	const DESIGNER_KEYS = ['rig', 'actor', 'actorNode', 'device', 'selected', 'selectedPiece', 'hidden', 'soloed', 'collapsed', 'isolate', 'poseState', 'groundY'];
 	app.newDesigner = () => ({
 		rig: null,
 		actor: null, // {path, name, cls}: found again by these after undo, since undo re-reads the file
@@ -35,6 +35,7 @@ window.MS = window.MS || {};
 		selected: null,
 		selectedPiece: null,
 		hidden: new Set(), // ids of parts hidden in the view (the view only: the unit's files are untouched)
+		soloed: new Set(), // ids of parts soloed: while any is, only they (and what hangs from them) are shown
 		collapsed: new Set(), // ids of parts whose children are folded away in the parts list
 		isolate: false,
 		poseState: { flip: false, aim: 0, pose: 'stand', time: 0, sharp: false, frames: {}, animateSprites: true },
@@ -1042,14 +1043,17 @@ window.MS = window.MS || {};
 		}
 	}
 
-	// A part is hidden when it, or a part it hangs from, has its eye off.
+	// A part is hidden when it, or a part it hangs from, has its eye off; or, while any part is soloed (as on a mixing desk), when neither it
+	// nor a part it hangs from is soloed.
 	app.isHidden = function (part) {
+		let soloed = false;
 		for (let p = part; p; p = p.parent) {
 			if (app.hidden.has(p.id)) {
 				return true;
 			}
+			soloed = soloed || app.soloed.has(p.id);
 		}
-		return false;
+		return app.soloed.size > 0 && !soloed;
 	};
 
 	app.select = function (part) {
