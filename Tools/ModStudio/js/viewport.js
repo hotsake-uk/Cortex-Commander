@@ -415,6 +415,10 @@ window.MS = window.MS || {};
 		}
 
 		drawItem(ctx, item, tint) {
+			if (item.kind === 'sprite' && !tint && item.part.pieces) {
+				this.drawPieces(ctx, item);
+				return;
+			}
 			if (item.kind === 'sprite' && !tint && item.part.layers) {
 				this.drawLayers(ctx, item);
 				return;
@@ -448,6 +452,86 @@ window.MS = window.MS || {};
 				ctx.drawImage(image, so.x - pad, so.y - pad);
 			}
 			ctx.restore();
+		}
+
+		// Where each piece of a bunker assembly is, and how big (its picture, or a 12 px marker for things without one: doors, deployments, actors).
+		pieceBoxes(item) {
+			const boxes = [];
+			const origin = item.pose.pos;
+			const drag = this.pieceDrag;
+			for (const piece of item.part.pieces) {
+				const at = drag && drag.index === piece.index ? { x: piece.pos.x + drag.dx, y: piece.pos.y + drag.dy } : piece.pos;
+				let w = 12;
+				let h = 12;
+				let image = null;
+				if (piece.files) {
+					const file = piece.files.FGColorFile || piece.files.BGColorFile || piece.files.MaterialFile;
+					const frame = file ? this.app.sprite(file, 1, 0) : null;
+					if (frame) {
+						w = frame.width;
+						h = frame.height;
+						image = frame;
+					}
+				}
+				const x = Math.floor(origin.x + at.x - w / 2);
+				const y = Math.floor(origin.y + at.y - h / 2);
+				boxes.push({ piece, x, y, w, h, image });
+			}
+			return boxes;
+		}
+
+		drawPieces(ctx, item) {
+			const show = this.terrainShow || 'both';
+			const selected = this.app.selectedPiece;
+			for (const box of this.pieceBoxes(item)) {
+				const piece = box.piece;
+				if (piece.files) {
+					const order = show === 'mat' ? [['MaterialFile', true]] : show === 'fg' ? [['FGColorFile', false]] : show === 'bg' ? [['BGColorFile', false]] : [['BGColorFile', false], ['FGColorFile', false]];
+					for (const [key, material] of order) {
+						const frame = piece.files[key] ? this.layerImage(piece.files[key], material) : null;
+						if (frame) {
+							ctx.drawImage(frame.canvas, box.x, box.y);
+						}
+					}
+				} else {
+					// Not a picture: a marker with the first letters of what it is.
+					ctx.save();
+					ctx.fillStyle = piece.cls === 'Deployment' ? 'rgba(120, 200, 255, .35)' : 'rgba(255, 190, 90, .35)';
+					ctx.fillRect(box.x, box.y, box.w, box.h);
+					ctx.strokeStyle = piece.cls === 'Deployment' ? '#78c8ff' : '#ffbe5a';
+					ctx.lineWidth = 0.5;
+					ctx.strokeRect(box.x + 0.25, box.y + 0.25, box.w - 0.5, box.h - 0.5);
+					ctx.fillStyle = '#fff';
+					ctx.font = '4px sans-serif';
+					ctx.fillText(piece.cls.slice(0, 3), box.x + 1, box.y + 7);
+					ctx.restore();
+				}
+				if (piece.index === selected) {
+					ctx.save();
+					ctx.strokeStyle = '#f2b63d';
+					ctx.lineWidth = 1.5 / this.zoom;
+					ctx.setLineDash([3 / this.zoom, 2 / this.zoom]);
+					ctx.strokeRect(box.x, box.y, box.w, box.h);
+					ctx.restore();
+				}
+			}
+		}
+
+		// The piece under a screen point (the one drawn last, on top), or null.
+		pieceAt(sx, sy) {
+			const item = this.drawList.find((i) => i.part.pieces);
+			if (!item) {
+				return null;
+			}
+			const w = this.toWorld(sx, sy);
+			const boxes = this.pieceBoxes(item);
+			for (let i = boxes.length - 1; i >= 0; i--) {
+				const b = boxes[i];
+				if (w.x >= b.x && w.x < b.x + b.w && w.y >= b.y && w.y < b.y + b.h) {
+					return b.piece;
+				}
+			}
+			return null;
 		}
 
 		// A building piece: its background, then its foreground (or one of them, or the material map), as the layer switch says.
@@ -505,6 +589,17 @@ window.MS = window.MS || {};
 
 		// The four corners of an item's picture, in world space.
 		itemRect(item) {
+			if (item.part.pieces) {
+				const boxes = this.pieceBoxes(item);
+				if (!boxes.length) {
+					return null;
+				}
+				const x0 = Math.min(...boxes.map((b) => b.x));
+				const y0 = Math.min(...boxes.map((b) => b.y));
+				const x1 = Math.max(...boxes.map((b) => b.x + b.w));
+				const y1 = Math.max(...boxes.map((b) => b.y + b.h));
+				return [{ x: x0, y: y0 }, { x: x1, y: y0 }, { x: x1, y: y1 }, { x: x0, y: y1 }];
+			}
 			const frame = this.frameFor(item);
 			if (!frame) {
 				return null;
@@ -765,6 +860,15 @@ window.MS = window.MS || {};
 				this.drag = { kind: 'resize' };
 				return;
 			}
+			if (e.button === 0 && this.app.rig && this.app.rig.body.pieces) {
+				// A bunker assembly: click a piece to pick it, drag it to move it (snapping to 12 px, the size of the building grid).
+				const piece = this.pieceAt(e.offsetX, e.offsetY);
+				this.app.selectPiece(piece ? piece.index : null);
+				if (piece) {
+					this.drag = { kind: 'piece', index: piece.index, start: this.toWorld(e.offsetX, e.offsetY), from: { x: piece.pos.x, y: piece.pos.y } };
+					return;
+				}
+			}
 			const pan = e.button === 1 || e.button === 2;
 			if (!pan && this.app.rig) {
 				const handle = this.handleAt(e.offsetX, e.offsetY);
@@ -797,6 +901,15 @@ window.MS = window.MS || {};
 					this.app.onHover(part);
 					this.app.requestDraw();
 				}
+				return;
+			}
+			if (d.kind === 'piece') {
+				const now = this.toWorld(e.offsetX, e.offsetY);
+				const snap = e.altKey ? 1 : 12;
+				const nx = Math.round((d.from.x + now.x - d.start.x) / snap) * snap;
+				const ny = Math.round((d.from.y + now.y - d.start.y) / snap) * snap;
+				this.pieceDrag = { index: d.index, dx: nx - d.from.x, dy: ny - d.from.y, x: nx, y: ny };
+				this.app.requestDraw();
 				return;
 			}
 			if (d.kind === 'resize') {
@@ -836,6 +949,14 @@ window.MS = window.MS || {};
 			this.drag = null;
 			const rc = this.rightClick;
 			this.rightClick = null;
+			if (d && d.kind === 'piece' && this.pieceDrag) {
+				const moved = this.pieceDrag;
+				this.pieceDrag = null;
+				if (moved.dx || moved.dy) {
+					this.app.movePiece(moved.index, moved.x, moved.y);
+				}
+				this.app.requestDraw();
+			}
 			if (rc && d && d.kind === 'pan' && Math.hypot(e.offsetX - rc.x, e.offsetY - rc.y) < 4 && rc.part) {
 				MS.panels.showPartMenu(rc.part, rc.cx, rc.cy);
 			}

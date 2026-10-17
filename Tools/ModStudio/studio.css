@@ -1074,3 +1074,9 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .theme-hue::-webkit-slider-thumb { -webkit-appearance: none; width: 8px; height: 18px; border-radius: 3px; background: var(--text); border: 1px solid var(--bg); }
 .theme-hue-box.sel .theme-sub { color: var(--text); }
 .theme-light-row { display: block; margin-top: 8px; color: var(--dim); font-size: 12px; }
+.piece-row { display: grid; grid-template-columns: 44px minmax(0, 1fr) 64px 64px 22px; gap: 6px; align-items: center; padding: 2px 4px; border-radius: 4px; cursor: pointer; }
+.piece-row:hover { background: var(--panel2); }
+.piece-row.sel { background: var(--panel3); }
+.piece-row small { color: var(--faint); overflow: hidden; text-overflow: ellipsis; }
+.piece-name { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.piece-row .ed-input { width: 100%; min-width: 0; padding: 2px 4px; }
