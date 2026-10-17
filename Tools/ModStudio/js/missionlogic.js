@@ -480,7 +480,8 @@ window.MS = window.MS || {};
 	// two lines and the last are hidden), so completions know self is the mission, and st and actor are there, as they are when it runs.
 	function codeDialog(path, cls, code, set, readOnly) {
 		const a = app();
-		const head = ['function ' + cls + ':StudioCode(actor)', '\tlocal st = self.StudioState'];
+		// what the code can use, on lines the editor hides: self (the mission), actor, st, vars (the mission's variables) and, in a script node, args
+		const head = ['function ' + cls + ':StudioCode(actor)', '\tlocal st = self.StudioState; local vars = st.vars; local args = {}'];
 		const body = String(code || '').split('\n').map((l) => '\t' + l);
 		const host = el('div', { className: 'ml-codehost' }, el('p', { className: 'ed-note', textContent: 'Opening the code editor…' }));
 		const status = el('div', { className: 'ml-codestatus' });

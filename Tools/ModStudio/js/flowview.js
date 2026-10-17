@@ -29,6 +29,18 @@ window.MS = window.MS || {};
 	// How many characters wide a text box is drawn, from what it holds, so the node grows to show it.
 	const sizeFor = (v) => Math.max(12, Math.min(48, String(v === undefined || v === null ? '' : v).length + 2));
 
+	// a script setting's kinds (see flowmodel's LIST_ROWS.args)
+	const LIST_TYPES = [['value', 'number'], ['bool', 'yes / no'], ['text', 'text'], ['area', 'area'], ['team', 'team']];
+	// a node's wires that go from exits it no longer has (a script's exit renamed or taken out) are cut
+	const tidyExits = (node) => {
+		const keep = new Set(F().exitsOf(node));
+		for (const pin of Object.keys(node.out || {})) {
+			if (!keep.has(pin)) {
+				delete node.out[pin];
+			}
+		}
+	};
+
 	class FlowView {
 		// hooks: graph() the graph shown; change(label, fn) edits it (fn changes the graph in place); snapshot() / commit(label, before) for edits made live
 		// (a drag); undo(); redo(); readOnly; areas() names on the map; pickUnit(cb); pickItem(cb); problems() for the badges; selected(ids) told when the
@@ -136,11 +148,14 @@ window.MS = window.MS || {};
 				if (spec.lists && spec.lists.includes('lines')) {
 					body.append(this.rows(n, 'lines', '+ Line'));
 				}
+				if (n.kind === 'script') {
+					body.append(this.scriptParts(n));
+				}
 			}
 			e.append(body);
 			if (spec) {
 				const exits = el('div', { className: 'fv-exits' });
-				for (const pin of spec.exits) {
+				for (const pin of F().exitsOf(n)) {
 					const out = el('div', { className: 'fv-exit' }, el('span', { textContent: PIN_LABELS[pin] || pin }), el('span', { className: 'fv-pin', title: 'Drag to wire ' + (PIN_LABELS[pin] || pin) }));
 					out.dataset.pin = pin;
 					out.querySelector('.fv-pin').style.borderColor = PIN_COLORS[pin] || '#ccc';
@@ -155,6 +170,89 @@ window.MS = window.MS || {};
 				body.append(el('button', { className: 'tb', textContent: 'Edit the code', onclick: () => this.hooks.openFn && this.hooks.openFn((n.p || {}).fn) }));
 			}
 			return e;
+		}
+
+		// A script node's own settings (a name, its kind, its value: typed here, or a variable or setting for a number) and its exits (renaming one
+		// keeps its wire; the code returns the name of the one to take).
+		scriptParts(n) {
+			const F_ = F();
+			const ro = this.hooks.readOnly;
+			const stop = (c) => {
+				c.addEventListener('pointerdown', (e) => e.stopPropagation());
+				c.addEventListener('keydown', (e) => e.stopPropagation());
+				return c;
+			};
+			const args = (n.lists && n.lists.args) || [];
+			const outs = (n.lists && n.lists.outs) || [];
+			const list = (name) => (g) => {
+				const node = F_.find(g, n.id);
+				node.lists = node.lists || {};
+				node.lists[name] = node.lists[name] || [];
+				return node.lists[name];
+			};
+			const box = el('div', { className: 'fv-script' });
+			box.append(el('div', { className: 'fv-script-head', textContent: 'Settings (args.name)' }));
+			args.forEach((row, i) => {
+				const name = stop(el('input', { type: 'text', className: 'ed-input mono fv-argname', value: row.name || '', disabled: ro, placeholder: 'name', spellcheck: false }));
+				name.onchange = () => this.edit('rename a setting', (g) => {
+					list('args')(g)[i].name = name.value.trim().replace(/[^\w]/g, '_');
+				});
+				const type = stop(el('select', { className: 'ed-input', disabled: ro }, ...LIST_TYPES.map(([v, t]) => el('option', { value: v, textContent: t, selected: v === (row.type || 'value') }))));
+				type.onchange = () => this.edit('change a setting', (g) => {
+					const r = list('args')(g)[i];
+					r.type = type.value;
+					r.value = type.value === 'value' ? { k: 'num', n: 0 } : type.value === 'bool' ? false : type.value === 'team' ? 0 : '';
+				});
+				const kindOf = row.type || 'value';
+				const value = this.field(kindOf === 'value' ? 'value' : kindOf, '', row.value, (v) => this.edit('change a setting', (g) => {
+					list('args')(g)[i].value = v;
+				}));
+				box.append(el('div', { className: 'fv-cond fv-arg' }, name, type, value,
+					el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', disabled: ro, onclick: () => this.edit('take a setting out', (g) => {
+						list('args')(g).splice(i, 1);
+					}) })));
+			});
+			box.append(el('button', { className: 'tb fv-add-cond', textContent: '+ Setting', disabled: ro, onclick: () => this.edit('add a setting', (g) => {
+				const rows = list('args')(g);
+				let k = rows.length + 1;
+				while (rows.some((r) => r.name === 'value' + k)) {
+					k++;
+				}
+				rows.push({ name: rows.length ? 'value' + k : 'value', type: 'value', value: { k: 'num', n: 0 } });
+			}) }));
+			box.append(el('div', { className: 'fv-script-head', textContent: outs.length ? 'Exits (return "name")' : 'Exits (none: it goes on through then)' }));
+			outs.forEach((row, i) => {
+				const name = stop(el('input', { type: 'text', className: 'ed-input mono', value: row.name || '', disabled: ro, placeholder: 'exit name', spellcheck: false }));
+				name.onchange = () => this.edit('rename an exit', (g) => {
+					const node = F_.find(g, n.id);
+					const before = String(list('outs')(g)[i].name || '').trim();
+					const after = name.value.trim();
+					list('outs')(g)[i].name = after;
+					node.out = node.out || {};
+					if (before && after && before !== after && node.out[before] && !node.out[after]) {
+						node.out[after] = node.out[before]; // its wire goes with it
+					}
+					tidyExits(node);
+				});
+				box.append(el('div', { className: 'fv-cond' }, el('span', { className: 'fv-and', textContent: '→' }), name,
+					el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out (and its wire)', disabled: ro, onclick: () => this.edit('take an exit out', (g) => {
+						list('outs')(g).splice(i, 1);
+						tidyExits(F_.find(g, n.id));
+					}) })));
+			});
+			box.append(el('button', { className: 'tb fv-add-cond', textContent: '+ Exit', disabled: ro, onclick: () => this.edit('add an exit', (g) => {
+				const rows = list('outs')(g);
+				const node = F_.find(g, n.id);
+				// true, then false (a yes-or-no script), then exit3, exit4...
+				const next = !rows.length ? 'true' : rows.length === 1 && rows[0].name === 'true' ? 'false' : 'exit' + (rows.length + 1);
+				// the first exit takes over the wire then had
+				if (!rows.length && node.out && node.out.then) {
+					node.out[next] = node.out.then;
+				}
+				rows.push({ name: next });
+				tidyExits(node);
+			}) }));
+			return box;
 		}
 
 		// A list of rows, each with the same settings (a dialogue's lines: what is said, and for how long).

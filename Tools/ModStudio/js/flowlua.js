@@ -207,7 +207,7 @@ window.MS = window.MS || {};
 				// is written to the console and the mission carries on.
 				const label = String(a.label || 'My code').replace(/[\r\n]+/g, ' ');
 				const body = String(a.code || '').replace(/\r\n/g, '\n').split('\n');
-				return ['-- ' + label, 'do', '\tlocal ok, err = pcall(function()', ...indent(body, 2), '\tend)', '\tif not ok then ConsoleMan:PrintString("Studio code (" .. ' + luaStr(label) + ' .. "): " .. tostring(err)) end', 'end'];
+				return ['-- ' + label, 'do', '\tlocal ok, err = pcall(function(vars)', ...indent(body, 2), '\tend, st.vars)', '\tif not ok then ConsoleMan:PrintString("Studio code (" .. ' + luaStr(label) + ' .. "): " .. tostring(err)) end', 'end'];
 			}
 			case 'placeItem': {
 				const parts = String(a.item || '').split('|');
@@ -340,6 +340,32 @@ window.MS = window.MS || {};
 
 	// ---- chains: a node and everything its then wire leads on to ----
 
+	// A script node: its settings in args, its code run (an error is written to the console, and it goes nowhere), then the exit whose name
+	// it returned (with no exits of its own, the chain just goes on).
+	function scriptLua(g, n, depth) {
+		const a = n.p || {};
+		const label = String(a.label || 'My script').replace(/[\r\n]+/g, ' ');
+		const args = ((n.lists && n.lists.args) || []).filter((r) => String(r.name || '').trim()).map((r) => {
+			const v = r.value;
+			const lua = r.type === 'bool' ? (v && typeof v !== 'object' ? 'true' : 'false') : r.type === 'text' || r.type === 'area' ? luaStr(typeof v === 'object' && v ? '' : v || '')
+				: r.type === 'team' ? luaNum(typeof v === 'object' && v ? 0 : v) : valueLua(v && typeof v === 'object' ? v : { k: 'num', n: Number(v) || 0 });
+			return '[' + luaStr(String(r.name).trim()) + '] = ' + lua;
+		});
+		const body = String(a.code || '').replace(/\r\n/g, '\n').split('\n');
+		const L = ['-- ' + label, 'do', '\tlocal args = { ' + args.join(', ') + ' }', '\tlocal ok, route = pcall(function(args, vars)', ...indent(body, 2), '\tend, args, st.vars)',
+			'\tif not ok then ConsoleMan:PrintString("Studio script (" .. ' + luaStr(label) + ' .. "): " .. tostring(route)); route = nil end'];
+		const outs = [...new Set(((n.lists && n.lists.outs) || []).map((o) => String(o.name || '').trim()).filter(Boolean))];
+		outs.forEach((name, i) => {
+			const chain = chainLua(g, (n.out || {})[name], depth + 1);
+			L.push('\t' + (i ? 'elseif' : 'if') + ' route == ' + luaStr(name) + ' then', ...indent(chain.length ? chain : ['-- (nothing)'], 2));
+		});
+		if (outs.length) {
+			L.push('\tend');
+		}
+		L.push('end');
+		return L;
+	}
+
 	function chainLua(g, id, depth) {
 		const L = [];
 		let at = id;
@@ -361,6 +387,15 @@ window.MS = window.MS || {};
 				}
 				L.push('end');
 				break;
+			}
+			if (n.kind === 'script') {
+				L.push(...scriptLua(g, n, depth || 0));
+				const outs = ((n.lists && n.lists.outs) || []).filter((o) => String(o.name || '').trim());
+				if (outs.length) {
+					break; // it went on through the exit its code picked
+				}
+				at = (n.out || {}).then;
+				continue;
 			}
 			if (n.kind === 'doOnce') {
 				L.push('if not st.once[' + key(n.id) + '] then', '\tst.once[' + key(n.id) + '] = true', ...indent(chainLua(g, (n.out || {}).then, (depth || 0) + 1)), 'end');

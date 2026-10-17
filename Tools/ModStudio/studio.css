@@ -1486,3 +1486,9 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* the Mission Editor's map or graph in a tab of its own */
 .me-map > .me-left, .me-logic > .me-right { flex: 1; min-height: 0; }
 .me-logic > .me-right { border-left: 0; }
+/* a script node's own settings and exits */
+.fv-script { display: flex; flex-direction: column; gap: 4px; max-width: 520px; }
+.fv-script-head { margin-top: 4px; font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .5px; color: var(--faint); }
+.fv-arg .fv-argname { min-width: 72px; }
+.fv-flow.fv-script-node .fv-title { background: #e0a458; }
+.fv-node .fv-code-peek { max-width: 380px; text-overflow: ellipsis; }
