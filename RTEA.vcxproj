@@ -966,6 +966,7 @@
     <ClInclude Include="Source\Entities\HeldDevice.h" />
     <ClInclude Include="Source\Entities\Icon.h" />
     <ClInclude Include="Source\Entities\Leg.h" />
+    <ClInclude Include="Source\Entities\UnitSprings.h" />
     <ClInclude Include="Source\Entities\MechLeg.h" />
     <ClInclude Include="Source\Entities\AMech.h" />
     <ClInclude Include="Source\Entities\LimbPath.h" />
@@ -1637,6 +1638,7 @@
     <ClCompile Include="Source\Entities\HeldDevice.cpp" />
     <ClCompile Include="Source\Entities\Icon.cpp" />
     <ClCompile Include="Source\Entities\Leg.cpp" />
+    <ClCompile Include="Source\Entities\UnitSprings.cpp" />
     <ClCompile Include="Source\Entities\MechLeg.cpp" />
     <ClCompile Include="Source\Entities\AMech.cpp" />
     <ClCompile Include="Source\Entities\LimbPath.cpp" />

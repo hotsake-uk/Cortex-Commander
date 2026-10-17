@@ -386,6 +386,30 @@ namespace RTE {
 			m_RenderSquashBulge = bulge;
 		}
 
+		/// Sets how far this is drawn from where it really is, and how much more it is drawn turned, as a unit's springy body or a foot set flat
+		/// on the ground (UnitSprings). Drawing only: it is hit and collides where it really is. Interpolated between sim updates as positions are.
+		/// @param nudge How far it is drawn from where it is, in pixels. @param tilt How much more it is drawn turned, in radians (clockwise on screen).
+		void SetDrawNudge(const Vector& nudge, float tilt = 0.0F) {
+			m_DrawNudge = nudge;
+			m_DrawTilt = tilt;
+		}
+
+		/// Gets this one's own draw nudge as set this sim update (see SetDrawNudge), not interpolated: for the simulation's own drawing sums.
+		const Vector& GetDrawNudgeNow() const { return m_DrawNudge; }
+
+		/// Gets this one's own draw nudge (see SetDrawNudge), interpolated between sim updates, without what it takes from a parent.
+		Vector GetOwnDrawNudge() const;
+
+		/// Gets how far this is drawn from where it is (see SetDrawNudge). Attachables add their parent's.
+		Vector GetDrawNudge() const override { return GetOwnDrawNudge(); }
+
+		/// Gets how much more this is drawn turned (see SetDrawNudge), interpolated, in radians.
+		float GetDrawTilt() const;
+
+		/// A unit's body taking a jolt: a limb torn off it, a heavy hit. Kicks its sprung body (Actor), so it lurches; nothing else does anything.
+		/// @param velocityChange The jolt, as a change of speed in m/s.
+		virtual void JoltBody(const Vector& velocityChange) {}
+
 		/// Gets the gib impulse limit for this MOSRotating, i.e. the amount of impulse force required in a frame to gib this MOSRotating.
 		/// @return The gib impulse limit of this MOSRotating.
 		float GetGibImpulseLimit() const { return m_GibImpulseLimit; }
@@ -657,6 +681,21 @@ namespace RTE {
 		float m_RenderSquashBulge; //!< How wide it is drawn across m_RenderSquashAxis, 1 as it is.
 		Vector m_RenderSquashAxis; //!< The direction it is drawn shortened along, in the world.
 		Vector m_RenderSquashPivot; //!< The point it is squashed towards, from its middle, in the world's directions.
+		Vector m_DrawNudge; //!< How far it is drawn from where it is, in pixels (see SetDrawNudge).
+		Vector m_RenderPrevDrawNudge; //!< m_DrawNudge at the previous sim update, to interpolate from.
+		float m_DrawTilt; //!< How much more it is drawn turned, in radians, clockwise on screen.
+		float m_RenderPrevDrawTilt; //!< m_DrawTilt at the previous sim update.
+
+		/// Where, how turned and in which frame its own sprite is drawn this frame (see GetDrawPose).
+		struct DrawPose {
+			Vector Pos; //!< Where its middle is drawn, in scene coordinates.
+			float Angle = 0.0F; //!< Its turn, in radians, as its rotation's (drawn as minus this on screen).
+			unsigned int Frame = 0;
+		};
+
+		/// Lets a subclass draw its own sprite somewhere other than where it is: a leg bent to reach its foot from a nudged hip (Leg).
+		/// @param pose Set to where and how to draw it, when this returns true. @return Whether to draw it as pose says rather than as it is.
+		virtual bool GetDrawPose(DrawPose& pose) const { return false; }
 
 		// Intermediary drawing bitmap used to flip rotating bitmaps. Owned!
 		BITMAP* m_pFlipBitmap;

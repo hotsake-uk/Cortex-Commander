@@ -401,7 +401,9 @@ void Arm::StoreRenderPreviousState() {
 }
 
 void Arm::DrawHand(const Camera& camera) const {
-	Vector handPos(InterpolateRenderPosition(m_RenderPrevHandPos, m_JointPos + m_HandCurrentOffset + (m_Recoiled ? m_RecoilOffset : Vector())).GetRounded());
+	// (Moved with the body's springs, and with the gun it holds where that lags them: UnitSprings.)
+	Vector nudge = GetDrawNudge() + (m_HeldDevice ? m_HeldDevice->GetOwnDrawNudge() : Vector());
+	Vector handPos((InterpolateRenderPosition(m_RenderPrevHandPos, m_JointPos + m_HandCurrentOffset + (m_Recoiled ? m_RecoilOffset : Vector())) + nudge).GetRounded());
 	handPos -= Vector(static_cast<float>(m_HandSpriteTexture->GetDimensions().w / 2), static_cast<float>(m_HandSpriteTexture->GetDimensions().h / 2));
 
 	if (m_HFlipped) {

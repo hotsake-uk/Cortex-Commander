@@ -478,6 +478,17 @@ namespace RTE {
 		bool UnitsPushObjects() const { return m_UnitsPushObjects; }
 		/// How hard units shove loose objects out of their way, times each unit's own ObjectPushStrength: 1 as the game comes, 0 to 3.
 		float ObjectPushStrength() const { return m_ObjectPushStrength; }
+		/// Whether units move on springs, the way soft tyres do (UnitSprings): the upper body dips as it lands and with each step, leans as it
+		/// starts and stops and rides out rough ground; the head and gun lag it; feet are drawn on the ground, turned to its slope; legs bend at
+		/// the knee to reach them; limbs torn off squash where they land and flop at the knee. Drawing only. On as the game comes.
+		bool UnitSprings() const { return m_UnitSprings; }
+		/// How strongly units move on their springs, times each unit's own Softness: 1 as the game comes, 0 to 3.
+		float UnitSpringStrength() const { return m_UnitSpringStrength; }
+		/// Whether units' legs hold them up through a spring (with unit springs on): what the feet push up is passed on to the body smoothly,
+		/// as a soft tyre's, instead of in a bump at each footfall. Changes how units move. Off as the game comes.
+		bool SprungLegs() const { return m_SprungLegs; }
+		/// Whether big fleshy bodies gib into soft chunks of meat (SoftBodySim's Flesh) that wobble, pile up and bleed. On as the game comes.
+		bool FleshChunks() const { return m_FleshChunks; }
 		/// Whether units' own senses (the walk's look ahead, getting up, leaps, landings, mantling, ducking) see through what their bodies push
 		/// through: grass and soft plants (integrity 5 or under, not flowing). Off as before: grass read as ground over the dirt the floor
 		/// rays find, and units ducked under hanging plants and mantled onto bushes. See Actor::SensesPassTerrain.
@@ -839,12 +850,13 @@ namespace RTE {
 
 		/// Gets what the world simulation overlay shows: 0 nothing, 1 moving liquid, 2 burning ground, 3 smoke thick enough to hide things,
 		/// 4 loose falling pieces of terrain, 5 the weather (wind and what's falling), 6 ropes (how hard each is pulled, and where it's tied),
-		/// 7 soft bodies, 8 vehicle tyres (how squashed each is and where the ground pushes on it).
+		/// 7 soft bodies, 8 vehicle tyres (how squashed each is and where the ground pushes on it), 9 unit springs (how far each unit's body,
+		/// head and gun are nudged, and its feet set on the ground).
 		int WorldSimOverlay() const { return m_WorldSimOverlay; }
 
 		/// Sets what the world simulation overlay shows; see WorldSimOverlay.
-		/// @param which 0 to 8.
-		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 8); }
+		/// @param which 0 to 9.
+		void SetWorldSimOverlay(int which) { m_WorldSimOverlay = std::clamp(which, 0, 9); }
 
 		/// Gets whether the sandbox's stroke log is on.
 		bool ShowSandboxStrokeLog() const { return m_SandboxStrokeLog; }
@@ -1172,6 +1184,10 @@ namespace RTE {
 		void SetUnitsCrossVehicles(bool on) { m_UnitsCrossVehicles = on; }
 		void SetUnitsPushObjects(bool on) { m_UnitsPushObjects = on; }
 		void SetObjectPushStrength(float strength) { m_ObjectPushStrength = std::clamp(strength, 0.0F, 3.0F); }
+		void SetUnitSprings(bool on) { m_UnitSprings = on; }
+		void SetUnitSpringStrength(float strength) { m_UnitSpringStrength = std::clamp(strength, 0.0F, 3.0F); }
+		void SetSprungLegs(bool on) { m_SprungLegs = on; }
+		void SetFleshChunks(bool on) { m_FleshChunks = on; }
 		void SetSensesPassPlants(bool on) { m_SensesPassPlants = on; }
 		void SetSensesPassRungs(bool on) { m_SensesPassRungs = on; }
 		void SetSensesPassSpecks(bool on) { m_SensesPassSpecks = on; }
@@ -1564,6 +1580,10 @@ namespace RTE {
 		bool m_UnitsCrossVehicles = true; //!< See UnitsCrossVehicles.
 		bool m_UnitsPushObjects = true; //!< See UnitsPushObjects.
 		float m_ObjectPushStrength = 1.0F; //!< See ObjectPushStrength.
+		bool m_UnitSprings = true; //!< See UnitSprings.
+		float m_UnitSpringStrength = 1.0F; //!< See UnitSpringStrength.
+		bool m_SprungLegs = false; //!< See SprungLegs.
+		bool m_FleshChunks = true; //!< See FleshChunks.
 		bool m_SensesPassPlants = true; //!< See SensesPassPlants.
 		bool m_SensesPassRungs = true; //!< See SensesPassRungs.
 		bool m_SensesPassSpecks = true; //!< See SensesPassSpecks.

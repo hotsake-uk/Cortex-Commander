@@ -19,6 +19,7 @@ sources += files(
 'AEmitter.cpp',
 'AHuman.cpp',
 'AHumanMovement.cpp',
+'UnitSprings.cpp',
 'Arm.cpp',
 'AtomGroup.cpp',
 'Attachable.cpp',

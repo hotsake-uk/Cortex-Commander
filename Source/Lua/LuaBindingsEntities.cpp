@@ -325,6 +325,7 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, Actor) {
 	    .property("OrderFailText", &Actor::GetOrderFailText)
 	    .property("WeaponRule", &Actor::GetWeaponRule, &Actor::SetWeaponRule)
 	    .property("Temperament", &Actor::GetTemperament, &Actor::SetTemperament)
+	    .property("Softness", &Actor::GetSoftness, &Actor::SetSoftness)
 	    .property("NonCombatant", &Actor::IsNonCombatant, &Actor::SetNonCombatant)
 	    .property("LastAttackerTeam", &Actor::GetLastAttackerTeam)
 	    .property("LastAttackerID", &Actor::GetLastAttackerID)

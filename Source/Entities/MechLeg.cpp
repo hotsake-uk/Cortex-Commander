@@ -1,6 +1,9 @@
 #include "MechLeg.h"
+#include "UnitSprings.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
+
+#include <cmath>
 
 using namespace RTE;
 
@@ -193,4 +196,57 @@ void MechLeg::Update() {
 		SolveBones();
 	}
 	Attachable::Update();
+	UpdateDrawBones();
+}
+
+void MechLeg::UpdateDrawBones() {
+	// (The bones are drawn moved by this, not with the hull's nudge: the foot stays on the ground as the hull dips.)
+	SetInheritsDrawNudge(false);
+	if (m_Shin) {
+		m_Shin->SetInheritsDrawNudge(false);
+	}
+	if (m_Foot) {
+		m_Foot->SetInheritsDrawNudge(false);
+	}
+	Vector nudge = m_Parent && IsAttached() && UnitSprings::Enabled() ? m_Parent->GetDrawNudgeNow() : Vector();
+	if (!m_Shin || nudge.IsZero()) {
+		SetDrawNudge(Vector());
+		if (m_Shin) {
+			m_Shin->SetDrawNudge(Vector());
+		}
+		return;
+	}
+	const Vector hip = GetHipPos() + nudge;
+	const float flip = m_HFlipped ? -1.0F : 1.0F;
+	const float thigh = std::max(GetThighLength(), 1.0F);
+	const float shin = std::max(GetShinLength(), 1.0F);
+	Vector toAnkle = g_SceneMan.ShortestDistance(hip, m_AnklePos, g_SceneMan.SceneWrapsX());
+	float reach = toAnkle.GetMagnitude();
+	if (reach < 0.001F) {
+		return;
+	}
+	Vector direction = toAnkle / reach;
+	reach = std::clamp(reach, std::abs(thigh - shin) + 1.0F, thigh + shin - 0.01F);
+	float hipAngle = std::acos(std::clamp((thigh * thigh + reach * reach - shin * shin) / (2.0F * thigh * reach), -1.0F, 1.0F));
+	Vector kneeA = direction.GetRadRotatedCopy(hipAngle) * thigh;
+	Vector kneeB = direction.GetRadRotatedCopy(-hipAngle) * thigh;
+	Vector knee = hip + (kneeA.m_X * flip >= kneeB.m_X * flip ? kneeA : kneeB);
+	Vector ankle = hip + direction * reach;
+	auto turnTo = [this](const Vector& want, const Vector& own) {
+		return want.GetAbsRadAngle() - own.GetXFlipped(m_HFlipped).GetAbsRadAngle();
+	};
+	auto placed = [this](const Vector& joint, const Vector& jointOffset, float angle) {
+		Vector offset = jointOffset.GetXFlipped(m_HFlipped);
+		Matrix turn(angle);
+		offset *= turn;
+		return joint - offset;
+	};
+	// (How much more each is turned, the short way round.)
+	auto turnBetween = [](float from, float to) {
+		return std::remainder(from - to, 6.2831853F);
+	};
+	float thighAngle = turnTo(knee - hip, m_KneeOffset);
+	SetDrawNudge(placed(hip, m_JointOffset, thighAngle) - m_Pos, turnBetween(m_Rotation.GetRadAngle(), thighAngle));
+	float shinAngle = turnTo(ankle - knee, m_AnkleOffset);
+	m_Shin->SetDrawNudge(placed(knee, m_Shin->GetJointOffset(), shinAngle) - m_Shin->GetPos(), turnBetween(m_Shin->GetRotAngle(), shinAngle));
 }

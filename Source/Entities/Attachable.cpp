@@ -7,6 +7,8 @@
 #include "AEmitter.h"
 #include "Actor.h"
 #include "PieMenu.h"
+#include "Material.h"
+#include "TimerMan.h"
 
 using namespace RTE;
 
@@ -45,6 +47,12 @@ void Attachable::Clear() {
 
 	m_InheritsHFlipped = 1;
 	m_InheritsRotAngle = true;
+	m_InheritsDrawNudge = true;
+	m_Severed = false;
+	m_Squash = 0.0F;
+	m_SquashSpeed = 0.0F;
+	m_SquashAxis.SetXY(0.0F, 1.0F);
+	m_SquashLastVel.Reset();
 	m_InheritedRotAngleOffset = 0;
 	m_MountedRotAngleOffset = 0.0F;
 	m_InheritsFrame = false;
@@ -97,6 +105,7 @@ int Attachable::Create(const Attachable& reference) {
 
 	m_InheritsHFlipped = reference.m_InheritsHFlipped;
 	m_InheritsRotAngle = reference.m_InheritsRotAngle;
+	m_InheritsDrawNudge = reference.m_InheritsDrawNudge;
 	m_InheritedRotAngleOffset = reference.m_InheritedRotAngleOffset;
 	m_MountedRotAngleOffset = reference.m_MountedRotAngleOffset;
 	m_InheritsFrame = reference.m_InheritsFrame;
@@ -408,6 +417,10 @@ void Attachable::Update() {
 
 	MOSRotating::Update();
 
+	if (!m_Parent && m_Severed) {
+		UpdateSeveredSquash();
+	}
+
 	if (m_Parent && m_InheritsFrame) {
 		SetFrame(m_Parent->GetFrame());
 	}
@@ -430,6 +443,53 @@ void Attachable::Update() {
 	}
 
 	m_PreUpdateHasRunThisFrame = false;
+}
+
+void Attachable::UpdateSeveredSquash() {
+	float deltaTime = g_TimerMan.GetDeltaTimeSecs();
+	if (!UnitSprings::Enabled() || deltaTime <= 0.0F) {
+		if (m_Squash != 0.0F) {
+			m_Squash = 0.0F;
+			m_SquashSpeed = 0.0F;
+			SetRenderSquash(Vector(), Vector(0.0F, 1.0F), 1.0F, 1.0F);
+		}
+		return;
+	}
+	// A knock (it hit the ground, a wall, was blown about): squashed along the way it was knocked, by how hard, then it wobbles back like a
+	// soft tyre does. Flesh squashes and wobbles more than armour.
+	Vector knock = m_Vel - m_SquashLastVel;
+	m_SquashLastVel = m_Vel;
+	const Material* material = GetMaterial();
+	float softness = (material && material->GetPresetName().find("Flesh") != std::string::npos) ? 1.0F : 0.5F;
+	softness *= UnitSprings::Strength();
+	float hardness = knock.GetMagnitude();
+	if (hardness > 1.5F && softness > 0.0F) {
+		m_SquashAxis = knock / hardness;
+		m_SquashSpeed += std::min(hardness * 0.9F, 9.0F) * softness;
+	}
+	float omega = 2.0F * c_PI * 6.0F;
+	int steps = 4;
+	float step = deltaTime / static_cast<float>(steps);
+	for (int i = 0; i < steps; ++i) {
+		m_SquashSpeed += (-omega * omega * m_Squash - 2.0F * 0.25F * omega * m_SquashSpeed) * step;
+		m_Squash += m_SquashSpeed * step;
+	}
+	m_Squash = std::clamp(m_Squash, -0.25F, 0.35F);
+	if (std::abs(m_Squash) < 0.005F && std::abs(m_SquashSpeed) < 0.05F) {
+		m_Squash = 0.0F;
+		m_SquashSpeed = 0.0F;
+	}
+	// Squashed towards the side that took the knock (against the ground under it), wider across.
+	float radius = static_cast<float>(std::max(GetSpriteWidth(), GetSpriteHeight())) * 0.5F;
+	SetRenderSquash(m_SquashAxis * -radius, m_SquashAxis, 1.0F - m_Squash, 1.0F + m_Squash * 0.6F);
+}
+
+Vector Attachable::GetDrawNudge() const {
+	Vector nudge = GetOwnDrawNudge();
+	if (m_Parent && m_InheritsDrawNudge) {
+		nudge += m_Parent->GetDrawNudge();
+	}
+	return nudge;
 }
 
 void Attachable::PreUpdate() {

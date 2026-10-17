@@ -10,6 +10,7 @@
 #include "StatusEffect.h"
 #include "SettingsMan.h"
 #include "UnitSpeech.h"
+#include "UnitSprings.h"
 
 #include <algorithm>
 #include <array>
@@ -860,6 +861,19 @@ namespace RTE {
 
 		/// Gets this' temperament (Temperament): what it is like by nature.
 		int GetTemperament() const { return m_Temperament; }
+
+		/// Gets how soft this moves on its springs (UnitSprings): 1 a soldier's subtle bob, about 1.7 a creature's wobble, 0 stiff. From its
+		/// Softness if set, else from what its body is made of and what it is.
+		float GetSoftness() const;
+
+		/// Sets how soft this moves on its springs (see GetSoftness). Below 0: worked out from its body.
+		void SetSoftness(float softness) { m_Softness = softness; m_SoftnessFound = -1.0F; }
+
+		/// Gets this one's springs (UnitSprings), for the debug overlay.
+		const UnitSprings::BodySprings& GetBodySprings() const { return m_BodySprings; }
+
+		/// Kicks its sprung body: a limb torn off, a heavy hit (see MOSRotating::JoltBody).
+		void JoltBody(const Vector& velocityChange) override { UnitSprings::Jolt(m_BodySprings, velocityChange); }
 
 		/// Sets this' temperament (Temperament).
 		void SetTemperament(int temperament) { m_Temperament = std::clamp(temperament, 0, static_cast<int>(TEMPERAMENTCOUNT) - 1); }
@@ -2135,6 +2149,9 @@ namespace RTE {
 		StandingOrder m_StandingOrder; //!< What this was told to do (see GetStandingOrder).
 		int m_WeaponRule; //!< What this may shoot at (see WeaponRule).
 		int m_Temperament; //!< What this is like by nature (see Temperament).
+		float m_Softness = -1.0F; //!< How soft it moves on its springs, below 0 worked out from its body (see GetSoftness).
+		mutable float m_SoftnessFound = -1.0F; //!< The softness worked out from its body, below 0 until it is.
+		UnitSprings::BodySprings m_BodySprings; //!< Its upper body, head and gun on their springs (UnitSprings).
 		int m_NonCombatant; //!< 1 or 0 as set on the preset, -1 to follow the temperament (see IsNonCombatant).
 		MovementProfile m_MovementProfile; //!< What its body can do, as the preset declares it (CR-2).
 		float m_FireAuraRadius = 0.0F; //!< How far round it it sets things alight, in pixels (CR-7; see GetFireAuraRadius).

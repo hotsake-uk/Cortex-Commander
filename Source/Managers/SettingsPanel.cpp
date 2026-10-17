@@ -1550,6 +1550,19 @@ void DebugMan::SettingsGUI() {
 			}
 			Tip("How hard units shove loose objects, and so how heavy an object they can shift: 1 is about their own weight. Times each unit's own ObjectPushStrength, which mods can set. The shoved object's speed stays capped, so it is never thrown.");
 		}
+		Toggle("Units move on springs", g_SettingsMan.UnitSprings(), Normal{true}, [](bool on) { g_SettingsMan.SetUnitSprings(on); });
+		Tip("Units move the way soft tyres do. The upper body is a weight on a spring above the legs: it dips as the unit lands and with each step, leans as it starts and stops, and stays steady while the body under it jolts on rough ground. The head and the gun lag it a little. Feet are drawn on the ground they stand on, turned to its slope, and legs bend at the knee to reach them. Limbs torn off squash where they land and flop at the knee, and the unit lurches. Soldiers move subtly, creatures and monsters wobble more. Drawing only: units are hit where they really are.");
+		if (g_SettingsMan.UnitSprings()) {
+			float springStrength = g_SettingsMan.UnitSpringStrength();
+			if (Slider("Unit spring strength", &springStrength, Normal{1.0F}, 0.0F, 3.0F, "%.2fx")) {
+				g_SettingsMan.SetUnitSpringStrength(springStrength);
+			}
+			Tip("How strongly units move on their springs: how far the body dips and sways, how much the head and gun lag, how much torn-off limbs squash. Times each unit's own softness (a unit's Softness, else from its body: flesh soft, armour less, metal stiff, beasts and monsters more).");
+			Toggle("Units stand on sprung legs (physics)", g_SettingsMan.SprungLegs(), Normal{false}, [](bool on) { g_SettingsMan.SetSprungLegs(on); });
+			Tip("Units' legs hold them up through a spring, as a soft tyre holds a vehicle up: what the feet push up off the ground is passed on to the body smoothly rather than in a bump at each footfall, so walking over rough ground and stairs is smoother and heavier units settle onto their legs. Changes how units actually move, unlike the drawing above.");
+		}
+		Toggle("Big bodies gib into soft flesh", g_SettingsMan.FleshChunks(), Normal{true}, [](bool on) { g_SettingsMan.SetFleshChunks(on); });
+		Tip("A big fleshy unit or creature that gibs (and a limb torn off a big one) throws off soft chunks of meat as well as its gibs: they wobble, slide and pile up, can be stood on while they're big, bleed when shot and split where a shot goes through, and after a while burst into blood.");
 		Toggle("Units see through grass and plants", g_SettingsMan.SensesPassPlants(), [](bool on) { g_SettingsMan.SetSensesPassPlants(on); });
 		Tip("Units' own checks (getting up, leaping, landing, ducking, mantling, the walk's look ahead) treat grass, bushes and hanging plants as the open ground their bodies push through. Off, as before: a unit lying on grass may not get up, leaps and landings on thick grass go wrong, units duck under hanging plants and mantle onto bushes.");
 		Toggle("Soldiers see through ladder rungs", g_SettingsMan.SensesPassRungs(), [](bool on) { g_SettingsMan.SetSensesPassRungs(on); });
@@ -2716,10 +2729,10 @@ void DebugMan::SettingsGUI() {
 		Tip("An arrow from the middle of the screen towards the sun, or the moon at night, with how strong its shadows are right now after the time of day and the weather.");
 		{
 			int world = g_SettingsMan.WorldSimOverlay();
-			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0Ropes\0Soft bodies\0Vehicle tyres\0")) {
+			if (Combo("World simulation overlay", &world, "None\0Flowing liquid\0Burning ground\0Smoke that hides things\0Falling pieces\0Weather\0Ropes\0Soft bodies\0Vehicle tyres\0Unit springs\0")) {
 				g_SettingsMan.SetWorldSimOverlay(world);
 			}
-			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out, and a ring round each lit candle. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is. Ropes: each link green when slack to red when about to snap, orange where it burns, a square where it's tied to the ground and a ring where it's tied to a unit or thing. Soft bodies: each blob's ring of points, white at rest, redder squashed and bluer stretched, with a ring at its middle that grows with how many of its points units are pressing on. Vehicle tyres: each vehicle wheel's outline, grey in the air, green on the ground to red with its tyre squashed all the way, a yellow dot and line where and which way the ground pushes on a soft tyre, a bar beside it for how far its spring is pushed in, and a red dot when it is up against a wall it can't roll up.");
+			Tip("What one of the world's simulations is doing in view. Flowing liquid: the liquid and loose-ground pixels on the move, each in its own material's colour (powders hollow), with a count of each in view. Burning ground: each burning pixel, yellow when fresh to red as it burns out, and a ring round each lit candle. Smoke: the smoke grid's cells, darker where thicker, outlined where thick enough to hide units. Falling pieces: each loose piece of terrain with its size and which way it's going. Weather: the wind as an arrow, and how much rain, snow and dust there is. Ropes: each link green when slack to red when about to snap, orange where it burns, a square where it's tied to the ground and a ring where it's tied to a unit or thing. Soft bodies: each blob's ring of points, white at rest, redder squashed and bluer stretched, with a ring at its middle that grows with how many of its points units are pressing on. Vehicle tyres: each vehicle wheel's outline, grey in the air, green on the ground to red with its tyre squashed all the way, a yellow dot and line where and which way the ground pushes on a soft tyre, a bar beside it for how far its spring is pushed in, and a red dot when it is up against a wall it can't roll up. Unit springs: each unit's body nudge as a line from where it is to where it is drawn (green, turning red at its limit), its head's and gun's in yellow and blue, and a cyan tick under each foot set on the ground, turned to the slope.");
 		}
 	};
 

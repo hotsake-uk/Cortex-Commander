@@ -1581,6 +1581,10 @@ void ACrab::Update() {
 	if (!m_BornLegless && !HasLegsLeft() && m_Status != DYING && m_Status != DEAD)
 		m_Health -= 0.1;
 
+	// The body on its springs (UnitSprings): drawn dipping and swaying with how it was pushed this update; a legless one squashes instead.
+	const bool onFeet = m_Status == STABLE && m_AirMode == AirMode::None && !(m_pJetpack && m_pJetpack->IsEmitting());
+	UnitSprings::UpdateActor(*this, m_BodySprings, onFeet, m_StrideFrame);
+
 	/////////////////////////////////////////
 	// Misc.
 

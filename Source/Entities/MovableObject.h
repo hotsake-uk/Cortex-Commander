@@ -948,9 +948,13 @@ namespace RTE {
 		/// This is render only: it is never read by the simulation, so it can't affect determinism.
 		virtual void StoreRenderPreviousState();
 
-		/// Gets the position to render this at, interpolated between the previous and the current sim update.
+		/// Gets the position to render this at, interpolated between the previous and the current sim update, with its draw nudge.
 		/// @return The interpolated render position.
-		Vector GetRenderPos() const { return InterpolateRenderPosition(m_RenderPrevPos, m_Pos); }
+		Vector GetRenderPos() const { return InterpolateRenderPosition(m_RenderPrevPos, m_Pos) + GetDrawNudge(); }
+
+		/// Gets how far this is drawn from where it really is, in pixels (a unit's springy upper body, a foot set on the ground; see
+		/// MOSRotating::SetDrawNudge). Drawing only: it is never read by the simulation.
+		virtual Vector GetDrawNudge() const { return Vector(); }
 
 		/// Gets how this is blended when drawn: 0 normal, 1 additive (glowy energy, plasma), 2 screen (soft light).
 		int GetRenderBlendMode() const { return m_RenderBlendMode; }

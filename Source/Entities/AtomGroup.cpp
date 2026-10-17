@@ -1305,6 +1305,12 @@ bool AtomGroup::PushAsLimb(const Vector& jointPos, const float limbRadius, const
 		}
 	}
 
+	// Sprung legs: the push up held back, to be passed on to the body through a spring (UnitSprings::PassOnSupport).
+	if (m_HeldLimbPush && pushImpulse.m_Y < 0.0F) {
+		*m_HeldLimbPush += pushImpulse.m_Y;
+		pushImpulse.m_Y = 0.0F;
+	}
+
 	m_OwnerMOSR->AddImpulseForce(pushImpulse, affectRotation ? (g_SceneMan.ShortestDistance(m_OwnerMOSR->GetPos(), adjustedJointPos) * c_MPP) : Vector());
 
 	return true;

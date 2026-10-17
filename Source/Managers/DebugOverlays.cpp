@@ -5,6 +5,8 @@
 #include "Actor.h"
 #include "ACShip.h"
 #include "AVehicle.h"
+#include "AHuman.h"
+#include "Leg.h"
 #include "MovableMan.h"
 #include "PostProcessMan.h"
 #include "SceneLighting.h"
@@ -715,6 +717,48 @@ void DebugOverlays::DrawWorldSim() {
 				}
 			}
 			std::snprintf(text, sizeof(text), "vehicle wheels: %d, %d soft tyres, %d on the ground", wheels, soft, down);
+			caption(text);
+			break;
+		}
+		case 9: {
+			// Unit springs (UnitSprings): each unit's body nudge, a line from where it is to where it is drawn, green turning red at its limit;
+			// its head's (yellow) and gun's (blue) from there; and a cyan tick under each foot set on the ground, turned to the slope.
+			int units = 0;
+			int planted = 0;
+			float thickness = std::max(1.5F, 1.0F / perPixel);
+			auto nudgeLine = [&](const Vector& from, const Vector& nudge, ImU32 color) {
+				Vector tip = from + nudge * 4.0F;
+				drawList->AddLine(DebugDraw::ToScreen(from), DebugDraw::ToScreen(tip), color, thickness);
+				drawList->AddCircleFilled(DebugDraw::ToScreen(tip), 2.5F, color, 8);
+			};
+			for (const Actor* actor: g_MovableMan.GetActorList()) {
+				const UnitSprings::BodySprings& springs = actor->GetBodySprings();
+				if (!springs.Started) {
+					continue;
+				}
+				++units;
+				float limit = std::max(springs.Height * 0.07F * springs.Softness, 0.01F);
+				float share = std::clamp(springs.Body.Value.GetLargest() / limit, 0.0F, 1.0F);
+				ImU32 bodyColor = IM_COL32(static_cast<int>(80.0F + 175.0F * share), static_cast<int>(230.0F - 180.0F * share), 70, 230);
+				Vector middle = actor->GetPos();
+				nudgeLine(middle, springs.Body.Value, bodyColor);
+				nudgeLine(middle + springs.Body.Value, springs.Head.Value, IM_COL32(255, 220, 80, 230));
+				nudgeLine(middle + springs.Body.Value, springs.Gun.Value, IM_COL32(110, 170, 255, 230));
+				if (const AHuman* human = dynamic_cast<const AHuman*>(actor)) {
+					for (const Leg* leg: {human->GetFGLeg(), human->GetBGLeg()}) {
+						const Attachable* foot = leg ? leg->GetFoot() : nullptr;
+						if (!foot || foot->GetOwnDrawNudge().IsZero()) {
+							continue;
+						}
+						++planted;
+						float halfWidth = static_cast<float>(foot->GetSpriteWidth()) * 0.5F;
+						Vector bottom = foot->GetPos() + foot->GetOwnDrawNudge() + Vector(0.0F, static_cast<float>(foot->GetSpriteHeight()) * 0.5F);
+						Vector across(halfWidth * std::cos(foot->GetDrawTilt()), halfWidth * std::sin(foot->GetDrawTilt()));
+						drawList->AddLine(DebugDraw::ToScreen(bottom - across), DebugDraw::ToScreen(bottom + across), IM_COL32(80, 230, 255, 255), thickness);
+					}
+				}
+			}
+			std::snprintf(text, sizeof(text), "units on springs: %d, %d feet set on the ground", units, planted);
 			caption(text);
 			break;
 		}

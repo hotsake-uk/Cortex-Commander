@@ -86,11 +86,19 @@ namespace RTE {
 		/// Gets a copy of this Leg's foot AtomGroup to be used as an Actor's FootGroup.
 		/// @return A copy of this Leg's foot AtomGroup to be used as an Actor's FootGroup. OWNERSHIP IS TRANSFERRED!
 		AtomGroup* GetFootGroupFromFootAtomGroup();
+
+		/// Gets whether this is drawn as two pictures, a thigh and a shin bent at the knee (ShinSprite set), rather than one stretched picture.
+		bool HasShin() const { return m_ShinSpriteTexture != nullptr; }
 #pragma endregion
 
 #pragma region Override Methods
 		/// Updates this Leg. Supposed to be done every frame.
 		void Update() override;
+
+		using Attachable::Draw;
+
+		/// Draws it, and its shin below the knee when it has one (see HasShin).
+		void Draw(const Camera& camera) const override;
 #pragma endregion
 
 	protected:
@@ -113,6 +121,26 @@ namespace RTE {
 		bool m_WillIdle; //!< Whether the Leg will go to idle position if the target position is above the Leg's joint position.
 		float m_MoveSpeed; //!< How fast the Leg moves to a reach target, 0 means it doesn't and 1 means it moves instantly.
 
+		// Two pictures, opt in (ShinSprite): this one's own sprite is the thigh, the shin hangs from its knee, bent forward to reach the ankle.
+		ContentFile m_ShinSpriteFile; //!< The shin's picture, if it has one.
+		std::shared_ptr<Texture> m_ShinSpriteTexture; //!< The shin's picture as a texture, null for a one-picture leg.
+		Vector m_KneeOffset; //!< Where the knee is in the thigh's picture, from the joint at the hip, upright and facing right.
+		Vector m_ShinJointOffset; //!< Where the knee is in the shin's picture, from its middle, upright and facing right.
+		Vector m_ShinAnkleOffset; //!< Where the ankle is in the shin's picture, from the knee, upright and facing right.
+
+		// Its foot set on the ground (UnitSprings): drawn on the ground under it, turned to its slope.
+		Vector m_FootNudge; //!< How far its foot is drawn from where it is, in pixels.
+		float m_FootTilt; //!< How much more its foot is drawn turned, in radians.
+
+		// Torn off (UnitSprings): the lower leg swings loose about the knee as a pendulum, bending it.
+		float m_Flop; //!< How far the lower leg has swung from straight, in radians.
+		float m_FlopSpeed; //!< How fast it is swinging, in radians a second.
+		Vector m_FlopLastVel; //!< The leg's speed at the last update, for how hard it was pushed.
+
+		/// Where its sprite is drawn this frame: bent to reach its foot from a hip moved with the body's springs (UnitSprings), or as the thigh
+		/// of a two-picture leg. See MOSRotating::GetDrawPose.
+		bool GetDrawPose(DrawPose& pose) const override;
+
 	private:
 #pragma region Update Breakdown
 		/// Updates the current ankle offset for this Leg. Should only be called from Update.
@@ -126,6 +154,20 @@ namespace RTE {
 		/// Updates the frame and rotation of the Leg's foot Attachable. Should only be called from Update.
 		/// If the Leg is attached, the foot's rotation and frame depend on the ankle offset, otherwise the foot's rotation is set to be perpendicular to the Leg's rotation.
 		void UpdateFootFrameAndRotation();
+
+		/// Gets the rotation its one picture is drawn at to reach an ankle (see UpdateLegRotation), in radians.
+		/// @param ankleOffset From its joint to the ankle. @param normalizedExtension How far out the ankle is between contracted and extended, 0 to 1.
+		float GetAngleToReach(const Vector& ankleOffset, float normalizedExtension) const;
+
+		/// Works out where a two-picture leg's knee is to reach an ankle: bent forward, the way it faces. See HasShin.
+		/// @param hip The joint at the hip. @param ankle The ankle. @return The knee, in the same coordinates.
+		Vector GetKnee(const Vector& hip, const Vector& ankle) const;
+
+		/// Sets its foot on the ground under it, turned to its slope (UnitSprings), while its unit stands on it. Should only be called from Update.
+		void UpdateFootOnGround();
+
+		/// Swings its lower leg loose about the knee while it is torn off (UnitSprings). Should only be called from Update.
+		void UpdateFlop();
 #pragma endregion
 
 		/// Clears all the member variables of this Leg, effectively resetting the members of this abstraction level only.

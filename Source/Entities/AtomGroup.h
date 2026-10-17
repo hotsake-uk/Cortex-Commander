@@ -229,6 +229,11 @@ namespace RTE {
 		/// @return Whether the LimbPath passed in could start free of terrain or not.
 		bool PushAsLimb(const Vector& jointPos, const float limbRadius, const Vector& velocity, const Matrix& rotation, LimbPath& limbPath, const float travelTime, bool* restarted = nullptr, bool affectRotation = true, Vector rotationOffset = Vector(), Vector positionOffset = Vector());
 
+		/// Sets where a foot's push up on its owner goes instead of straight onto it, while PushAsLimb runs: sprung legs (UnitSprings) hold it
+		/// back to pass it on through a spring. Its push down and along still go straight on.
+		/// @param sink Added to with the push up, in N s (negative: up), or null to push straight on as before.
+		void SetHeldLimbPush(float* sink) { m_HeldLimbPush = sink; }
+
 		/// Makes this AtomGroup travel as a lifeless limb, constrained to a radius around the joint pin in the center.
 		/// @param ownerPos A Vector with the world position of the owner MOSRotating.
 		/// @param jointOffset A Vector with the rotated offset of the joint that this should flail around in a radius.
@@ -294,6 +299,8 @@ namespace RTE {
 #pragma endregion
 
 	protected:
+		float* m_HeldLimbPush = nullptr; //!< Where its push up goes while held for sprung legs (see SetHeldLimbPush), else null.
+
 		/// Enumeration for how the AtomGroup's area is distributed. Linear means it acts a 2D line whereas Circle/Square acts as a pseudo-3d circle/square.
 		enum class AreaDistributionType {
 			Linear,

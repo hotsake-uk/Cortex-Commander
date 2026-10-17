@@ -257,6 +257,21 @@ namespace RTE {
 		/// @param inheritsRotAngle Whether or not to inherit its parent's RotAngle.
 		void SetInheritsRotAngle(bool inheritsRotAngle) { m_InheritsRotAngle = inheritsRotAngle; }
 
+		/// Gets whether this is drawn moved with its parent's draw nudge while attached (a unit's head and arms ride its springy body), on by default.
+		bool InheritsDrawNudge() const { return m_InheritsDrawNudge; }
+
+		/// Sets whether this is drawn moved with its parent's draw nudge while attached. Off for a foot, which is set on the ground by itself.
+		void SetInheritsDrawNudge(bool inherits) { m_InheritsDrawNudge = inherits; }
+
+		/// Gets how far this is drawn from where it is: its own nudge, plus its parent's while attached and inheriting it (see SetDrawNudge).
+		Vector GetDrawNudge() const override;
+
+		/// Gets whether this was torn off a unit's body (a limb shot or cut off, or thrown off when it gibbed): it squashes where it lands.
+		bool IsSevered() const { return m_Severed; }
+
+		/// Sets this as torn off a unit's body (see IsSevered).
+		void SetSevered() { m_Severed = true; }
+
 		/// Gets the offset of this Attachable's rotation angle from its parent. Only actually applied if the Attachable is set to inherit its parent's rotation angle.
 		/// @return This Attachable's inherited rotation angle offset.
 		float GetInheritedRotAngleOffset() const { return m_InheritedRotAngleOffset; }
@@ -463,6 +478,15 @@ namespace RTE {
 
 		int m_InheritsHFlipped; //!< Whether this Attachable should inherit its parent's HFlipped. Defaults to 1 (normal inheritance).
 		bool m_InheritsRotAngle; //!< Whether this Attachable should inherit its parent's RotAngle. Defaults to true.
+		bool m_InheritsDrawNudge; //!< Whether this is drawn moved with its parent's draw nudge while attached (see InheritsDrawNudge).
+		bool m_Severed; //!< Whether it was torn off a unit's body (see IsSevered).
+		float m_Squash; //!< Torn off: how squashed it is drawn, 0 not, above 0 squashed, below 0 stretched (UnitSprings).
+		float m_SquashSpeed; //!< How fast m_Squash is changing, a second.
+		Vector m_SquashAxis; //!< The way it was last knocked, which it squashes along (a unit vector).
+		Vector m_SquashLastVel; //!< Its speed at the last update, for how hard it was knocked.
+
+		/// Squashes a torn-off limb where it lands and lets it wobble back (UnitSprings). Should only be called from Update.
+		void UpdateSeveredSquash();
 		float m_InheritedRotAngleOffset; //!< The offset by which this Attachable should be rotated when it's set to inherit its parent's rotation angle. Defaults to 0.
 		// TODO: It really sucks this has to be here just because Turrets are Speshul, we should figure out something better.
 		float m_MountedRotAngleOffset; //!< A relative offset angle (in radians) of this Attachable's rotation that should only be set by Turrets. Defaults to 0.

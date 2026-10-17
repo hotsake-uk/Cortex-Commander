@@ -45,13 +45,20 @@ namespace {
 		std::array<unsigned char, 3> Base;
 		std::array<unsigned char, 3> Shadow; //!< Its lower part.
 		std::array<unsigned char, 3> Dark; //!< Its rim.
+		const char* Leak = nullptr; //!< The material what is knocked out of it becomes (drops of it), else Slime.
+		float Lifetime = 0.0F; //!< How long it lasts before it bursts into drops, in seconds; 0 for ever.
 	};
 
 	// Appended to only, so saved games keep their kinds.
 	const TypeData c_Types[] = {
 	    {{"Goo", "Green goo: soft and wobbly, squashes flat under a unit and throws it back up, and pulls itself round again after it's cut in two.", 96, 196, 72}, "Goo", 0.012F, 0.15F, 0.6F, 0.004F, true, 0.996F, 0.5F, 1.1F, 0.4F, {196, 250, 160}, {96, 196, 72}, {64, 150, 52}, {36, 96, 34}},
 	    {{"Jelly", "Pink jelly: firmer, holds its shape and wobbles back to it, and stays cut where it's cut.", 232, 96, 140}, "Jelly", 0.016F, 0.5F, 0.9F, 0.05F, false, 0.994F, 0.4F, 0.9F, 0.15F, {255, 200, 220}, {232, 96, 140}, {184, 64, 108}, {120, 36, 70}},
-	    {{"Bouncy gel", "Blue gel: a trampoline. It keeps nearly all its bounce, and throws whatever lands on it higher than it fell from.", 80, 170, 240}, "Bouncy Gel", 0.012F, 0.4F, 1.0F, 0.02F, true, 0.999F, 0.7F, 1.6F, 0.3F, {210, 240, 255}, {80, 170, 240}, {52, 124, 196}, {30, 76, 140}}};
+	    {{"Bouncy gel", "Blue gel: a trampoline. It keeps nearly all its bounce, and throws whatever lands on it higher than it fell from.", 80, 170, 240}, "Bouncy Gel", 0.012F, 0.4F, 1.0F, 0.02F, true, 0.999F, 0.7F, 1.6F, 0.3F, {210, 240, 255}, {80, 170, 240}, {52, 124, 196}, {30, 76, 140}},
+	    // Thrown off big fleshy bodies as they gib (UnitSprings::FleshChunks): wobbles and slides, piles up, bleeds where it's shot, and after a while
+	    // bursts into blood.
+	    {{"Flesh", "A chunk of meat: soft, heavy and floppy. It slides and piles up, bleeds where it's shot and splits where a shot goes through, and after a while bursts into blood.", 190, 60, 55}, "Soft Flesh", 0.018F, 0.35F, 0.7F, 0.06F, false, 0.99F, 0.3F, 0.4F, 0.25F, {240, 150, 140}, {190, 60, 55}, {140, 36, 36}, {80, 18, 22}, "Blood", 25.0F},
+	    {{"Rubber", "A blob of rubber: firm and very bouncy, springs back to its shape, and dents where it's shot.", 70, 70, 76}, "Soft Rubber", 0.014F, 0.6F, 1.0F, 0.08F, false, 0.997F, 0.75F, 1.3F, 0.2F, {130, 130, 136}, {70, 70, 76}, {46, 46, 50}, {22, 22, 26}, "Rubber"},
+	    {{"Sandbag", "A soft, heavy sandbag: slumps where it lands, makes cover that dents where it's shot, and leaks sand.", 200, 170, 110}, "Soft Sandbag", 0.03F, 0.5F, 0.5F, 0.03F, false, 0.99F, 0.1F, 0.2F, 0.15F, {235, 215, 160}, {200, 170, 110}, {160, 130, 80}, {100, 80, 50}, "Sand"}};
 	constexpr int c_TypeCount = static_cast<int>(std::size(c_Types));
 
 	constexpr int c_MaxBlobs = 200;
@@ -88,6 +95,7 @@ namespace {
 		std::vector<glm::ivec2> Lost; //!< Its pixels knocked out of the terrain (shot, blasted, dug) since it was last drawn.
 		int Cooldown = 0;
 		int Contacts = 0;
+		int Age = 0; //!< How many updates it has lasted, for its kind's Lifetime.
 		bool Done = false;
 	};
 
@@ -125,6 +133,7 @@ namespace {
 	std::array<int, c_TypeCount> s_Material{}; //!< Each kind's terrain material, 0 if the data has none (it is then not drawn in, and nothing stands on it).
 	std::array<std::array<int, 4>, c_TypeCount> s_Shades{}; //!< Each kind's palette colours: shine, body, lower part, rim.
 	int s_Slime = 0;
+	std::array<int, c_TypeCount> s_Leak{}; //!< Each kind's material for what is knocked out of it, 0 for Slime.
 	bool s_TablesBuilt = false;
 	int s_Width = 0;
 	int s_Height = 0;
@@ -150,6 +159,8 @@ namespace {
 			const Material* material = g_SceneMan.GetMaterial(c_Types[type].Material);
 			s_Material[type] = material && material->GetIndex() != g_MaterialAir ? material->GetIndex() : 0;
 			const TypeData& data = c_Types[type];
+			const Material* leak = data.Leak ? g_SceneMan.GetMaterial(data.Leak) : nullptr;
+			s_Leak[type] = leak && leak->GetIndex() != g_MaterialAir ? leak->GetIndex() : 0;
 			s_Shades[type] = {bestfit_color(palette, data.Light[0], data.Light[1], data.Light[2]), bestfit_color(palette, data.Base[0], data.Base[1], data.Base[2]), bestfit_color(palette, data.Shadow[0], data.Shadow[1], data.Shadow[2]), bestfit_color(palette, data.Dark[0], data.Dark[1], data.Dark[2])};
 		}
 		const Material* slime = g_SceneMan.GetMaterial(c_SlimeMaterial);
@@ -341,7 +352,8 @@ namespace {
 
 	/// Throws drops of slime (or of the blob itself, where the data has no slime) from points in an area.
 	void SprayDrops(const Blob& blob, const glm::vec2& middle, const glm::vec2& velocity, int drops) {
-		int material = s_Slime != 0 ? s_Slime : s_Material[blob.Type];
+		int leak = s_Leak[std::clamp(blob.Type, 0, c_TypeCount - 1)];
+		int material = leak != 0 ? leak : (s_Slime != 0 ? s_Slime : s_Material[blob.Type]);
 		const Material* sceneMaterial = material != 0 ? g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material)) : nullptr;
 		if (!sceneMaterial || blob.Points.empty()) {
 			return;
@@ -1338,6 +1350,10 @@ void SoftBodySim::Update() {
 		int reservedPoints = PointCount();
 		for (Blob& blob: s_Blobs) {
 			TakeDamage(blob, pieces, reservedPoints);
+			// A kind that doesn't last (meat) bursts into drops when its time is up.
+			if (float lifetime = TypeOf(blob).Lifetime; !blob.Done && lifetime > 0.0F && static_cast<float>(++blob.Age) * seconds > lifetime) {
+				Burst(blob);
+			}
 			if (blob.Done) {
 				Erase(terrain, blob);
 			}

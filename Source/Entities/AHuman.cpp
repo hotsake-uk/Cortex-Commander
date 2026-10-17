@@ -2823,6 +2823,14 @@ void AHuman::PreControllerUpdate() {
 		pathOffset = m_WalkPathOffset;
 	}
 
+	// Sprung legs (UnitSprings): what the feet push up is held back and passed on to the body through a spring, below, as a soft tyre's is.
+	const bool sprungLegs = UnitSprings::SprungLegs() && m_Status == STABLE && !m_Ladder.active && !m_RopeHold.active && !m_LimbPushForcesAndCollisionsDisabled && m_MovementState != NOMOVE;
+	for (AtomGroup* foot: {m_pFGFootGroup, m_pBGFootGroup, m_BackupFGFootGroup, m_BackupBGFootGroup}) {
+		if (foot) {
+			foot->SetHeldLimbPush(sprungLegs ? &m_BodySprings.HeldPush : nullptr);
+		}
+	}
+
 	if (m_Ladder.active) {
 		// On a ladder: hands and feet on the rungs (see UpdateLadderLimbs), not the walk's paths.
 		UpdateLadderLimbs();
@@ -3085,6 +3093,12 @@ void AHuman::PreControllerUpdate() {
 			m_pBGFootGroup->FlailAsLimb(m_Pos, RotateOffset(m_pBGLeg->GetParentOffset()), m_pBGLeg->GetMaxLength(), m_PrevVel * m_pBGLeg->GetJointStiffness(), m_AngularVel, m_pBGLeg->GetMass(), deltaTime);
 		}
 	}
+	for (AtomGroup* foot: {m_pFGFootGroup, m_pBGFootGroup, m_BackupFGFootGroup, m_BackupBGFootGroup}) {
+		if (foot) {
+			foot->SetHeldLimbPush(nullptr);
+		}
+	}
+	UnitSprings::PassOnSupport(*this, m_BodySprings, sprungLegs);
 	if (m_MovementState != WALK && m_StrideSound && m_StrideSound->GetLoopSetting() < 0) {
 		m_StrideSound->Stop();
 	}
@@ -3551,6 +3565,10 @@ void AHuman::Update() {
 			m_pBGArm->RemoveAttachable(m_pBGArm->GetHeldDevice(), true, false);
 		}
 	}
+
+	// The upper body, head and gun on their springs (UnitSprings): drawn dipping, leaning and lagging with how it was pushed this update.
+	const bool onFeet = m_Status == STABLE && m_MovementState != JUMP && !m_Ladder.active && !m_RopeHold.active && !(m_pJetpack && m_pJetpack->IsEmitting()) && (m_pFGLeg || m_pBGLeg);
+	UnitSprings::UpdateActor(*this, m_BodySprings, onFeet, m_StrideFrame);
 
 	/////////////////////////////////////////
 	// Misc.

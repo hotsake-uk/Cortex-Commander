@@ -84,6 +84,11 @@ namespace RTE {
 		void Update() override;
 #pragma endregion
 
+	private:
+		/// Bends the bones as drawn to reach the ankle from the hip moved with the body's springs (UnitSprings): the thigh and shin each nudged
+		/// and turned so the knee bends as the hull dips, the foot left where it stands. Drawing only.
+		void UpdateDrawBones();
+
 	protected:
 		static Entity::ClassInfo m_sClass; //!< ClassInfo for this class.
 

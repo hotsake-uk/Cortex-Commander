@@ -32,6 +32,7 @@
 #include "PresetMan.h"
 #include "AEmitter.h"
 #include "Material.h"
+#include "SoftBodySim.h"
 #include "MOPixel.h"
 #include "Scene.h"
 #include "SettingsMan.h"
@@ -378,6 +379,7 @@ int Actor::Create(const Actor& reference) {
 	m_StandingOrder = reference.m_StandingOrder;
 	m_WeaponRule = reference.m_WeaponRule;
 	m_Temperament = reference.m_Temperament;
+	m_Softness = reference.m_Softness;
 	m_NonCombatant = reference.m_NonCombatant;
 	m_MovementProfile = reference.m_MovementProfile;
 	m_FireAuraRadius = reference.m_FireAuraRadius;
@@ -560,6 +562,7 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 		reader >> rule;
 		SetWeaponRule(rule);
 	});
+	MatchProperty("Softness", { reader >> m_Softness; });
 	MatchProperty("Temperament", {
 		std::string value;
 		reader >> value;
@@ -894,6 +897,9 @@ void Actor::SaveStandingOrder(Writer& writer) const {
 	}
 	if (m_Temperament != TEMPERAMENT_FIGHTER) {
 		writer.NewPropertyWithValue("Temperament", std::string(TemperamentName(m_Temperament)));
+	}
+	if (m_Softness >= 0.0F) {
+		writer.NewPropertyWithValue("Softness", m_Softness);
 	}
 	if (m_NonCombatant >= 0) {
 		writer.NewPropertyWithValue("NonCombatant", m_NonCombatant != 0);
@@ -1289,6 +1295,31 @@ bool Actor::IsAnimal() const {
 	return IsInGroup("Actors - Livestock") || IsInGroup("Actors - Wildlife") || IsInGroup("Animals");
 }
 
+float Actor::GetSoftness() const {
+	if (m_Softness >= 0.0F) {
+		return m_Softness;
+	}
+	if (m_SoftnessFound < 0.0F) {
+		// From what its body is made of: flesh moves softly, armoured flesh a little less, anything else (metal, a robot's shell) stiffly. Beasts
+		// and monsters wobble more than soldiers do, and mechs (heavy, and with knees to bend) sway more than their metal would say.
+		const Material* material = GetMaterial();
+		const std::string& name = material ? material->GetPresetName() : std::string();
+		float softness = 0.5F;
+		if (name.find("Armoured") != std::string::npos || name.find("Kevlared") != std::string::npos || name.find("Shelled") != std::string::npos) {
+			softness = 0.8F;
+		} else if (name.find("Flesh") != std::string::npos || name.find("Goo") != std::string::npos || name.find("Jelly") != std::string::npos) {
+			softness = 1.0F;
+		}
+		if (IsBeast()) {
+			softness *= 1.7F;
+		} else if (dynamic_cast<const AMech*>(this)) {
+			softness = std::max(softness, 0.9F);
+		}
+		m_SoftnessFound = softness;
+	}
+	return m_SoftnessFound;
+}
+
 bool Actor::IsCreature() const {
 	return IsInGroup("Actors - Creatures");
 }
@@ -1502,6 +1533,24 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 
 	// Gib all the regular gibs
 	MOSRotating::GibThis(impactImpulse, movableObjectToIgnore);
+
+	// A fleshy body also comes apart into soft chunks of meat (SoftBodySim's Flesh): more and bigger the heavier it was.
+	if (UnitSprings::FleshChunks()) {
+		const Material* material = GetMaterial();
+		static const int flesh = SoftBodySim::FindType("Flesh");
+		if (flesh >= 0 && material && material->GetPresetName().find("Flesh") != std::string::npos) {
+			float mass = std::max(GetMass(), 1.0F);
+			int chunks = std::clamp(static_cast<int>(mass / 50.0F), 1, 5);
+			float radius = std::clamp(std::sqrt(mass) * 0.6F, 4.0F, 12.0F);
+			float perUpdate = c_PPM * g_TimerMan.GetDeltaTimeSecs();
+			Vector thrown = (m_Vel + impactImpulse / mass) * perUpdate;
+			for (int chunk = 0; chunk < chunks; ++chunk) {
+				Vector spread(RandomNum(-2.0F, 2.0F), RandomNum(-3.0F, -0.5F));
+				Vector at = m_Pos + Vector(RandomNum(-0.5F, 0.5F), RandomNum(-0.5F, 0.5F)) * (GetRadius() * 0.6F);
+				SoftBodySim::QueueBlob(flesh, at, radius * RandomNum(0.7F, 1.0F), thrown + spread);
+			}
+		}
+	}
 
 	// Throw out all the inventory with the appropriate force and directions
 	DiscardAnimalWeapons();

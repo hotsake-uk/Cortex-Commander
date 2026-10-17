@@ -144,6 +144,10 @@ void MOSRotating::Clear() {
 	m_RenderSquashBulge = 1.0F;
 	m_RenderSquashAxis.SetXY(0.0F, 1.0F);
 	m_RenderSquashPivot.Reset();
+	m_DrawNudge.Reset();
+	m_RenderPrevDrawNudge.Reset();
+	m_DrawTilt = 0.0F;
+	m_RenderPrevDrawTilt = 0.0F;
 }
 
 int MOSRotating::Create() {
@@ -1549,12 +1553,29 @@ void MOSRotating::SetRenderOpacity(float opacity) {
 
 void MOSRotating::StoreRenderPreviousState() {
 	MOSprite::StoreRenderPreviousState();
+	m_RenderPrevDrawNudge = m_DrawNudge;
+	m_RenderPrevDrawTilt = m_DrawTilt;
 	for (Attachable* attachable: m_Attachables) {
 		attachable->StoreRenderPreviousState();
 	}
 	for (AEmitter* wound: m_Wounds) {
 		wound->StoreRenderPreviousState();
 	}
+}
+
+Vector MOSRotating::GetOwnDrawNudge() const {
+	if (!m_HasRenderPrevState) {
+		return m_DrawNudge;
+	}
+	float proportion = static_cast<float>(g_TimerMan.GetSimUpdateProportion());
+	return m_RenderPrevDrawNudge + (m_DrawNudge - m_RenderPrevDrawNudge) * proportion;
+}
+
+float MOSRotating::GetDrawTilt() const {
+	if (!m_HasRenderPrevState) {
+		return m_DrawTilt;
+	}
+	return m_RenderPrevDrawTilt + (m_DrawTilt - m_RenderPrevDrawTilt) * static_cast<float>(g_TimerMan.GetSimUpdateProportion());
 }
 
 void MOSRotating::Travel() {
@@ -1816,7 +1837,22 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 	if (!dynamic_cast<HeldDevice*>(attachable) && ComesFromBody()) {
 		attachable->SetFromBody();
 	}
+	// A part of a unit's body torn off (a limb shot or cut away, or thrown off as it gibs): it squashes where it lands, and a unit still in one
+	// piece lurches from it on its springs (UnitSprings).
+	if (MOSRotating* root = dynamic_cast<MOSRotating*>(GetRootParent()); root && root->IsActor() && !attachable->IsDevice() && !attachable->IsWound() && addToMovableMan) {
+		attachable->SetSevered();
+		if (addBreakWounds && !root->IsSetToDelete()) {
+			Vector away = g_SceneMan.ShortestDistance(attachable->GetPos(), root->GetPos(), g_SceneMan.SceneWrapsX());
+			float share = std::clamp(attachable->GetMass() / std::max(root->GetMass(), 1.0F), 0.05F, 0.5F);
+			if (!away.IsZero()) {
+				away.SetMagnitude(1.0F);
+			}
+			root->JoltBody(away * (2.0F + 8.0F * share) + (attachable->GetVel() - root->GetVel()) * share);
+		}
+	}
 	attachable->SetParent(nullptr);
+	// (Off its unit, it is no longer drawn moved with the unit's springs: UnitSprings.)
+	attachable->SetDrawNudge(Vector());
 	m_AttachableAndWoundMass -= attachable->GetMass();
 
 	std::unordered_map<unsigned long, std::function<void(MOSRotating*, Attachable*)>>::iterator hardcodedAttachableMapEntry = m_HardcodedAttachableUniqueIDsAndSetters.find(attachable->GetUniqueID());
@@ -2178,8 +2214,13 @@ void MOSRotating::Draw(const Camera& camera) const {
 		return;
 	}
 	// Interpolated between the previous and current sim state so motion is smooth at any frame rate. Position is snapped to whole pixels to keep the pixel art crisp.
-	Vector spritePos(GetRenderPos().GetRounded());
+	// (Or where a subclass says, as a leg bent to reach its foot from a nudged hip: GetDrawPose.)
+	DrawPose pose;
+	bool posed = GetDrawPose(pose);
+	Vector spritePos(posed ? pose.Pos.GetRounded() : GetRenderPos().GetRounded());
 	Vector offset(m_SpriteOffset.GetRounded());
+	unsigned int frame = posed ? std::min(pose.Frame, static_cast<unsigned int>(m_Sprites.size()) - 1) : m_Frame;
+	float angle = posed ? pose.Angle : GetRenderRotMatrix().GetRadAngle() - GetDrawTilt();
 
 	if (m_Recoiled) {
 		spritePos += m_RecoilOffset;
@@ -2193,7 +2234,7 @@ void MOSRotating::Draw(const Camera& camera) const {
 
 	Color tint = ApplyRenderBlendMode();
 	ApplySpriteMaps();
-	std::shared_ptr<DrawCall> spriteDraw = Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -GetRenderRotMatrix().GetRadAngle(), scale, tint);
+	std::shared_ptr<DrawCall> spriteDraw = Draw::DrawTexture(m_Sprites[frame].get(), spritePos, offset, -angle, scale, tint);
 	if (spriteDraw && m_RenderSquash != 1.0F) {
 		// Squashed (a soft tyre on the ground): each corner moved towards the pivot along the axis and away from it across, in the world.
 		glm::vec2 pivot(spritePos.m_X + m_RenderSquashPivot.m_X, spritePos.m_Y + m_RenderSquashPivot.m_Y);

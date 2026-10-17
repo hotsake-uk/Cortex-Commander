@@ -237,6 +237,10 @@ void SettingsMan::Clear() {
 	m_UnitsCrossVehicles = true;
 	m_UnitsPushObjects = true;
 	m_ObjectPushStrength = 1.0F;
+	m_UnitSprings = true;
+	m_UnitSpringStrength = 1.0F;
+	m_SprungLegs = false;
+	m_FleshChunks = true;
 	m_SensesPassPlants = true;
 	m_SensesPassRungs = true;
 	m_SensesPassSpecks = true;
@@ -1208,6 +1212,10 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("UnitsCrossVehicles", { reader >> m_UnitsCrossVehicles; });
 	MatchProperty("UnitsPushObjects", { reader >> m_UnitsPushObjects; });
 	MatchProperty("ObjectPushStrength", { float strength = 1.0F; reader >> strength; SetObjectPushStrength(strength); });
+	MatchProperty("UnitSprings", { reader >> m_UnitSprings; });
+	MatchProperty("UnitSpringStrength", { float strength = 1.0F; reader >> strength; SetUnitSpringStrength(strength); });
+	MatchProperty("SprungLegs", { reader >> m_SprungLegs; });
+	MatchProperty("FleshChunks", { reader >> m_FleshChunks; });
 	MatchProperty("SensesPassPlants", { reader >> m_SensesPassPlants; });
 	MatchProperty("SensesPassRungs", { reader >> m_SensesPassRungs; });
 	MatchProperty("SensesPassSpecks", { reader >> m_SensesPassSpecks; });
@@ -1972,6 +1980,10 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("UnitsCrossVehicles", m_UnitsCrossVehicles);
 	writer.NewPropertyWithValue("UnitsPushObjects", m_UnitsPushObjects);
 	writer.NewPropertyWithValue("ObjectPushStrength", m_ObjectPushStrength);
+	writer.NewPropertyWithValue("UnitSprings", m_UnitSprings);
+	writer.NewPropertyWithValue("UnitSpringStrength", m_UnitSpringStrength);
+	writer.NewPropertyWithValue("SprungLegs", m_SprungLegs);
+	writer.NewPropertyWithValue("FleshChunks", m_FleshChunks);
 	writer.NewPropertyWithValue("SensesPassPlants", m_SensesPassPlants);
 	writer.NewPropertyWithValue("SensesPassRungs", m_SensesPassRungs);
 	writer.NewPropertyWithValue("SensesPassSpecks", m_SensesPassSpecks);
