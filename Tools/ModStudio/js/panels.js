@@ -1260,6 +1260,16 @@ window.MS = window.MS || {};
 			where.append(n);
 		}
 
+		if (part.role === 'body' && (ent.cls === 'AHuman' || ent.cls === 'ACrab')) {
+			// How the feet move: the paths they follow, drawn and draggable.
+			const walk = section(insp, 'How it walks');
+			const open = document.createElement('button');
+			open.className = 'small-btn';
+			open.textContent = 'Limb paths…';
+			open.title = 'Draw and drag the paths the feet follow when it stands, walks, runs, crouches and jumps';
+			open.onclick = () => (app.needsCopy() ? app.copyThen(part, () => MS.limbs.open()) : locked ? app.toast(locked, 'bad') : MS.limbs.open());
+			walk.append(open);
+		}
 		if (part.pieces) {
 			// A bunker assembly: the pieces it places. Click a row (or the piece in the view) to pick it; drag it in the view or type where it goes.
 			const pieces = part.pieces;
