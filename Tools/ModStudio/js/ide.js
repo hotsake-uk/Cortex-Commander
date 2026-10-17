@@ -784,6 +784,26 @@ window.MS = window.MS || {};
 	function renderTabs() {
 		const bar = $('tabbar');
 		bar.innerHTML = '';
+		// the empty end of the bar takes a dropped tab too (at the end)
+		if (!bar.dataset.dropBound) {
+			bar.dataset.dropBound = '1';
+			bar.addEventListener('dragover', (e) => {
+				if (MS.popout.isTabDrag(e)) {
+					e.preventDefault();
+					e.dataTransfer.dropEffect = 'move';
+					bar.classList.add('drop-on');
+				}
+			});
+			bar.addEventListener('dragleave', (e) => {
+				if (!bar.contains(e.relatedTarget)) {
+					bar.classList.remove('drop-on');
+				}
+			});
+			bar.addEventListener('drop', (e) => {
+				bar.classList.remove('drop-on');
+				MS.popout.drop(e, null);
+			});
+		}
 		// Design mode has tabs too, but only the designer and the sprite editors; Script mode has them all.
 		const shown = ide.tabs.filter((t) => (!MS.popout.request || MS.popout.request.k === 'design' || t.kind !== 'designer') && (ide.mode === 'deep' || t.kind === 'designer' || t.sprite));
 		$('app').classList.toggle('has-tabs', ide.mode === 'deep' || shown.some((t) => t.sprite) || shown.filter((t) => t.kind === 'designer').length > 1);
@@ -791,8 +811,28 @@ window.MS = window.MS || {};
 			const dirty = tabDirty(tab) || !!(tab.sprite && tab.px && tab.px.dirty);
 			const icon = el('span', { className: 'tab-icon ' + (tab.kind === 'designer' ? 'designer' : tab.kind === 'form' ? 'form' : extOf(tab.path)), textContent: tab.kind === 'designer' ? '◆' : tab.kind === 'form' ? tab.icon || '▦' : extOf(tab.path) });
 			const item = el('div', { className: 'tab' + (tab === ide.active ? ' sel' : '') + (dirty ? ' dirty' : '') + (tab.readOnly ? ' ro' : ''), title: tab.path || (tab.kind === 'form' ? tab.title : 'The unit designer') }, icon, el('span', { className: 'tab-name', textContent: tabTitle(tab) }));
-			if (tab.sprite || tab.kind === 'designer' || (tab.kind === 'form' && tab.editor) || (tab.kind === 'code' && !tab.doc)) {
-				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window' });
+			// tabs drag along the bar, into another Studio window's bar, or out of the window into one of their own
+			item.draggable = true;
+			item.ondragstart = (e) => MS.popout.dragStart(e, tab);
+			item.ondragend = (e) => MS.popout.dragEnd(e, tab);
+			item.ondragover = (e) => {
+				if (MS.popout.isTabDrag(e)) {
+					e.preventDefault();
+					e.dataTransfer.dropEffect = 'move';
+					const r = item.getBoundingClientRect();
+					item.classList.toggle('drop-before', e.clientX < r.left + r.width / 2);
+					item.classList.toggle('drop-after', e.clientX >= r.left + r.width / 2);
+				}
+			};
+			item.ondragleave = () => item.classList.remove('drop-before', 'drop-after');
+			item.ondrop = (e) => {
+				const after = item.classList.contains('drop-after');
+				item.classList.remove('drop-before', 'drop-after');
+				e.stopPropagation();
+				MS.popout.drop(e, after ? ide.tabs[ide.tabs.indexOf(tab) + 1] || null : tab);
+			};
+			if (MS.popout.canMove(tab)) {
+				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window (or drag the tab out of the window, or into another one)' });
 				pop.onclick = (e) => {
 					e.stopPropagation();
 					MS.popout.pop(tab);

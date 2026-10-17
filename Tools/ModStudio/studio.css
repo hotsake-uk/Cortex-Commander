@@ -1324,3 +1324,8 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .ml-codestatus.bad { color: #ef6a5b; }
 .fv-code { display: flex; flex-direction: column; gap: 4px; flex: 1; min-width: 0; }
 .fv-code-peek { margin: 0; padding: 4px 6px; max-height: 70px; overflow: hidden; font: 11px ui-monospace, Consolas, monospace; color: var(--dim); background: #0b0e14; border: 1px solid var(--line); border-radius: 3px; white-space: pre; }
+/* tabs being dragged: where one would land */
+#tabbar.drop-on { box-shadow: inset 0 -2px 0 var(--accent, #f2b63d); }
+.tab.drop-before { box-shadow: inset 3px 0 0 var(--accent, #f2b63d); }
+.tab.drop-after { box-shadow: inset -3px 0 0 var(--accent, #f2b63d); }
+.tab[draggable="true"] { -webkit-user-drag: element; }

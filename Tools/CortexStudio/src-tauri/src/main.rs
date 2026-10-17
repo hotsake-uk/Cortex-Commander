@@ -260,6 +260,8 @@ fn main() {
 						.inner_size(1100.0, 800.0)
 						.min_inner_size(500.0, 400.0)
 						.zoom_hotkeys_enabled(false)
+						// the page's own drag and drop (tabs between windows, files dropped in): the app's handler would take every drop
+						.disable_drag_drop_handler()
 						.on_page_load(|webview, payload| {
 							if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
 								let _ = webview.set_zoom(zoom());
@@ -275,6 +277,8 @@ fn main() {
 				// Ctrl (Cmd on macOS) + and - zoom and 0 resets, as in a browser, but handled by the page (js/zoom.js), which tells Studio's server, so the
 				// zoom can be kept: the webview's own hotkeys can't be read back.
 				.zoom_hotkeys_enabled(false)
+				// the page handles drag and drop itself (tabs dragged between windows, files dropped in)
+				.disable_drag_drop_handler()
 				.on_page_load(|webview, payload| {
 					if matches!(payload.event(), tauri::webview::PageLoadEvent::Finished) {
 						let _ = webview.set_zoom(zoom());
