@@ -42,6 +42,9 @@ const chain = (...steps) => {
 const cond = (branch, kind, p) => branch.lists.conds.push(Object.assign(F.condDefaults(kind), p));
 const say = (text, seconds, blink) => node('message', { text, who: 'all', seconds: seconds || 8, blink: !!blink });
 
+// one area, or a list of them for a step stacked over several
+const stack = (areas) => (areas.length === 1 ? areas[0] : areas);
+
 // ---- spawning, as Decision Day's ----
 // one unit in each box of an area, standing guard
 const guards = (area, arm, facing, group) => node('spawn', { source: 'group', group: group || (arm === 'heavy' || arm === 'cqb' ? 'Actors - Heavy' : 'Actors - Light'), team: 1, area, perBox: true, arrive: 'appear', facing: facing || 'middle', ai: 'sentry', tag: 'Defenders', arm });
@@ -50,9 +53,9 @@ const turrets = (area) => node('spawn', { source: 'preset', preset: 'ACrab|Trade
 const bunkerDefenders = (bunker, regions, withTurrets) => [
 	guards(bunker + ' Left Defenders', 'sniper', 'left', 'Actors - Light'),
 	guards(bunker + ' Right Defenders', 'sniper', 'right', 'Actors - Light'),
-	guards(bunker + ' Internal Defenders', 'cqb', 'middle'),
+	// close-quarters troops inside and in each capture region: one spawn over all those areas
+	guards(stack([bunker + ' Internal Defenders', ...regions.map((r) => r + ' Defenders')]), 'cqb', 'middle'),
 	withTurrets ? turrets(bunker + ' Internal Turrets') : null,
-	...regions.map((r) => guards(r + ' Defenders', 'cqb', 'middle')),
 ];
 
 // ---- capture regions ----
@@ -80,8 +83,8 @@ const R = {
 	mediumVault: region('Main medium vault', XB + ' Medium Vault', false, 'Capture to gain funds', 'providing you with funds'),
 	largeVault: region('Main large vault', XB + ' Large Vault', false, 'Capture to gain funds', 'providing you with funds'),
 };
-const on = (...points) => points.map((p) => node('captureSet', { target: p.id, do: 'on', team: 0 }));
-const off = (...points) => points.map((p) => node('captureSet', { target: p.id, do: 'off', team: 0 }));
+const on = (...points) => node('captureSet', { target: points.map((p) => p.id), do: 'on', team: 0 });
+const off = (...points) => node('captureSet', { target: points.map((p) => p.id), do: 'off', team: 0 });
 
 // vaults: a bonus the first time you take one, and gold every second while you hold it (Decision Day: 1500 and 6 a second, times the vault's
 // size and the Vault income setting)
@@ -199,7 +202,7 @@ const doorWave = (seconds, bunker, ops, doors, count) => {
 		cond(check, 'captureOwner', { target: ops.id, team: 1 });
 	}
 	cond(check, 'unitsWho', { team: 1, which: 'any', op: '<', count: 70 });
-	wire(check, 'true', chain(...doors.map((d) => node('spawn', { source: 'group', group: 'Actors - Heavy', team: 1, area: d, count: num(count, true), arrive: 'door', facing: 'auto', ai: 'goto', goTo: bunker, tag: 'Door Troops', arm: 'cqb' }))));
+	wire(check, 'true', node('spawn', { source: 'group', group: 'Actors - Heavy', team: 1, area: stack(doors), count: num(count, true), arrive: 'door', facing: 'auto', ai: 'goto', goTo: bunker, tag: 'Door Troops', arm: 'cqb' }));
 };
 doorWave(100, FB, R.frontOps, [FB + ' Internal Reinforcements', FB + ' Small Vault Internal Reinforcements'], 2);
 doorWave(100, MB, R.middleOps, [MB + ' Internal Reinforcements', MB + ' Operations Internal Reinforcements'], 4);
@@ -210,7 +213,7 @@ const defend = (point, area, doors) => {
 	const attacked = node('captureAttacked', { target: point.id, cooldown: num(60) });
 	wire(attacked, 'then', chain(
 		node('order', { who: 'area', team: 1, area, ai: 'goto', goTo: area + ' Capture' }),
-		...doors.map((d) => node('spawn', { source: 'group', group: 'Actors - Light', team: 1, area: d, count: num(2, true), arrive: 'door', facing: 'auto', ai: 'goto', goTo: area + ' Capture', tag: 'Door Troops', arm: 'mix' })),
+		doors.length ? node('spawn', { source: 'group', group: 'Actors - Light', team: 1, area: stack(doors), count: num(2, true), arrive: 'door', facing: 'auto', ai: 'goto', goTo: area + ' Capture', tag: 'Door Troops', arm: 'mix' }) : null,
 	));
 };
 defend(R.frontOps, FB + ' Operations', []);

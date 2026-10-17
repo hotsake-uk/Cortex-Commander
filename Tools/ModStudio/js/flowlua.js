@@ -102,6 +102,13 @@ window.MS = window.MS || {};
 	// ---- actions: the lines a step runs ----
 
 	function actionLua(g, n) {
+		// a step stacked over several areas: the same lines for each area in turn
+		if (Array.isArray((n.p || {}).area)) {
+			return n.p.area.filter(Boolean).flatMap((area) => {
+				const lines = actionLua(g, Object.assign({}, n, { p: Object.assign({}, n.p, { area }) }));
+				return lines.length > 1 ? ['do', ...lines.map((l) => '\t' + l), 'end'] : lines;
+			});
+		}
 		const a = n.p || {};
 		switch (n.kind) {
 			case 'message': {
@@ -125,8 +132,11 @@ window.MS = window.MS || {};
 				return ['st.vars[' + luaStr(a.name) + '] = ' + expr];
 			}
 			case 'captureSet': {
-				const c = 'st.cap[' + luaStr(a.target) + ']';
-				return ['if ' + c + ' then', a.do === 'off' ? '\t' + c + '.active = false' : a.do === 'own' ? '\t' + c + '.owner = ' + luaNum(a.team) + '; ' + c + '.progress = 0' : '\t' + c + '.active = true', 'end'];
+				// each point picked, in turn
+				return F.idsOf(a.target).flatMap((id) => {
+					const c = 'st.cap[' + luaStr(id) + ']';
+					return ['if ' + c + ' then', a.do === 'off' ? '\t' + c + '.active = false' : a.do === 'own' ? '\t' + c + '.owner = ' + luaNum(a.team) + '; ' + c + '.progress = 0' : '\t' + c + '.active = true', 'end'];
+				});
 			}
 			case 'doors': {
 				const act = a.do === 'close' ? 'd:CloseDoor()' : a.do === 'lock' ? 'd.Status = Actor.INACTIVE' : a.do === 'unlock' ? 'd.Status = Actor.STABLE' : 'd:OpenDoor()';

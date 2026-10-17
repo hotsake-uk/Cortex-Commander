@@ -130,6 +130,7 @@ window.MS = window.MS || {};
 			doc.hint = null;
 		}
 		if (doc.view) {
+			doc.view.only = focusIds(doc); // a stage's nodes as they are now, with any just made
 			doc.view.render();
 		}
 		if (doc.refreshBar) {
@@ -168,8 +169,8 @@ window.MS = window.MS || {};
 		const names = [];
 		const spec = F().KINDS[n.kind];
 		for (const [key, type] of spec ? spec.params : []) {
-			if (type === 'area' && n.p && n.p[key]) {
-				names.push(n.p[key]);
+			if (type === 'area' && n.p) {
+				names.push(...F().idsOf(n.p[key]));
 			}
 		}
 		for (const c of (n.lists && n.lists.conds) || []) {
@@ -190,8 +191,8 @@ window.MS = window.MS || {};
 		const spec = F().KINDS[n.kind];
 		const cat = spec ? spec.category : '';
 		for (const [key, type] of spec ? spec.params : []) {
-			const name = p[key];
-			if (type !== 'area' || !name || !F().relevant(spec, p, key)) {
+			const list = F().idsOf(p[key]);
+			if (type !== 'area' || !list.length || !F().relevant(spec, p, key)) {
 				continue;
 			}
 			let role = 'trigger';
@@ -214,7 +215,7 @@ window.MS = window.MS || {};
 			} else if (n.kind === 'order' || n.kind === 'control') {
 				role = 'orders';
 			}
-			roles.push([name, role]);
+			list.forEach((name) => roles.push([name, role]));
 		}
 		for (const c of (n.lists && n.lists.conds) || []) {
 			if (c.area) {
@@ -347,6 +348,7 @@ window.MS = window.MS || {};
 			pickUnit: (cb) => pickers.pickUnit(cb),
 			pickItem: (cb) => pickers.pickItem(cb),
 			highlight: (names) => ctx.highlight(names),
+			suggests: (kind, key) => suggests(doc, path, kind, key),
 			codeStages: () => scriptStages(path, ctx).map((c) => ({ name: c.name, label: words(c.name) })),
 			editCode: (code, set, ro) => codeDialog(path, cls, code, set, ro),
 			selected: (ids) => {
@@ -387,6 +389,10 @@ window.MS = window.MS || {};
 					const measure = (n) => {
 						const e = view.nodeEls.get(n.id);
 						return e ? e.offsetHeight : 0;
+					};
+					measure.width = (n) => {
+						const e = view.nodeEls.get(n.id);
+						return e ? e.offsetWidth : 0;
 					};
 					change(doc, 'tidy up the graph', (g) => F().layout(g, true, measure));
 					requestAnimationFrame(() => view.fit());
@@ -536,6 +542,173 @@ window.MS = window.MS || {};
 		});
 	}
 
+	// ---- what a text setting offers to pick ----
+
+	// The game's presets by class, the groups units are put in, and the mods: read once per load of the library.
+	let libMemo = null;
+	const ACTOR_CLASSES = ['AHuman', 'ACrab', 'Actor', 'Turret', 'AMech', 'ACRocket', 'ACDropShip', 'ACShip', 'AVehicle', 'ADoor'];
+	function libLists() {
+		const lib = app().lib;
+		if (!lib || !lib.presets) {
+			return null;
+		}
+		if (libMemo && libMemo.lib === lib && libMemo.gen === lib.generation) {
+			return libMemo;
+		}
+		const all = Array.isArray(lib.presets) ? lib.presets : Object.values(lib.presets);
+		const byCls = new Map();
+		const groups = new Set();
+		const modules = new Set();
+		for (const p of all) {
+			if (!byCls.has(p.cls)) {
+				byCls.set(p.cls, []);
+			}
+			byCls.get(p.cls).push(p);
+			modules.add(p.module);
+			if (ACTOR_CLASSES.includes(p.cls) && p.node && p.node.children) {
+				p.node.children.forEach((c) => c.key === 'AddToGroup' && c.value && groups.add(String(c.value).trim()));
+			}
+		}
+		libMemo = { lib, gen: lib.generation, byCls, groups: [...groups].sort(), modules: [...modules].filter((m) => /\.rte$/i.test(m || '')).sort(), lists: new Map() };
+		return libMemo;
+	}
+
+	// Presets of these classes as things to pick: the value is the name, or name|module where the setting takes that.
+	function presetItems(classes, withModule) {
+		const L = libLists();
+		if (!L) {
+			return [];
+		}
+		const memoKey = classes.join() + withModule;
+		if (!L.lists.has(memoKey)) {
+			const seen = new Set();
+			const out = [];
+			for (const cls of classes) {
+				for (const p of L.byCls.get(cls) || []) {
+					const v = withModule ? p.name + '|' + p.module : p.name;
+					if (p.name && !seen.has(v)) {
+						seen.add(v);
+						out.push({ v, t: p.name, sub: p.module + (classes.length > 1 ? ' · ' + p.cls : '') });
+					}
+				}
+			}
+			L.lists.set(memoKey, out.sort((a, b) => a.t.localeCompare(b.t)));
+		}
+		return L.lists.get(memoKey);
+	}
+
+	// Names this mission already uses: the groups it puts units in, its variables, flags and pie buttons.
+	function missionNames(g) {
+		const out = { groups: new Set(), vars: new Set(), flags: new Set(), pies: new Set() };
+		const add = (set, v) => v && String(v).trim() && set.add(String(v).trim());
+		const vars = (x) => {
+			if (x && typeof x === 'object') {
+				if (x.k === 'var') {
+					add(out.vars, x.name);
+				}
+				Object.values(x).forEach(vars);
+			}
+		};
+		for (const n of g.nodes) {
+			const p = n.p || {};
+			add(out.groups, p.tag);
+			if (p.which === 'group' || n.kind === 'order' || n.kind === 'groupGone' || (n.kind === 'pieAdd' && p.to === 'group')) {
+				add(out.groups, p.group);
+			}
+			if (n.kind === 'setVar' || n.kind === 'varReaches') {
+				add(out.vars, p.name);
+			}
+			if (n.kind === 'flag' || n.kind === 'flagChanges') {
+				add(out.flags, p.name);
+			}
+			if (/^pie/.test(n.kind)) {
+				add(out.pies, p.label);
+			}
+			vars(p);
+			for (const c of (n.lists && n.lists.conds) || []) {
+				vars(c);
+				if (c.kind === 'var') {
+					add(out.vars, c.name);
+				}
+				if (c.kind === 'flag') {
+					add(out.flags, c.name);
+				}
+				if (c.kind === 'group' || c.which === 'group') {
+					add(out.groups, c.group);
+				}
+			}
+		}
+		return out;
+	}
+
+	// The values the script keeps on itself (self.something), outside what Studio writes.
+	function scriptFields(path) {
+		const text = String(scriptText(path) || '').replace(/-- >>> Studio flow[\s\S]*?-- <<< Studio flow/, '');
+		const out = new Set();
+		for (const m of text.matchAll(/self\.([A-Za-z_]\w*)\s*(?![\w(:])/g)) {
+			out.add(m[1]);
+		}
+		return [...out].sort();
+	}
+
+	// What a text setting offers, as a function giving the items (see FlowView.combo), or null for plain text.
+	function suggests(doc, path, kind, key) {
+		const k = String(kind).replace(/^cond:/, '');
+		const names = (set, sec) => [...set].sort().map((v) => ({ v, t: v, sec }));
+		const groups = () => (libLists() ? libLists().groups : []).map((v) => ({ v, t: v, sec: 'Groups the game\'s units are in' }));
+		const made = () => names(missionNames(doc.g).groups, 'Groups this mission puts units in');
+		if (key === 'group') {
+			// a tech's group to pick a random unit from, or a group of units on the map
+			return k === 'spawn' || k === 'playerStart' ? groups : () => made().concat(groups());
+		}
+		if (key === 'tag') {
+			return () => made().concat(groups());
+		}
+		if (key === 'named') {
+			return () => presetItems(ACTOR_CLASSES, false);
+		}
+		if (key === 'loadout') {
+			return () => presetItems(['Loadout'], false);
+		}
+		if (key === 'progressScreen' || key === 'idleScreen') {
+			return () => presetItems(['MOSParticle'], true);
+		}
+		if (key === 'terminalOn' || key === 'terminalOff') {
+			// a pair of presets told apart by Left / Right can be picked as one: {side} is filled in from where the point is
+			return () => {
+				const all = presetItems(['TerrainObject'], true);
+				const sided = new Map();
+				all.filter((i) => / (Left|Right)( |$|\|)/.test(i.v)).forEach((i) => {
+					const v = i.v.replace(/ (Left|Right)( |$|\|)/, ' {side}$2');
+					sided.set(v, { v, t: i.t.replace(/ (Left|Right)( |$)/, ' {side}$2'), sub: i.sub, sec: 'Left or right, by where it stands' });
+				});
+				return [...sided.values()].concat(all.map((i) => Object.assign({}, i, { sec: 'One preset' })));
+			};
+		}
+		if (key === 'object') {
+			return () => presetItems(['TerrainObject'], true);
+		}
+		if (key === 'song') {
+			return () => presetItems(['DynamicSong'], false);
+		}
+		if (key === 'tech') {
+			return () => (libLists() ? libLists().modules : []).map((v) => ({ v, t: v }));
+		}
+		if (key === 'name' && ['varReaches', 'setVar', 'var', 'value'].includes(k)) {
+			return () => names(missionNames(doc.g).vars, 'Variables this mission uses');
+		}
+		if (key === 'name' && ['flag', 'flagChanges'].includes(k)) {
+			return () => names(missionNames(doc.g).flags, 'Flags this mission uses');
+		}
+		if (key === 'label' && /^pie/.test(k)) {
+			return () => names(missionNames(doc.g).pies, 'Buttons this mission makes');
+		}
+		if (key === 'field') {
+			return () => scriptFields(path).map((v) => ({ v, t: 'self.' + v, sec: 'Values the script keeps' }));
+		}
+		return null;
+	}
+
 	// ---- stages ----
 
 	// The nodes that belong to a stage: it, what runs from its exits (up to another stage), the capture points it or they name (the one it is
@@ -545,7 +718,7 @@ window.MS = window.MS || {};
 		const points = (n) => {
 			const spec = F().KINDS[n.kind];
 			if (spec && spec.category !== 'event') {
-				spec.params.forEach(([key, type]) => type === 'capture' && n.p && walk(n.p[key]));
+				spec.params.forEach(([key, type]) => (type === 'capture' || type === 'captures') && n.p && F().idsOf(n.p[key]).forEach(walk));
 			}
 		};
 		const walk = (id) => {
@@ -955,7 +1128,9 @@ window.MS = window.MS || {};
 			for (const n of g.nodes) {
 				const spec = F().KINDS[n.kind];
 				for (const [key, type] of spec ? spec.params : []) {
-					if (type === 'area' && n.p[key] === from) {
+					if (type === 'area' && Array.isArray(n.p[key])) {
+						n.p[key] = n.p[key].map((x) => (x === from ? to : x));
+					} else if (type === 'area' && n.p[key] === from) {
 						n.p[key] = to;
 					}
 				}

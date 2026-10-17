@@ -26,6 +26,9 @@ window.MS = window.MS || {};
 	const VALUE_KINDS = [['num', 'a number'], ['var', 'a variable'], ['setting', 'a scenario setting'], ['difficulty', 'the difficulty (0.5 to 2)'], ['time', 'seconds since it began']];
 	const TEAM_NAMES = ['Team 1', 'Team 2', 'Team 3', 'Team 4'];
 
+	// How many characters wide a text box is drawn, from what it holds, so the node grows to show it.
+	const sizeFor = (v) => Math.max(12, Math.min(48, String(v === undefined || v === null ? '' : v).length + 2));
+
 	class FlowView {
 		// hooks: graph() the graph shown; change(label, fn) edits it (fn changes the graph in place); snapshot() / commit(label, before) for edits made live
 		// (a drag); undo(); redo(); readOnly; areas() names on the map; pickUnit(cb); pickItem(cb); problems() for the badges; selected(ids) told when the
@@ -125,7 +128,7 @@ window.MS = window.MS || {};
 					}
 					body.append(this.field(type, label, (n.p || {})[key], (value) => this.edit('change ' + (label || key), (g) => {
 						F().find(g, n.id).p[key] = value;
-					}), options));
+					}), options, { kind: n.kind, key }));
 				}
 				if (n.kind === 'branch') {
 					body.append(this.conditions(n));
@@ -163,7 +166,7 @@ window.MS = window.MS || {};
 				box.append(el('div', { className: 'fv-cond' }, el('span', { className: 'fv-and', textContent: String(i + 1) }),
 					...params.map(([key, type, label, , options]) => this.field(type, label, row[key], (value) => this.edit('change a line', (g) => {
 						F_.find(g, n.id).lists[listName][i][key] = value;
-					}), options)),
+					}), options, { kind: n.kind + ':' + listName, key })),
 					el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', disabled: this.hooks.readOnly, onclick: () => this.edit('take a line out', (g) => {
 						F_.find(g, n.id).lists[listName].splice(i, 1);
 					}) })));
@@ -191,7 +194,7 @@ window.MS = window.MS || {};
 				const row = el('div', { className: 'fv-cond' }, el('span', { className: 'fv-and', textContent: i ? 'and' : 'if' }), kind,
 					...(spec ? spec.params.filter(([key]) => !spec.relevant || spec.relevant(c, key)).map(([key, type, label, , options]) => this.field(type, label, c[key], (value) => this.edit('change a condition', (g) => {
 						F_.find(g, n.id).lists.conds[i][key] = value;
-					}), options)) : []),
+					}), options, { kind: 'cond:' + c.kind, key })) : []),
 					el('button', { className: 'ico-btn', textContent: '×', title: 'Take this condition out', disabled: this.hooks.readOnly, onclick: () => this.edit('take a condition out', (g) => {
 						F_.find(g, n.id).lists.conds.splice(i, 1);
 					}) }));
@@ -203,8 +206,8 @@ window.MS = window.MS || {};
 			return box;
 		}
 
-		// One setting, as a small input that edits the graph when it changes.
-		field(type, label, value, set, options) {
+		// One setting, as a small input that edits the graph when it changes. where: { kind, key }, which setting it is (for what it offers).
+		field(type, label, value, set, options, where) {
 			const ro = this.hooks.readOnly;
 			const F_ = F();
 			let input;
@@ -215,6 +218,22 @@ window.MS = window.MS || {};
 			};
 			if (type === 'team') {
 				input = select([[-1, 'any team'], ...TEAM_NAMES.map((t, i) => [i, t])], value, Number);
+			} else if (type === 'area' && where && F_.stacks(where.kind, where.key)) {
+				// one area or several: the step runs in each
+				const names = this.hooks.areas ? this.hooks.areas() : [];
+				const picked = F_.idsOf(value);
+				const rest = names.filter((x) => !picked.includes(x));
+				const add = el('select', { className: 'ed-input fv-area', disabled: ro || !rest.length },
+					el('option', { value: '', textContent: picked.length ? '+ another area' : '(pick an area)' }), ...rest.map((x) => el('option', { value: x, textContent: x })));
+				add.onchange = () => set(picked.length ? picked.concat(add.value) : add.value);
+				add.onfocus = () => this.hooks.highlight && this.hooks.highlight(picked);
+				const one = (x) => el('span', { className: 'fv-chip' + (names.includes(x) ? '' : ' gone'), title: names.includes(x) ? x : 'The scene has no area called ' + x }, x,
+					ro ? null : el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', onclick: (e) => {
+						e.preventDefault();
+						const left = picked.filter((y) => y !== x);
+						set(left.length > 1 ? left : left[0] || '');
+					} }));
+				input = el('div', { className: 'fv-chips' }, ...picked.map(one), add);
 			} else if (type === 'area') {
 				const names = this.hooks.areas ? this.hooks.areas() : [];
 				const options = [...new Set([...names, ...(value ? [value] : [])])];
@@ -237,6 +256,25 @@ window.MS = window.MS || {};
 					stages.length ? el('optgroup', { label: 'Mission stages' }, ...stages.map((s) => option(s.id, (s.p && s.p.name) || s.id))) : null,
 					coded.length ? el('optgroup', { label: 'In the script' }, ...coded.map((c) => option('code:' + c.name, c.label))) : null);
 				input.onchange = () => set(input.value);
+			} else if (type === 'captures') {
+				// one or more: a chip for each, and a list to add another (or all the rest)
+				const points = this.g.nodes.filter((x) => x.kind === 'capture');
+				const ids = F_.idsOf(value);
+				const nameOf = (id) => {
+					const x = F_.find(this.g, id);
+					return x ? (x.p && x.p.name) || id : '(not there any more)';
+				};
+				const rest = points.filter((x) => !ids.includes(x.id));
+				const add = el('select', { className: 'ed-input', disabled: ro || !rest.length },
+					el('option', { value: '', textContent: !points.length ? '(add a capture point first)' : !rest.length ? '(all picked)' : ids.length ? '+ add another' : '(pick capture points)' }),
+					rest.length > 1 ? el('option', { value: '*', textContent: '+ all of them' }) : null,
+					...rest.map((x) => el('option', { value: x.id, textContent: nameOf(x.id) })));
+				add.onchange = () => set(add.value === '*' ? ids.concat(rest.map((x) => x.id)) : ids.concat(add.value));
+				input = el('div', { className: 'fv-chips' }, ...ids.map((id) => el('span', { className: 'fv-chip' + (F_.find(this.g, id) ? '' : ' gone') }, nameOf(id),
+					ro ? null : el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', onclick: (e) => {
+						e.preventDefault();
+						set(ids.filter((x) => x !== id));
+					} }))), add);
 			} else if (type === 'capture') {
 				const points = this.g.nodes.filter((x) => x.kind === 'capture');
 				input = select([['', points.length ? '(pick a capture point)' : '(add a capture point first)'], ...points.map((x) => [x.id, (x.p && x.p.name) || x.id])], value || '');
@@ -261,12 +299,116 @@ window.MS = window.MS || {};
 				const name = String(value || '').split('|')[1] || '(pick one)';
 				input = el('button', { className: 'tb', textContent: name, disabled: ro, onclick: () => (type === 'preset' ? this.hooks.pickUnit : this.hooks.pickItem)((chosen) => set(chosen.cls + '|' + chosen.name + '|' + chosen.module)) });
 			} else {
-				input = el('input', { type: 'text', className: 'ed-input' + (type === 'fn' ? ' mono' : ''), value: value === undefined ? '' : value, disabled: ro });
-				input.onchange = () => set(input.value);
+				// a name of something: type it, or search what there is of that kind (the game's presets, names used in this mission, the script's values)
+				const items = where && this.hooks.suggests ? this.hooks.suggests(where.kind, where.key) : null;
+				if (items) {
+					input = this.combo(value, items, set, ro);
+				} else {
+					input = el('input', { type: 'text', className: 'ed-input' + (type === 'fn' ? ' mono' : ''), value: value === undefined ? '' : value, size: sizeFor(value), disabled: ro });
+					input.onchange = () => set(input.value);
+				}
 			}
 			input.addEventListener('pointerdown', (e) => e.stopPropagation());
 			input.addEventListener('keydown', (e) => e.stopPropagation());
 			return el('label', { className: 'fv-field' + (type === 'bool' ? ' fv-bool' : '') }, label ? el('span', { textContent: label }) : null, input);
+		}
+
+		// A text box that offers what there is to pick as you type: items() gives [{ v: the value, t: what it is called, sub: a note, sec: its heading }].
+		// Anything typed is kept too (a group or a variable can be a new name). Up and down move through the list, Enter picks, Escape closes it.
+		combo(value, items, set, ro) {
+			const start = value === undefined || value === null ? '' : String(value);
+			const input = el('input', { type: 'text', className: 'ed-input fv-combo', value: start, size: sizeFor(start), disabled: ro, placeholder: 'type to search', spellcheck: false });
+			let pop = null;
+			let rows = [];
+			let shown = [];
+			let at = -1;
+			let done = false;
+			const close = () => {
+				if (pop) {
+					pop.remove();
+					pop = null;
+				}
+			};
+			const commit = (text) => {
+				if (done) {
+					return;
+				}
+				close();
+				if (text !== start) {
+					done = true;
+					set(text);
+				}
+			};
+			const mark = () => rows.forEach((r, i) => {
+				r.classList.toggle('on', i === at);
+				if (i === at) {
+					r.scrollIntoView({ block: 'nearest' });
+				}
+			});
+			const open = () => {
+				close();
+				const list = items() || [];
+				const q = input.value.trim().toLowerCase();
+				// a value picked already shows the whole list (to look through); typing narrows it
+				const words = list.some((it) => it.v === input.value) ? [] : q.split(/\s+/).filter(Boolean);
+				shown = list.filter((it) => {
+					const hay = (it.t + ' ' + (it.sub || '') + ' ' + it.v).toLowerCase();
+					return words.every((w) => hay.includes(w));
+				}).slice(0, 400);
+				if (!shown.length) {
+					return;
+				}
+				pop = el('div', { className: 'fv-suggest' });
+				rows = [];
+				let sec = null;
+				shown.forEach((it) => {
+					if (it.sec && it.sec !== sec) {
+						sec = it.sec;
+						pop.append(el('div', { className: 'fv-suggest-sec', textContent: sec }));
+					}
+					const row = el('div', { className: 'fv-suggest-item' + (it.v === input.value ? ' cur' : ''), title: it.v }, el('span', { textContent: it.t }), it.sub ? el('small', { textContent: it.sub }) : null);
+					row.addEventListener('pointerdown', (e) => {
+						e.preventDefault();
+						input.value = it.v;
+						commit(it.v);
+					});
+					rows.push(row);
+					pop.append(row);
+				});
+				const r = input.getBoundingClientRect();
+				Object.assign(pop.style, { left: Math.min(r.left, innerWidth - 300) + 'px', top: r.bottom + 2 + 'px', minWidth: Math.max(240, r.width) + 'px' });
+				document.body.append(pop);
+				const pr = pop.getBoundingClientRect();
+				if (pr.bottom > innerHeight - 8) {
+					pop.style.top = Math.max(8, r.top - 2 - pr.height) + 'px';
+				}
+			};
+			input.addEventListener('focus', () => {
+				at = -1;
+				open();
+			});
+			input.addEventListener('input', () => {
+				at = -1;
+				input.size = sizeFor(input.value);
+				open();
+			});
+			input.addEventListener('blur', () => commit(input.value));
+			input.addEventListener('keydown', (e) => {
+				if (e.key === 'Escape') {
+					close();
+				} else if (e.key === 'Enter') {
+					e.preventDefault();
+					if (pop && at >= 0) {
+						input.value = shown[at].v;
+					}
+					commit(input.value);
+				} else if (pop && (e.key === 'ArrowDown' || e.key === 'ArrowUp')) {
+					e.preventDefault();
+					at = (at + (e.key === 'ArrowDown' ? 1 : -1) + shown.length) % shown.length;
+					mark();
+				}
+			});
+			return input;
 		}
 
 		// A value: what it is (a number, a variable, a scenario setting, the difficulty, the time), the number or name, and whether it is multiplied by
@@ -283,8 +425,12 @@ window.MS = window.MS || {};
 				n.onchange = () => set(Object.assign({}, v, { n: Number(n.value) || 0 }));
 				box.append(n);
 			} else if (v.k === 'var' || v.k === 'setting') {
-				const name = el('input', { type: 'text', className: 'ed-input', value: v.name || '', placeholder: v.k === 'var' ? 'variable' : 'setting name', disabled: ro });
-				name.onchange = () => set(Object.assign({}, v, { name: name.value.trim() }));
+				const items = v.k === 'var' && this.hooks.suggests ? this.hooks.suggests('value', 'name') : null;
+				const name = items ? this.combo(v.name || '', items, (text) => set(Object.assign({}, v, { name: text.trim() })), ro)
+					: el('input', { type: 'text', className: 'ed-input', value: v.name || '', placeholder: v.k === 'var' ? 'variable' : 'setting name', disabled: ro });
+				if (!items) {
+					name.onchange = () => set(Object.assign({}, v, { name: name.value.trim() }));
+				}
 				box.append(name);
 			}
 			const times = el('input', { type: 'checkbox', checked: !!v.x, disabled: ro, title: 'Multiply it by the difficulty (0.5 at the easiest, 2 at the hardest)' });
