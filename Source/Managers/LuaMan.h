@@ -504,7 +504,14 @@ namespace RTE {
 		LuaStateWrapper m_MasterScriptState;
 		LuaStatesArray m_ScriptStates;
 
-		std::vector<std::function<void()>> m_ScriptCallbacks; //!< A list of callback functions we'll trigger before processing lua scripts. This allows other threads (i.e pathing requests) to safely trigger callbacks in lua
+		/// A callback waiting to be run, with where it goes in the order they're run in.
+		struct ScriptCallback {
+			int StateOrder; //!< The script state that asked for it: the master state first, then the threaded ones in order, then callbacks from threads running no script.
+			int Sequence; //!< How many that state asked for before this one since the callbacks were last run.
+			std::function<void()> Function; //!< The callback itself.
+		};
+		std::vector<ScriptCallback> m_ScriptCallbacks; //!< A list of callback functions we'll trigger before processing lua scripts. This allows other threads (i.e pathing requests) to safely trigger callbacks in lua
+		std::unordered_map<const LuaStateWrapper*, int> m_ScriptCallbackCounts; //!< How many callbacks each script state has asked for since they were last run, for their Sequence.
 		std::mutex m_ScriptCallbacksMutex; //!< Mutex to ensure multiple threads aren't modifying the script callback vector at the same time.
 
 		int m_LastAssignedLuaState = 0;

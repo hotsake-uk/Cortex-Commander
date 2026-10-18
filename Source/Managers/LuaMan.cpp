@@ -12,6 +12,7 @@
 #include "tracy/TracyLua.hpp"
 
 #include <fstream>
+#include <limits>
 
 using namespace RTE;
 
@@ -577,21 +578,33 @@ void LuaMan::ClearUserModuleCache() {
 }
 
 void LuaMan::AddLuaScriptCallback(const std::function<void()>& callback) {
+	// Threaded script states ask from several threads at once, so the order these arrive in is down to timing. Each state's own calls come in the
+	// same order every time though, so they're run in order of state and then of when that state asked, which is the same on every run and machine.
+	const LuaStateWrapper* askingState = s_luaStateOverride ? s_luaStateOverride : s_currentLuaState;
+	int stateOrder = std::numeric_limits<int>::max();
+	if (askingState == &m_MasterScriptState) {
+		stateOrder = 0;
+	} else if (askingState && askingState >= m_ScriptStates.data() && askingState < m_ScriptStates.data() + m_ScriptStates.size()) {
+		stateOrder = static_cast<int>(askingState - m_ScriptStates.data()) + 1;
+	}
+
 	std::scoped_lock lock(m_ScriptCallbacksMutex);
-	m_ScriptCallbacks.emplace_back(callback);
+	m_ScriptCallbacks.push_back({stateOrder, m_ScriptCallbackCounts[askingState]++, callback});
 }
 
 void LuaMan::ExecuteLuaScriptCallbacks() {
-	std::vector<std::function<void()>> callbacks;
+	std::vector<ScriptCallback> callbacks;
 
 	// Move our functions into the local buffer to clear the existing callbacks and to lock for as little time as possible
 	{
 		std::scoped_lock lock(m_ScriptCallbacksMutex);
 		callbacks.swap(m_ScriptCallbacks);
+		m_ScriptCallbackCounts.clear();
 	}
 
-	for (const std::function<void()>& callback: callbacks) {
-		callback();
+	std::stable_sort(callbacks.begin(), callbacks.end(), [](const ScriptCallback& lhs, const ScriptCallback& rhs) { return lhs.StateOrder != rhs.StateOrder ? lhs.StateOrder < rhs.StateOrder : lhs.Sequence < rhs.Sequence; });
+	for (const ScriptCallback& callback: callbacks) {
+		callback.Function();
 	}
 }
 
