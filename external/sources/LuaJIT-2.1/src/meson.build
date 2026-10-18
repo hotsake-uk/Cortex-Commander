@@ -49,6 +49,11 @@ lj_defines = [
     '-DLUAJIT_SECURITY_PRNG=0',
     '-DLUAJIT_SECURITY_STRID=0'
 ]
+# Its C code works out numbers for scripts too (constant folding, number parsing), so it mustn't fuse a multiply and an add into one step either:
+# Clang does that by default on ARM, where a fused step rounds once instead of twice and comes out differently to x86's.
+if cc.get_argument_syntax() == 'gcc'
+    lj_defines += '-ffp-contract=off'
+endif
 
 if host_machine.system() == 'darwin'
     lj_defines += '-DLUAJIT_UNWIND_EXTERNAL'
