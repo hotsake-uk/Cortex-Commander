@@ -16,6 +16,7 @@
 #include "FrameMan.h"
 #include "DebugMan.h"
 #include "Draw.h"
+#include "RenderMan.h"
 
 #include "glm/gtx/transform.hpp"
 #include "glm/ext/matrix_transform.hpp"
@@ -1852,7 +1853,9 @@ void MOSRotating::Draw(const Camera& camera) const {
 		scale.m_X *= -1;
 	}
 
+	g_RenderMan.SetCurrentSurface(GetRenderSurface());
 	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, offset, -m_Rotation.GetRadAngle(), scale);
+	g_RenderMan.SetCurrentSurface(glm::u8vec4(0));
 
 	// Draw all the attached wound emitters, and only if the mode is g_DrawColor and not onlyphysical
 	// Only draw attachables and emitters which are not drawn after parent, so we draw them before
@@ -1868,6 +1871,24 @@ void MOSRotating::Draw(const Camera& camera) const {
 			attachableToDraw->Draw(camera);
 		}
 	}
+}
+
+glm::u8vec4 MOSRotating::GetRenderSurface() const {
+	// What this looks like it's made of, for the lighting: its physical material's metalness and gloss. Only read here, for drawing.
+	const Material* material = GetMaterial();
+	float metalness = material ? material->GetMetalness() : 0.0F;
+	float gloss = material ? material->GetGloss() : 0.0F;
+	unsigned char solid = 255;
+	// With unit outlines on, a unit and everything on it carries its side in the solid flag, for the outline pass (UnitOutlineRow.frag): just under
+	// full, so it still reads as solid. Slot 1 is no side, 2 to 5 teams 1 to 4. Doors and lifts are left out.
+	if (g_PostProcessMan.GetLightingSettings().UnitOutline) {
+		const MovableObject* root = GetRootParent();
+		if (root->IsActor() && root->GetClassName() != "ADoor" && root->GetClassName() != "AMover") {
+			int slot = std::clamp(root->GetTeam(), -1, 3) + 2;
+			solid = static_cast<unsigned char>(255 - 8 * slot);
+		}
+	}
+	return glm::u8vec4(static_cast<unsigned char>(std::clamp(metalness, 0.0F, 1.0F) * 255.0F), static_cast<unsigned char>(std::clamp(gloss, 0.0F, 1.0F) * 255.0F), solid, 0);
 }
 
 bool MOSRotating::HandlePotentialRadiusAffectingAttachable(const Attachable* attachable) {

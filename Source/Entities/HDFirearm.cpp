@@ -1,4 +1,5 @@
 #include "HDFirearm.h"
+#include "RenderMan.h"
 
 #include "ActivityMan.h"
 #include "CameraMan.h"
@@ -1034,14 +1035,19 @@ void HDFirearm::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mo
 }
 
 void HDFirearm::Draw(const Camera& camera) const {
+	// The muzzle flash is light, not matter: it mustn't cast a shadow in its own light.
 	if (m_pFlash && m_FireFrame && !m_pFlash->IsDrawnAfterParent()) {
+		g_RenderMan.SetShadowCasting(false);
 		m_pFlash->Draw(camera);
+		g_RenderMan.SetShadowCasting(true);
 	}
 
 	HeldDevice::Draw(camera);
 
 	if (m_pFlash && m_FireFrame && m_pFlash->IsDrawnAfterParent()) {
+		g_RenderMan.SetShadowCasting(false);
 		m_pFlash->Draw(camera);
+		g_RenderMan.SetShadowCasting(true);
 	}
 }
 

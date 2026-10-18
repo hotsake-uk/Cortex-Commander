@@ -341,6 +341,11 @@ namespace RTE {
 		void Draw(BITMAP* pTargetBitmap, const Vector& targetPos = Vector(), DrawMode mode = g_DrawColor, bool onlyPhysical = false) const override;
 		void Draw(const Camera& camera) const override;
 
+		/// Gets how the lighting should treat this when it's drawn: R how metallic, G how glossy, B that it's a solid object that casts shadows (and, with unit outlines on, a unit's side).
+		/// Drawing only: it changes nothing in the game.
+		/// @return The surface values.
+		glm::u8vec4 GetRenderSurface() const;
+
 		/// Gets the gib impulse limit for this MOSRotating, i.e. the amount of impulse force required in a frame to gib this MOSRotating.
 		/// @return The gib impulse limit of this MOSRotating.
 		float GetGibImpulseLimit() const { return m_GibImpulseLimit; }
