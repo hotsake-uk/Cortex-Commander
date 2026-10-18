@@ -18,6 +18,8 @@ import './wizard.js';
 import './guide.js';
 import './friendly.js';
 import './editors.js';
+import './soundslots.js';
+import './carries.js';
 import './scenes.js';
 import './weapons.js';
 import './materials.js';
