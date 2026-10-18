@@ -1832,6 +1832,14 @@ window.MS = window.MS || {};
 			numberRow(move, part, 'CrouchRotAngleTarget', 'Crouch lean', 0.668, locked);
 		}
 
+		if (MS.carries) {
+			MS.carries.carriesSection(insp, part, ent, locked, section);
+			MS.carries.loadoutsSection(insp, part, ent, section);
+		}
+		if (MS.soundSlots) {
+			MS.soundSlots.section(insp, part, ent, locked, section);
+		}
+
 		// Attachments on this part.
 		const addBtn = document.createElement('button');
 		addBtn.className = 'small-btn';
