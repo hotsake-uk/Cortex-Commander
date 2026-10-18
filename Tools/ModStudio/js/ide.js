@@ -855,6 +855,8 @@ window.MS = window.MS || {};
 				}
 				MS.popout.drop(e, after ? ide.tabs[ide.tabs.indexOf(tab) + 1] || null : tab);
 			};
+			// the tab's buttons sit over the end of its name, shown on hover, so the tab keeps its width
+			const actions = el('span', { className: 'tab-actions' });
 			if (tab.kind === 'designer' && (tab === ide.currentDesigner ? app.actor : tab.state && tab.state.actor)) {
 				// the game link: what goes to the game (Preview, Live, Spawn) is this tab's thing, whichever tab is on show
 				const linked = ide.gameTab === tab;
@@ -863,7 +865,7 @@ window.MS = window.MS || {};
 					e.stopPropagation();
 					ide.linkGame(linked ? null : tab);
 				};
-				item.append(game);
+				actions.append(game);
 				item.classList.toggle('game-linked', linked);
 			}
 			if (!MS.popout.request) {
@@ -873,7 +875,7 @@ window.MS = window.MS || {};
 					e.stopPropagation();
 					ide.moveToGroup(tab, tab.group === 1 ? 0 : 1);
 				};
-				item.append(move);
+				actions.append(move);
 			}
 			if (MS.popout.canMove(tab)) {
 				const pop = el('button', { className: 'tab-pop', textContent: '⧉', title: 'Open in its own window (or drag the tab out of the window, or into another one)' });
@@ -881,7 +883,7 @@ window.MS = window.MS || {};
 					e.stopPropagation();
 					MS.popout.pop(tab);
 				};
-				item.append(pop);
+				actions.append(pop);
 			}
 			if (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1 || MS.popout.request) {
 				const close = el('button', { className: 'tab-close', textContent: dirty ? '●' : '×', title: 'Close (Ctrl+W)' });
@@ -889,8 +891,10 @@ window.MS = window.MS || {};
 					e.stopPropagation();
 					ide.closeTab(tab);
 				};
-				item.append(close);
+				actions.append(close);
 			}
+			item.append(actions);
+			item.classList.toggle('has-mark', !!((dirty && actions.querySelector('.tab-close')) || actions.querySelector('.tab-game.on')));
 			item.onclick = () => ide.activate(tab);
 			item.onauxclick = (e) => {
 				if (e.button === 1 && (tab.kind !== 'designer' || ide.tabs.filter((t) => t.kind === 'designer').length > 1 || MS.popout.request)) {

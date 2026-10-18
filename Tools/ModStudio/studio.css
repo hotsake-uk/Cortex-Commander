@@ -1569,3 +1569,12 @@ body.classic .commander-only { display: none !important; }
 .target-badge { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn-text); border-radius: 99px; padding: 2px 10px; font-size: 12px; white-space: nowrap; }
 /* Cortex Studio CE, the Community Edition build (js/target.js) */
 body.edition-community .brand b::after, body.edition-community .welcome-card h1::after { content: ' CE'; }
+
+/* A tab's buttons sit over the end of its name, shown on hover, so hovering never changes the tab's width. A tab with a mark that always shows
+   (unsaved, or linked to the game) keeps room for it at its end. */
+.tab { position: relative; --tab-bg: var(--bg); }
+.tab:hover, .tab.sel { --tab-bg: var(--panel); }
+.tab.has-mark { padding-right: 30px; }
+.tab-actions { position: absolute; top: 2px; bottom: 0; right: 0; display: flex; align-items: center; gap: 1px; padding: 0 6px 0 18px; background: linear-gradient(to right, transparent, var(--tab-bg) 16px); }
+.tab:not(:hover):not(.has-mark) .tab-actions { display: none; }
+.tab-actions .tab-pop { margin-left: 0; }
