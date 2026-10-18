@@ -19,6 +19,24 @@ namespace SandboxDetail {
 		constexpr float c_FairRatio = 1.15F; //!< The most the dearest team's routes may cost over the cheapest's.
 		constexpr int c_Tries = 6; //!< Layouts tried for a seed, the best kept.
 
+		// Layouts are drawn from RandomGenerator rather than the standard library's distributions and shuffle, which each library (MSVC's, libstdc++,
+		// libc++) works out differently, so a seed gives every machine in a game the same layout.
+
+		/// A pick in [Min, Max] from a layout's generator.
+		struct Uniform {
+			float Min;
+			float Max;
+			float operator()(RandomGenerator& random) const { return random.RandomNum(Min, Max); }
+		};
+
+		/// Puts the elements in a random order (Fisher-Yates), the same way with every standard library.
+		template <typename Element>
+		void Shuffle(std::vector<Element>& elements, RandomGenerator& random) {
+			for (int i = static_cast<int>(elements.size()) - 1; i > 0; --i) {
+				std::swap(elements[i], elements[random.RandomNum<int>(0, i)]);
+			}
+		}
+
 		/// A piece of ground a unit can stand on: the top of the ground in a survey column, with air over it.
 		struct Ground {
 			float X = 0.0F;
@@ -188,13 +206,13 @@ namespace SandboxDetail {
 
 		/// A place of so many columns (fewer on a map with no run that long) whose middle is nearest a point across the map, on flat ground,
 		/// out in the open if open is asked for; a little at random, by the seed.
-		Place PlaceNear(const Survey& survey, float x, int columns, bool open, float reach, std::mt19937& random, float preferHigh = 0.0F) {
+		Place PlaceNear(const Survey& survey, float x, int columns, bool open, float reach, RandomGenerator& random, float preferHigh = 0.0F) {
 			int longest = 0;
 			for (const std::vector<Ground>& run: survey.Runs) {
 				longest = std::max(longest, static_cast<int>(run.size()));
 			}
 			columns = std::clamp(columns, 1, std::max(longest, 1));
-			std::uniform_real_distribution<float> jitter(0.0F, 1.2F);
+			Uniform jitter{0.0F, 1.2F};
 			Place best;
 			float bestScore = -std::numeric_limits<float>::max();
 			for (int r = 0; r < static_cast<int>(survey.Runs.size()); ++r) {
@@ -332,18 +350,18 @@ namespace SandboxDetail {
 		}
 
 		/// Places across the map for the teams' bases: each end for two (or spread evenly across a map that wraps), and spread between them for more.
-		std::vector<float> BaseSpots(const Survey& survey, int count, std::mt19937& random) {
+		std::vector<float> BaseSpots(const Survey& survey, int count, RandomGenerator& random) {
 			std::vector<float> spots;
 			const float width = static_cast<float>(survey.Width);
 			if (survey.Wraps) {
-				const float first = std::uniform_real_distribution<float>(0.0F, width)(random);
+				const float first = Uniform{0.0F, width}(random);
 				for (int i = 0; i < count; ++i) {
 					spots.push_back(std::fmod(first + width * static_cast<float>(i) / static_cast<float>(count), width));
 				}
 			} else {
 				// (How far in from the ends, by the seed: the same both ends, so neither team is nearer the middle.)
-				const float margin = std::max(150.0F, width * std::uniform_real_distribution<float>(0.04F, 0.22F)(random));
-				std::uniform_real_distribution<float> nudge(-width * 0.04F, width * 0.04F);
+				const float margin = std::max(150.0F, width * Uniform{0.04F, 0.22F}(random));
+				Uniform nudge{-width * 0.04F, width * 0.04F};
 				for (int i = 0; i < count; ++i) {
 					const bool end = i == 0 || i == count - 1;
 					spots.push_back(count == 1 ? width * 0.5F : margin + (width - margin * 2.0F) * static_cast<float>(i) / static_cast<float>(count - 1) + (end ? 0.0F : nudge(random)));
@@ -366,13 +384,13 @@ namespace SandboxDetail {
 
 		/// The piece of ground that bases reach most evenly, among those not too near any of them and filtered as asked: a few likely ones by
 		/// how far they are as the crow flies, then the fairest of those by the routes there. -1 run for none.
-		Place FairPlace(const Survey& survey, const std::vector<int>& sides, const std::array<Vector, c_Sides>& bases, int columns, bool open, float preferHigh, const std::vector<Vector>& avoid, float avoidBy, std::mt19937& random) {
+		Place FairPlace(const Survey& survey, const std::vector<int>& sides, const std::array<Vector, c_Sides>& bases, int columns, bool open, float preferHigh, const std::vector<Vector>& avoid, float avoidBy, RandomGenerator& random) {
 			struct Candidate {
 				Place At;
 				float Score;
 			};
 			std::vector<Candidate> candidates;
-			std::uniform_real_distribution<float> jitter(0.0F, 0.35F);
+			Uniform jitter{0.0F, 0.35F};
 			for (int r = 0; r < static_cast<int>(survey.Runs.size()); ++r) {
 				const std::vector<Ground>& run = survey.Runs[r];
 				const int length = static_cast<int>(run.size());
@@ -436,7 +454,7 @@ namespace SandboxDetail {
 				}
 			}
 			if (!fair.empty()) {
-				return fair[std::uniform_int_distribution<size_t>(0, fair.size() - 1)(random)];
+				return fair[random.RandomNum<int>(0, static_cast<int>(fair.size()) - 1)];
 			}
 			return best;
 		}
@@ -490,7 +508,7 @@ namespace SandboxDetail {
 		}
 
 		/// A place on the run under the ground nearest a point, so many columns wide.
-		Place PlaceAt(const Survey& survey, const Vector& point, int columns, std::mt19937& random) {
+		Place PlaceAt(const Survey& survey, const Vector& point, int columns, RandomGenerator& random) {
 			const Vector ground = GroundNear(survey, point);
 			return PlaceNear(survey, ground.m_X, columns, false, 400.0F, random, 0.0F);
 		}
@@ -517,7 +535,7 @@ namespace SandboxDetail {
 
 		/// More spawn zones for each team, up to so many a team: round its base, nearer it than any enemy base, apart from every zone
 		/// already drawn, that the team can walk from to its base. Out in the open mostly, now and then in a cave or under cover.
-		void ExtraZones(Made& made, const Survey& survey, const std::vector<int>& sides, int perTeam, std::mt19937& random) {
+		void ExtraZones(Made& made, const Survey& survey, const std::vector<int>& sides, int perTeam, RandomGenerator& random) {
 			perTeam = std::clamp(perTeam, 1, 4);
 			const float width = static_cast<float>(survey.Width);
 			for (int side: sides) {
@@ -532,14 +550,14 @@ namespace SandboxDetail {
 						nearestEnemy = std::min(nearestEnemy, Apart(base, made.Bases[other]));
 					}
 				}
-				std::uniform_real_distribution<float> distance(250.0F, std::max(400.0F, std::min(nearestEnemy * 0.35F, 900.0F)));
+				Uniform distance{250.0F, std::max(400.0F, std::min(nearestEnemy * 0.35F, 900.0F))};
 				for (int tries = 0; tries < 30 && static_cast<int>(zones.size()) < perTeam; ++tries) {
-					const float dir = std::uniform_int_distribution<int>(0, 1)(random) == 0 ? -1.0F : 1.0F;
+					const float dir = random.RandomNum<int>(0, 1) == 0 ? -1.0F : 1.0F;
 					float x = base.m_X + dir * distance(random);
 					if (!survey.Wraps) {
 						x = std::clamp(x, 0.0F, width);
 					}
-					const bool open = std::uniform_real_distribution<float>(0.0F, 1.0F)(random) > 0.25F;
+					const bool open = Uniform{0.0F, 1.0F}(random) > 0.25F;
 					const Place place = PlaceNear(survey, x, ColumnsFor(BaseWidth(made.Setup, side) * 0.7F), open, 250.0F, random);
 					if (!place.Valid()) {
 						continue;
@@ -563,7 +581,8 @@ namespace SandboxDetail {
 
 		/// One layout of the mode on the map, with a seed. The teams' bases first, then the mode's own.
 		Made LayOut(const BattleModeSettings& start, const Survey& survey, const std::vector<int>& sides, unsigned seed, int zonesPerTeam) {
-			std::mt19937 random(seed);
+			RandomGenerator random;
+			random.Seed(seed);
 			Made made;
 			BattleModeSettings& setup = made.Setup;
 			setup = start;
@@ -581,7 +600,7 @@ namespace SandboxDetail {
 			const float width = static_cast<float>(survey.Width);
 			const float reach = std::max(width * 0.2F, 400.0F);
 			std::vector<int> order = sides;
-			std::shuffle(order.begin(), order.end(), random);
+			Shuffle(order, random);
 			auto enemiesOf = [&](int side) {
 				std::vector<Vector> enemies;
 				for (int other: sides) {
@@ -605,7 +624,7 @@ namespace SandboxDetail {
 			if (lone >= 0) {
 				// (Either end, by the seed.)
 				std::vector<float> ends = BaseSpots(survey, 2, random);
-				if (std::uniform_int_distribution<int>(0, 1)(random) == 1) {
+				if (random.RandomNum<int>(0, 1) == 1) {
 					std::swap(ends[0], ends[1]);
 				}
 				const float endA = ends[0];
