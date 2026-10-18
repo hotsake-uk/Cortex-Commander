@@ -290,13 +290,16 @@ window.MS = window.MS || {};
 				}
 				const start = sub.vec('StartOffset');
 				const segments = sub.all('AddSegment').map((e) => MS.readVector(e.node));
+				const legacy = MS.target.get().legacyLimbs;
+				const multiplier = legacy ? sub.num('TravelSpeedMultiplier', 1) : 1;
 				return {
 					key,
 					node: ent.sourceOf(key),
 					start,
 					segments,
 					startSegCount: Math.round(sub.num('StartSegCount', 0)),
-					travelSpeed: sub.num('TravelSpeed', sub.num('NormalTravelSpeed', 1)),
+					travelSpeed: (legacy ? sub.num('NormalTravelSpeed', 1) : sub.num('TravelSpeed', sub.num('NormalTravelSpeed', 1))) * multiplier,
+					fastSpeed: legacy ? sub.num('FastTravelSpeed', sub.num('NormalTravelSpeed', 1)) * multiplier : null,
 				};
 			};
 			const paths = {};
@@ -316,8 +319,9 @@ window.MS = window.MS || {};
 			const flipF = flip ? -1 : 1;
 			const adjAim = state.aim * flipF;
 			const ent = this.ent;
-			const targets = { stand: 'StandRotAngleTarget', walk: 'WalkRotAngleTarget', run: 'RunRotAngleTarget', crouch: 'CrouchRotAngleTarget', jump: 'JumpRotAngleTarget' };
-			const defaultTarget = state.pose === 'crouch' ? Math.PI / 4 * 0.85 : 0;
+			const legacy = MS.target.get().legacyLimbs;
+			const targets = { stand: 'StandRotAngleTarget', walk: 'WalkRotAngleTarget', run: legacy ? 'WalkRotAngleTarget' : 'RunRotAngleTarget', crouch: 'CrouchRotAngleTarget', jump: 'JumpRotAngleTarget' };
+			const defaultTarget = state.pose === 'crouch' && !legacy ? Math.PI / 4 * 0.85 : 0;
 			const target = ent.num(targets[state.pose] || 'StandRotAngleTarget', defaultTarget);
 			const bodyRot = target * (state.aim > 0 ? 1 - state.aim / HALF_PI : 1) * flipF;
 
@@ -536,10 +540,11 @@ window.MS = window.MS || {};
 			const place = (leg, point, groupKey) => add(add(jointOf(leg), flipX(point, flip)), footGroupOffset(groupKey));
 
 			if (state.pose === 'walk' || state.pose === 'run') {
-				const path = (state.pose === 'run' && this.paths.RunLimbPath) || this.paths.WalkLimbPath;
+				const legacy = MS.target.get().legacyLimbs;
+				const path = (state.pose === 'run' && !legacy && this.paths.RunLimbPath) || this.paths.WalkLimbPath;
 				if (path && path.segments.length) {
 					const loop = pathLoop(path);
-					const speed = path.travelSpeed * PPM;
+					const speed = (state.pose === 'run' && legacy ? path.fastSpeed : path.travelSpeed) * PPM;
 					const t = (state.time || 0) * speed;
 					for (const [role, leg, offset, group] of [['fgleg', fg, 0, 'FGFootGroup'], ['bgleg', bg, 0.5, 'BGFootGroup']]) {
 						if (!leg) {

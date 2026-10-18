@@ -46,7 +46,7 @@ window.MS = window.MS || {};
 			start: { x: start.x, y: start.y },
 			segments: sub.all('AddSegment').map((e) => MS.readVector(e.node)).map((v) => ({ x: v.x, y: v.y })),
 			startSegCount: Math.round(sub.num('StartSegCount', 0)),
-			speed: sub.num('TravelSpeed', sub.num('NormalTravelSpeed', 1)),
+			speed: MS.target.get().legacyLimbs ? sub.num('NormalTravelSpeed', 1) : sub.num('TravelSpeed', sub.num('NormalTravelSpeed', 1)),
 			shared: !!(part.ent.sourceOf(key) && part.ent.sourceOf(key).child('CopyOf')),
 			sub,
 		};

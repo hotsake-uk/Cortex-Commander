@@ -2190,6 +2190,9 @@ window.MS = window.MS || {};
 		MS.target.on(() => {
 			if (app.lib) {
 				showLibrary();
+				if (app.rig) {
+					app.rebuild(true); // the pose follows the target's engine (6.2.2 walks and leans its own way)
+				}
 				renderInspector();
 				MS.ide.refreshForm();
 			}

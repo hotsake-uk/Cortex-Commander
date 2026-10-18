@@ -9,7 +9,9 @@ window.MS = window.MS || {};
 	const TARGETS = [
 		{ id: 'commander', name: 'Cortex Commander', short: 'Commander', classic: false, data: 'data/', supportedGameVersion: '6.0.0' },
 		// 6.0.0 loads on any 6.x; the nightly is 7.0.0 and refuses a mod made for another major version
-		{ id: 'ce-6.2.2', name: 'Community Edition 6.2.2', short: 'CE 6.2.2', classic: true, data: 'data/targets/ce-6.2.2/', supportedGameVersion: '6.0.0' },
+		// legacyLimbs: 6.2.2's units have no running path or lean (they run the walk path at its FastTravelSpeed), no crouch lean unless
+		// set, and their paths' speeds are Slow/Normal/FastTravelSpeed times TravelSpeedMultiplier
+		{ id: 'ce-6.2.2', name: 'Community Edition 6.2.2', short: 'CE 6.2.2', classic: true, data: 'data/targets/ce-6.2.2/', supportedGameVersion: '6.0.0', legacyLimbs: true },
 		{ id: 'ce-nightly', name: 'Community Edition nightly', short: 'CE nightly', classic: true, data: 'data/targets/ce-nightly/', supportedGameVersion: '7.0.0' },
 	];
 	const byId = (id) => TARGETS.find((t) => t.id === id);
