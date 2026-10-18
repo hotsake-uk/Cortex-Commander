@@ -2,6 +2,12 @@
 #include "TerrainFrosting.h"
 #include "TerrainDebris.h"
 #include "TerrainObject.h"
+#include "PostProcessMan.h"
+#include "EffectsParticles.h"
+#include "RTETools.h"
+#include "TimerMan.h"
+
+#include <functional>
 #include "SceneObject.h"
 #include "MOSprite.h"
 #include "MOPixel.h"
@@ -9,6 +15,8 @@
 #include "DataModule.h"
 #include "PresetMan.h"
 #include "Draw.h"
+#include "BigTexture.h"
+#include "Texture.h"
 #include "tracy/Tracy.hpp"
 
 #include <array>
@@ -26,6 +34,68 @@ SLTerrain::~SLTerrain() {
 	Destroy(true);
 }
 
+const std::string TerrainLight::c_ClassName = "TerrainLight";
+
+void TerrainLight::Clear() {
+	m_Pos.Reset();
+	m_Color.SetRGB(255, 225, 180);
+	m_Radius = 110.0F;
+	m_Intensity = 1.0F;
+	m_Flicker = 0.0F;
+	m_Pulse = 0.0F;
+	m_ConeAngle = 0.0F;
+	m_ConeDirection = 90.0F;
+	m_Anchored = -1;
+	m_AnchorOffset.Reset();
+	m_AnchorSolid = 0;
+}
+
+int TerrainLight::ReadProperty(const std::string_view& propName, Reader& reader) {
+	StartPropertyList(return Serializable::ReadProperty(propName, reader));
+
+	MatchProperty("Offset", { reader >> m_Pos; });
+	MatchProperty("Position", { reader >> m_Pos; });
+	MatchProperty("Color", { reader >> m_Color; });
+	MatchProperty("Radius", { reader >> m_Radius; });
+	MatchProperty("Intensity", { reader >> m_Intensity; });
+	MatchProperty("Flicker", { reader >> m_Flicker; });
+	MatchProperty("Pulse", { reader >> m_Pulse; });
+	MatchProperty("ConeAngle", { reader >> m_ConeAngle; });
+	MatchProperty("ConeDirection", { reader >> m_ConeDirection; });
+	MatchProperty("Anchored", { reader >> m_Anchored; });
+	MatchProperty("AnchorOffset", { reader >> m_AnchorOffset; });
+	MatchProperty("AnchorSolid", { reader >> m_AnchorSolid; });
+
+	EndPropertyList;
+}
+
+int TerrainLight::Save(Writer& writer) const {
+	Serializable::Save(writer);
+
+	writer.NewPropertyWithValue("Position", m_Pos);
+	writer.NewPropertyWithValue("Color", m_Color);
+	writer.NewPropertyWithValue("Radius", m_Radius);
+	writer.NewPropertyWithValue("Intensity", m_Intensity);
+	if (m_Flicker > 0.0F) {
+		writer.NewPropertyWithValue("Flicker", m_Flicker);
+	}
+	if (m_Pulse > 0.0F) {
+		writer.NewPropertyWithValue("Pulse", m_Pulse);
+	}
+	if (m_ConeAngle > 0.0F) {
+		writer.NewPropertyWithValue("ConeAngle", m_ConeAngle);
+		writer.NewPropertyWithValue("ConeDirection", m_ConeDirection);
+	}
+	if (m_Anchored >= 0) {
+		writer.NewPropertyWithValue("Anchored", m_Anchored);
+		writer.NewPropertyWithValue("AnchorOffset", m_AnchorOffset);
+		if (m_AnchorSolid > 0) {
+			writer.NewPropertyWithValue("AnchorSolid", m_AnchorSolid);
+		}
+	}
+	return 0;
+}
+
 void SLTerrain::Clear() {
 	m_Width = 0;
 	m_Height = 0;
@@ -36,6 +106,13 @@ void SLTerrain::Clear() {
 	m_TerrainFrostings.clear();
 	m_TerrainDebris.clear();
 	m_TerrainObjects.clear();
+	m_Lights.clear();
+	m_QueuedLights.clear();
+	m_LightCheckCounter = 0;
+	m_LightCells.clear();
+	m_LightCellColumns = 0;
+	m_LightCellsStale = true;
+	m_LightBreaks.clear();
 	m_UpdatedMaterialAreas.clear();
 	m_OrbitDirection = Directions::Up;
 
@@ -86,6 +163,9 @@ int SLTerrain::Create(const SLTerrain& reference) {
 		m_TerrainObjects.emplace_back(terrainObject);
 	}
 
+	m_Lights = reference.m_Lights;
+	m_LightCellsStale = true;
+
 	m_OrbitDirection = reference.m_OrbitDirection;
 
 	return 0;
@@ -119,6 +199,12 @@ int SLTerrain::ReadProperty(const std::string_view& propName, Reader& reader) {
 		std::unique_ptr<TerrainObject> terrainObject = std::make_unique<TerrainObject>();
 		reader >> terrainObject.get();
 		m_TerrainObjects.emplace_back(terrainObject.release());
+	});
+	MatchProperty("AddLight", {
+		TerrainLight light;
+		reader >> light;
+		m_Lights.emplace_back(light);
+		m_LightCellsStale = true;
 	});
 	MatchProperty("OrbitDirection", {
 		std::string orbitDirection;
@@ -167,6 +253,12 @@ int SLTerrain::Save(Writer& writer) const {
 			writer.NewPropertyWithValue("Position", terrainObject->GetPos());
 			writer.ObjectEnd();
 		}
+	}
+
+	// Lights that came with placed objects are written too. Should the objects be placed again on loading, each just replaces its own.
+	for (const TerrainLight& light: m_Lights) {
+		writer.NewProperty("AddLight");
+		writer << light;
 	}
 
 	writer.NewProperty("OrbitDirection");
@@ -271,8 +363,312 @@ void SLTerrain::TexturizeTerrain() {
 	              });
 }
 
+void SLTerrain::AddLight(const TerrainLight& light) {
+	if (light.m_Radius <= 0.0F || light.m_Intensity <= 0.0F) {
+		return;
+	}
+	m_LightCellsStale = true;
+	TerrainLight newLight = light;
+	if (m_WrapX && m_MainBitmap) {
+		newLight.m_Pos.m_X = std::fmod(std::fmod(newLight.m_Pos.m_X, static_cast<float>(m_MainBitmap->w)) + static_cast<float>(m_MainBitmap->w), static_cast<float>(m_MainBitmap->w));
+	}
+	for (TerrainLight& existing: m_Lights) {
+		// One lamp to a spot: background pieces are painted with the glow of the lamp of the module they belong in, and both bring it, and a procedural layer's pieces are saved both as lamps and as placed objects.
+		// Those copies land on the same pixel, so only a lamp within a few pixels counts as the same one: two small fixtures side by side both stay.
+		if (std::abs(existing.m_Pos.m_X - newLight.m_Pos.m_X) < 3.0F && std::abs(existing.m_Pos.m_Y - newLight.m_Pos.m_Y) < 3.0F) {
+			existing = newLight;
+			return;
+		}
+	}
+	m_Lights.emplace_back(newLight);
+}
+
+void SLTerrain::QueueLight(const TerrainLight& light) {
+	std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+	m_QueuedLights.emplace_back(light);
+}
+
+int SLTerrain::RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove) {
+	size_t before = m_Lights.size();
+	std::erase_if(m_Lights, shouldRemove);
+	m_LightCellsStale = true;
+	return static_cast<int>(before - m_Lights.size());
+}
+
+namespace {
+	constexpr int c_LightCellSize = 16;
+
+	/// A value from 0 to 1 that changes every sim update and differs from lamp to lamp, for flicker.
+	float FlickerNoise(const Vector& position, long long simUpdate) {
+		unsigned int h = static_cast<unsigned int>(position.GetFloorIntX()) * 0x9E3779B1u ^ static_cast<unsigned int>(position.GetFloorIntY()) * 0x85EBCA77u ^ static_cast<unsigned int>(simUpdate) * 0xC2B2AE3Du;
+		h ^= h >> 15;
+		h *= 0x2C1B3C6Du;
+		h ^= h >> 12;
+		return static_cast<float>(h & 0xFFFFu) / 65535.0F;
+	}
+}
+
+void SLTerrain::BreakLightsNear(const Vector& pos, float radius) {
+	if (m_Lights.empty()) {
+		return;
+	}
+	std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+	m_LightBreaks.emplace_back(pos, radius);
+}
+
+void SLTerrain::ShootLightsAlong(const Vector& from, const Vector& to) {
+	if (m_Lights.empty() || m_LightCells.empty()) {
+		return;
+	}
+	Vector path = to - from;
+	float length = path.GetMagnitude();
+	// A jump this long is a wrap across the scene's seam, not a flight.
+	if (length > 400.0F) {
+		return;
+	}
+	int steps = std::max(static_cast<int>(std::ceil(length / 5.0F)), 1);
+	int rows = static_cast<int>(m_LightCells.size()) / m_LightCellColumns;
+	for (int step = 0; step <= steps; ++step) {
+		Vector point = from + path * (static_cast<float>(step) / static_cast<float>(steps));
+		int cellX = static_cast<int>(std::floor(point.m_X)) / c_LightCellSize;
+		int cellY = static_cast<int>(std::floor(point.m_Y)) / c_LightCellSize;
+		if (point.m_X < 0.0F || point.m_Y < 0.0F || cellX >= m_LightCellColumns || cellY >= rows || !m_LightCells[cellY * m_LightCellColumns + cellX]) {
+			continue;
+		}
+		for (const TerrainLight& light: m_Lights) {
+			if (std::abs(light.m_Pos.m_X - point.m_X) < 4.5F && std::abs(light.m_Pos.m_Y - point.m_Y) < 4.5F) {
+				BreakLightsNear(light.m_Pos, 1.0F);
+				return;
+			}
+		}
+	}
+}
+
+void SLTerrain::UpdateLights() {
+	// Lights scripts added since the last update.
+	{
+		std::vector<TerrainLight> queued;
+		{
+			std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+			queued.swap(m_QueuedLights);
+		}
+		for (const TerrainLight& light: queued) {
+			AddLight(light);
+		}
+	}
+	if (m_Lights.empty()) {
+		return;
+	}
+	auto solidAt = [](const Vector& point) { return g_SceneMan.GetTerrMatter(point.GetFloorIntX(), point.GetFloorIntY()) > MaterialColorKeys::g_MaterialCavity; };
+	// A lamp's fixture is judged by the solid pixels around where it hangs, not by one pixel: a stray bullet through an intact fixture leaves it lit, a fixture mostly blown away puts it out.
+	auto fixtureSolidAt = [&solidAt](const Vector& anchor) {
+		constexpr int c_FixtureReach = 2;
+		int solid = 0;
+		for (int y = -c_FixtureReach; y <= c_FixtureReach; ++y) {
+			for (int x = -c_FixtureReach; x <= c_FixtureReach; ++x) {
+				solid += solidAt(anchor + Vector(static_cast<float>(x), static_cast<float>(y))) ? 1 : 0;
+			}
+		}
+		return solid;
+	};
+
+	// Lamps that were shot or blown up since the last update go out.
+	{
+		std::lock_guard<std::mutex> lock(m_LightBreaksMutex);
+		if (!m_LightBreaks.empty()) {
+			for (auto light = m_Lights.begin(); light != m_Lights.end();) {
+				bool smashed = false;
+				for (const auto& [where, radius]: m_LightBreaks) {
+					if (g_SceneMan.ShortestDistance(where, light->m_Pos, m_WrapX).MagnitudeIsLessThan(radius)) {
+						smashed = true;
+						break;
+					}
+				}
+				if (smashed) {
+					EffectsParticles::Emit("Sparks", light->m_Pos, Vector(0.0F, 2.0F), 1.0F, 14, 0);
+					light = m_Lights.erase(light);
+					m_LightCellsStale = true;
+				} else {
+					++light;
+				}
+			}
+			m_LightBreaks.clear();
+		}
+	}
+	if (m_LightCellsStale && m_MainBitmap) {
+		// Mark the cell of each lamp and the ones around it.
+		m_LightCellsStale = false;
+		m_LightCellColumns = m_MainBitmap->w / c_LightCellSize + 1;
+		int rows = m_MainBitmap->h / c_LightCellSize + 1;
+		m_LightCells.assign(static_cast<size_t>(m_LightCellColumns) * rows, 0);
+		for (const TerrainLight& light: m_Lights) {
+			int cellX = static_cast<int>(light.m_Pos.m_X) / c_LightCellSize;
+			int cellY = static_cast<int>(light.m_Pos.m_Y) / c_LightCellSize;
+			for (int y = std::max(cellY - 1, 0); y <= std::min(cellY + 1, rows - 1); ++y) {
+				for (int x = std::max(cellX - 1, 0); x <= std::min(cellX + 1, m_LightCellColumns - 1); ++x) {
+					m_LightCells[y * m_LightCellColumns + x] = 1;
+				}
+			}
+		}
+	}
+	if (m_Lights.empty()) {
+		return;
+	}
+
+	bool checkFixtures = ++m_LightCheckCounter >= 20;
+	if (checkFixtures) {
+		m_LightCheckCounter = 0;
+	}
+	// Sim time, not the smoothed drawing clock: this runs in the sim update.
+	float time = static_cast<float>(std::fmod(static_cast<double>(g_TimerMan.GetSimUpdateCount()) * static_cast<double>(g_TimerMan.GetDeltaTimeSecs()), 4096.0));
+	for (auto light = m_Lights.begin(); light != m_Lights.end();) {
+		if (light->m_Anchored < 0) {
+			// What does it hang on? Something solid right at it, else the nearest solid thing within a few pixels: above first, as lamps mostly hang from ceilings.
+			light->m_Anchored = 0;
+			static const std::array<Vector, 4> directions = {Vector(0.0F, -1.0F), Vector(-1.0F, 0.0F), Vector(1.0F, 0.0F), Vector(0.0F, 1.0F)};
+			for (int distance = 0; distance <= 5 && light->m_Anchored == 0; ++distance) {
+				for (const Vector& direction: directions) {
+					if (solidAt(light->m_Pos + direction * static_cast<float>(distance))) {
+						light->m_Anchored = 1;
+						light->m_AnchorOffset = direction * static_cast<float>(distance);
+						light->m_AnchorSolid = fixtureSolidAt(light->m_Pos + light->m_AnchorOffset);
+						break;
+					}
+					if (distance == 0) {
+						break;
+					}
+				}
+			}
+		} else if (light->m_Anchored == 1 && light->m_AnchorSolid <= 0) {
+			// Anchored in a save from before fixtures were measured: measure it now.
+			light->m_AnchorSolid = fixtureSolidAt(light->m_Pos + light->m_AnchorOffset);
+		} else if (checkFixtures && light->m_Anchored == 1 && fixtureSolidAt(light->m_Pos + light->m_AnchorOffset) * 2 < light->m_AnchorSolid) {
+			// Most of what it hung on has been shot or blown away: it goes out in a shower of sparks.
+			EffectsParticles::Emit("Sparks", light->m_Pos, Vector(0.0F, 2.0F), 1.0F, 14, 0);
+			light = m_Lights.erase(light);
+			m_LightCellsStale = true;
+			continue;
+		}
+		float brightness = light->m_Intensity;
+		if (light->m_Flicker > 0.0F) {
+			// A hash of where it is and the sim update, not the simulation's random numbers: how lamps flicker must never change how the game plays out.
+			brightness *= 1.0F - light->m_Flicker * FlickerNoise(light->m_Pos, g_TimerMan.GetSimUpdateCount());
+		}
+		if (light->m_Pulse > 0.0F) {
+			brightness *= 0.5F + 0.5F * std::sin(time * light->m_Pulse * c_TwoPI + light->m_Pos.m_X);
+		}
+		// The player's settings for scenery lamps: brighter or dimmer, further or nearer, and a tint (applied to the displayed color, so it works like a gel over the lamp).
+		const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		brightness *= lighting.LampBrightness;
+		float reach = light->m_Radius * lighting.LampReach;
+		glm::vec3 gel = glm::pow(glm::max(lighting.LampTint, glm::vec3(0.0F)), glm::vec3(1.0F / 2.2F));
+		glm::vec3 color = glm::vec3(light->m_Color.GetR(), light->m_Color.GetG(), light->m_Color.GetB()) * gel;
+		if (light->m_ConeAngle > 0.0F) {
+			float direction = light->m_ConeDirection * c_PI / 180.0F;
+			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness, LightSource::Lamps);
+		} else {
+			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps, light->m_Flicker <= 0.0F && light->m_Pulse <= 0.0F);
+		}
+		++light;
+	}
+}
+
+void SLTerrain::ResetChangeTiles(int sceneWidth, int sceneHeight, bool wrapX, bool wrapY) {
+	auto map = std::make_unique<ChangeTiles>();
+	map->SceneWidth = std::max(sceneWidth, 1);
+	map->SceneHeight = std::max(sceneHeight, 1);
+	map->TilesWide = (map->SceneWidth + c_ChangeTileSize - 1) / c_ChangeTileSize;
+	map->TilesHigh = (map->SceneHeight + c_ChangeTileSize - 1) / c_ChangeTileSize;
+	map->WrapX = wrapX;
+	map->WrapY = wrapY;
+	map->WordCount = (static_cast<size_t>(map->TilesWide) * map->TilesHigh + 63) / 64;
+	map->Words = std::make_unique<std::atomic<uint64_t>[]>(map->WordCount);
+	for (size_t i = 0; i < map->WordCount; ++i) {
+		map->Words[i].store(0, std::memory_order_relaxed);
+	}
+	s_RetiredChangeTiles = std::move(s_CurrentChangeTiles);
+	s_CurrentChangeTiles = std::move(map);
+	s_ChangeTiles.store(s_CurrentChangeTiles.get(), std::memory_order_release);
+}
+
+void SLTerrain::NoteMaterialChangeBox(int minX, int minY, int maxX, int maxY) {
+	ChangeTiles* map = s_ChangeTiles.load(std::memory_order_acquire);
+	if (!map || maxX < minX || maxY < minY) {
+		return;
+	}
+	// Per axis, the box's pixel span as up to two runs of tiles: wrapped into the scene first on a wrapping axis (split in two where it straddles
+	// the seam; the whole axis when it is as long as the scene), clipped to it on the other. Pixels are wrapped before they are tiled because the
+	// last tile is a partial one when the scene isn't a multiple of the tile size.
+	struct TileRuns {
+		int Count = 0;
+		int First[2] = {0, 0};
+		int Last[2] = {0, 0};
+	};
+	auto tileRuns = [](int from, int to, int size, bool wraps) {
+		TileRuns runs;
+		auto add = [&runs](int firstPixel, int lastPixel) {
+			runs.First[runs.Count] = firstPixel / c_ChangeTileSize;
+			runs.Last[runs.Count] = lastPixel / c_ChangeTileSize;
+			++runs.Count;
+		};
+		if (wraps) {
+			if (to - from + 1 >= size) {
+				add(0, size - 1);
+			} else {
+				int start = ((from % size) + size) % size;
+				int end = start + (to - from);
+				if (end < size) {
+					add(start, end);
+				} else {
+					add(start, size - 1);
+					add(0, end - size);
+				}
+			}
+		} else {
+			from = std::max(from, 0);
+			to = std::min(to, size - 1);
+			if (to >= from) {
+				add(from, to);
+			}
+		}
+		return runs;
+	};
+	TileRuns runsX = tileRuns(minX, maxX, map->SceneWidth, map->WrapX);
+	TileRuns runsY = tileRuns(minY, maxY, map->SceneHeight, map->WrapY);
+	for (int y = 0; y < runsY.Count; ++y) {
+		for (int tileY = runsY.First[y]; tileY <= runsY.Last[y]; ++tileY) {
+			for (int x = 0; x < runsX.Count; ++x) {
+				for (int tileX = runsX.First[x]; tileX <= runsX.Last[x]; ++tileX) {
+					MarkChangeTile(*map, tileX, tileY);
+				}
+			}
+		}
+	}
+}
+
+bool SLTerrain::TakeChangedTiles(std::vector<uint64_t>& tiles, int& tilesWide, int& tilesHigh) {
+	ChangeTiles* map = s_ChangeTiles.load(std::memory_order_acquire);
+	if (!map) {
+		tiles.clear();
+		tilesWide = tilesHigh = 0;
+		return false;
+	}
+	tilesWide = map->TilesWide;
+	tilesHigh = map->TilesHigh;
+	tiles.resize(map->WordCount);
+	bool any = false;
+	for (size_t i = 0; i < map->WordCount; ++i) {
+		// (A read first: most words are empty, and an exchange on each would write every word every frame.)
+		tiles[i] = map->Words[i].load(std::memory_order_relaxed) != 0 ? map->Words[i].exchange(0, std::memory_order_relaxed) : 0;
+		any = any || tiles[i] != 0;
+	}
+	return any;
+}
+
 int SLTerrain::LoadData() {
 	SceneLayer::LoadData();
+	// A new scene: a new, empty changed-terrain map of its size (everything drawn below marks it; the lighting refreshes its whole grid for a new scene anyway).
+	ResetChangeTiles(m_MainBitmap ? m_MainBitmap->w : 0, m_MainBitmap ? m_MainBitmap->h : 0, m_WrapX, m_WrapY);
 
 	RTEAssert(m_FGColorLayer.get(), "Terrain's foreground layer not instantiated before trying to load its data!");
 	RTEAssert(m_BGColorLayer.get(), "Terrain's background layer not instantiated before trying to load its data!");
@@ -286,6 +682,9 @@ int SLTerrain::LoadData() {
 
 		m_BGColorLayer->Destroy();
 		m_BGColorLayer->Create(create_bitmap_ex(8, m_MainBitmap->w, m_MainBitmap->h), m_Offset, m_WrapX, m_WrapY, m_ScrollInfo);
+		// Destroy clears the depth: the background walls are drawn behind the objects and the foreground in front, and the lighting tells them apart by it.
+		m_FGColorLayer->SetZOrder(c_DefaultDrawDepth);
+		m_BGColorLayer->SetZOrder(c_TerrainBGDepth);
 
 		TexturizeTerrain();
 
@@ -364,6 +763,7 @@ void SLTerrain::CleanAir() {
 			              }
 		              }
 	              });
+	NoteMaterialChangeBox(0, 0, m_MainBitmap->w - 1, m_MainBitmap->h - 1);
 }
 
 void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {
@@ -403,6 +803,7 @@ void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {
 			}
 		}
 	}
+	NoteMaterialChangeBox(box.m_Corner.GetFloorIntX(), box.m_Corner.GetFloorIntY(), static_cast<int>(box.m_Corner.GetX() + box.m_Width) - 1, static_cast<int>(box.m_Corner.GetY() + box.m_Height) - 1);
 }
 
 // TODO: OPTIMIZE THIS, IT'S A TIME HOG. MAYBE JSUT STAMP THE OUTLINE AND SAMPLE SOME RANDOM PARTICLES?
@@ -489,6 +890,8 @@ std::deque<MOPixel*> SLTerrain::EraseSilhouette(BITMAP* sprite, const Vector& po
 	}
 	// TODO: improve fit/tightness of box here.
 	m_UpdatedMaterialAreas.emplace_back(Box(pos - pivot, static_cast<float>(maxWidth), static_cast<float>(maxHeight)));
+	// The lighting's grid needs to know too: the erased area is the temp bitmap's square around pos, unwrapped.
+	NoteMaterialChangeBox(pos.GetFloorIntX() - tempBitmap->w / 2, pos.GetFloorIntY() - tempBitmap->h / 2, pos.GetFloorIntX() - tempBitmap->w / 2 + tempBitmap->w - 1, pos.GetFloorIntY() - tempBitmap->h / 2 + tempBitmap->h - 1);
 
 	return dislodgedMOPixels;
 }
@@ -517,6 +920,10 @@ void SLTerrain::Draw(const Box& targetDimensions, Box& targetBox, bool offsetNee
 	}
 }
 
+unsigned int SLTerrain::GetMaterialTextureId() const {
+	return (m_MainStreamTexture && m_MainStreamTexture->m_Textures.size() == 1) ? m_MainStreamTexture->m_Textures[0]->GetTextureId() : 0;
+}
+
 void SLTerrain::Draw(const Camera& camera) {
 	ZoneScoped;
 	switch (m_LayerToDraw) {
@@ -524,13 +931,20 @@ void SLTerrain::Draw(const Camera& camera) {
 			SceneLayer::Draw(camera);
 			break;
 		case LayerType::ForegroundLayer:
+			// The terrain shader reads the materials on screen (GetMaterialTextureId): bring them up to date first. Only what changed is uploaded.
+			if (m_MainStreamTexture && m_MainBitmapOwned) {
+				UpdateTargetRegionForView(camera.GetViewport());
+			}
 			m_FGColorLayer->Draw(camera);
 			break;
 		case LayerType::BackgroundLayer:
+			if (m_MainStreamTexture && m_MainBitmapOwned) {
+				UpdateTargetRegionForView(camera.GetViewport());
+			}
 			m_BGColorLayer->Draw(camera);
 			break;
 		default:
 			RTEAbort("Invalid LayerType was set to draw in SLTerrain::Draw");
 			break;
-		}
+	}
 }

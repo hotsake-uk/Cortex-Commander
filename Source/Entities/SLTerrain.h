@@ -1,14 +1,53 @@
 #pragma once
 
+#include <atomic>
+#include <climits>
 #include "SceneLayer.h"
 #include "Matrix.h"
+#include "Color.h"
+
+#include <mutex>
+#include <vector>
+#include <memory>
 
 namespace RTE {
 
 	class MOPixel;
+	class MovableObject;
 	class TerrainFrosting;
 	class TerrainObject;
 	class TerrainDebris;
+	class Camera;
+
+	/// A light that is part of the scenery: a lamp on a bunker wall, a floodlight, a warning light. It stays where it is and shines until what holds it is destroyed.
+	/// On a TerrainObject its position is an offset from the top left corner of the object's bitmaps; on the terrain it's a scene position.
+	class TerrainLight : public Serializable {
+
+	public:
+		SerializableClassNameGetter;
+		SerializableOverrideMethods;
+
+		TerrainLight() { Clear(); }
+
+		void Reset() override { Clear(); }
+
+		Vector m_Pos; //!< Where the light is.
+		Color m_Color; //!< Its color, 0-255.
+		float m_Radius; //!< How far it reaches, in pixels.
+		float m_Intensity; //!< How bright it is.
+		float m_Flicker; //!< How much it flickers at random, 0 to 1.
+		float m_Pulse; //!< How many times a second it swells and fades, 0 for a steady light.
+		float m_ConeAngle; //!< Half-angle of its beam in degrees, 0 for a light that shines all round.
+		float m_ConeDirection; //!< Which way the beam points, in degrees clockwise from pointing right (90 is straight down).
+		int m_Anchored; //!< Whether it hangs on something solid, and so goes out when that is destroyed. -1 until that's been looked up.
+		Vector m_AnchorOffset; //!< Where the solid thing it hangs on is, from the light.
+		int m_AnchorSolid; //!< How many solid pixels there were in the fixture around the anchor when it was looked up. The lamp goes out when fewer than half are left.
+
+	private:
+		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
+
+		void Clear();
+	};
 
 	/// Collection of scrolling layers that compose the terrain of the Scene.
 	class SLTerrain : public SceneLayer {
@@ -116,6 +155,11 @@ namespace RTE {
 		/// @return A pointer to the material bitmap.
 		BITMAP* GetMaterialBitmap() { return m_MainBitmap; }
 
+		/// Gets the GPU copy of the material bitmap, for the terrain shader to tell what each pixel is made of (Terrain.frag's rteMaterialMap).
+		/// Kept current for what's on screen while the colour layers are drawn.
+		/// @return The texture, or 0 if there's none or the scene is too big for it to be a single texture.
+		unsigned int GetMaterialTextureId() const;
+
 		/// Gets a specific pixel from the foreground color bitmap of this.
 		/// @param pixelX The X coordinate of the pixel to get.
 		/// @param pixelY The Y coordinate of the pixel to get.
@@ -150,7 +194,26 @@ namespace RTE {
 		/// @param pixelX The X coordinate of the pixel to set.
 		/// @param pixelY The Y coordinate of the pixel to set.
 		/// @param materialID The material index to set the pixel to.
-		void SetMaterialPixel(int pixelX, int pixelY, int materialID) { SetPixel(pixelX, pixelY, materialID); }
+		void SetMaterialPixel(int pixelX, int pixelY, int materialID) {
+			SetPixel(pixelX, pixelY, materialID);
+			NoteMaterialChange(pixelX, pixelY);
+		}
+
+		/// Records that the material pixels in a box changed, for terrain changed by drawing straight to the material bitmap rather than through SetMaterialPixel. Safe to call from any thread.
+		/// The box may be unwrapped (running past the scene's edges): on a wrapping axis it is wrapped round, on the other the part outside is dropped.
+		/// @param minX, minY, maxX, maxY The box, in scene pixels, both ends included.
+		static void NoteMaterialChangeBox(int minX, int minY, int maxX, int maxY);
+
+		/// The size of a tile of the changed-terrain map, in scene pixels (see TakeChangedTiles).
+		static constexpr int c_ChangeTileSize = 32;
+
+		/// Takes the tiles of the changed-terrain map that had a material pixel changed since this was last called, for whatever keeps its own picture of the
+		/// terrain up to date (the lighting's grid), and clears them. Changes in separate places stay separate: two craters at either end of the map are two
+		/// tiles, not the scene between them.
+		/// @param tiles Filled with one bit per tile, row by row, 64 tiles a word, bit (index % 64) of word (index / 64) for tile index y * tilesWide + x.
+		/// @param tilesWide, tilesHigh Set to the map's size in tiles (c_ChangeTileSize pixels each); 0 when no terrain has been loaded.
+		/// @return Whether any tile had changed.
+		static bool TakeChangedTiles(std::vector<uint64_t>& tiles, int& tilesWide, int& tilesHigh);
 
 		/// Indicates whether a terrain pixel is of Air or Cavity material.
 		/// @param pixelX The X coordinate of the pixel to check.
@@ -172,6 +235,30 @@ namespace RTE {
 		/// Adds a notification that an area of the material terrain has been updated.
 		/// @param newArea The Box defining the newly updated material area that can be unwrapped and may be out of bounds of the scene.
 		void AddUpdatedMaterialArea(const Box& newArea) { m_UpdatedMaterialAreas.emplace_back(newArea); }
+
+		/// Adds a light to the scenery. One already at the same spot is replaced.
+		/// @param light The light, with its position in scene coordinates.
+		void AddLight(const TerrainLight& light);
+
+		/// Queues a light to be added to the scenery on the next light update, as AddLight would. Safe to call from any thread, for Lua scripts (ThreadedUpdate runs them in parallel).
+		/// @param light The light, with its position in scene coordinates.
+		void QueueLight(const TerrainLight& light);
+
+		/// Removes the scenery lights for which the test says so.
+		/// @return How many were removed.
+		int RemoveLights(const std::function<bool(const TerrainLight&)>& shouldRemove);
+
+		/// Gets the lights of the scenery.
+		const std::vector<TerrainLight>& GetLights() const { return m_Lights; }
+
+		/// Smashes the scenery's lights within a distance of a point: they go out for good, on the next update. For explosions. Safe to call from any thread.
+		void BreakLightsNear(const Vector& pos, float radius);
+
+		/// Smashes any of the scenery's lights that a shot passes through on its way between two points. Cheap when there's no lamp near. Safe to call from any thread.
+		void ShootLightsAlong(const Vector& from, const Vector& to);
+
+		/// Makes the scenery's lights shine this update, and puts out the ones whose fixture has been destroyed. Only for the terrain of the Scene being played.
+		void UpdateLights();
 
 		/// Removes any color pixel in the color layer of this SLTerrain wherever there is an air material pixel in the material layer.
 		void CleanAir();
@@ -228,6 +315,15 @@ namespace RTE {
 		std::vector<TerrainDebris*> m_TerrainDebris; //!< The TerrainDebris that need to be  placed on this SLTerrain.
 		std::vector<TerrainObject*> m_TerrainObjects; //!< The TerrainObjects that need to be placed on this SLTerrain.
 
+		std::vector<TerrainLight> m_Lights; //!< The lights of the scenery, in scene coordinates.
+		int m_LightCheckCounter; //!< Counts updates between checks of whether the lights' fixtures are still there.
+		std::vector<unsigned char> m_LightCells; //!< A coarse grid over the scene marking where there's a light nearby, so shots can tell quickly that they aren't hitting one.
+		int m_LightCellColumns; //!< How many cells wide that grid is.
+		bool m_LightCellsStale; //!< Whether the lights have changed since the grid was made.
+		std::vector<std::pair<Vector, float>> m_LightBreaks; //!< Places and distances where lights are to be smashed on the next update.
+		std::vector<TerrainLight> m_QueuedLights; //!< Lights added from scripts, waiting for the next light update.
+		std::mutex m_LightBreaksMutex; //!< Guards m_LightBreaks and m_QueuedLights.
+
 		std::deque<Box> m_UpdatedMaterialAreas; //!< List of areas of the material layer (main bitmap) which have been affected by new objects copied to it. These boxes are NOT wrapped, and can be out of bounds!
 
 		Directions m_OrbitDirection; //!< The direction of the out-of-bounds "orbit" for this scene, where the brain must path to and where dropships/rockets come from.
@@ -241,5 +337,60 @@ namespace RTE {
 		// Disallow the use of some implicit methods.
 		SLTerrain(const SLTerrain& reference) = delete;
 		SLTerrain& operator=(const SLTerrain& rhs) = delete;
+
+	private:
+		/// The changed-terrain map: one bit per c_ChangeTileSize square of the loaded scene, set by any thread that changes material, taken by the lighting.
+		struct ChangeTiles {
+			int SceneWidth = 0;
+			int SceneHeight = 0;
+			int TilesWide = 0;
+			int TilesHigh = 0;
+			bool WrapX = false;
+			bool WrapY = false;
+			size_t WordCount = 0;
+			std::unique_ptr<std::atomic<uint64_t>[]> Words;
+		};
+
+		/// Makes a new, empty changed-terrain map for a scene being loaded (main thread, nothing else running). The one it replaces is kept until the next
+		/// load, so a thread that had just looked it up still writes to live memory.
+		static void ResetChangeTiles(int sceneWidth, int sceneHeight, bool wrapX, bool wrapY);
+
+		/// Marks one tile of the map as changed, by its tile coordinates in the map (both in range).
+		static void MarkChangeTile(ChangeTiles& map, int tileX, int tileY) {
+			size_t index = static_cast<size_t>(tileY) * map.TilesWide + tileX;
+			std::atomic<uint64_t>& word = map.Words[index / 64];
+			uint64_t bit = uint64_t{1} << (index % 64);
+			// Mostly already set while the lighting hasn't taken it: a plain read then, no write to share between threads.
+			if ((word.load(std::memory_order_relaxed) & bit) == 0) {
+				word.fetch_or(bit, std::memory_order_relaxed);
+			}
+		}
+
+		/// Marks the tile of one changed material pixel. Called from wherever terrain is changed, which may be several threads at once.
+		static void NoteMaterialChange(int x, int y) {
+			ChangeTiles* map = s_ChangeTiles.load(std::memory_order_acquire);
+			if (!map) {
+				return;
+			}
+			// The pixel is wrapped into the scene before it is tiled (not the tile into the map: the last tile is a partial one when the scene isn't
+			// a multiple of the tile size, so a wrapped tile index would name the wrong pixels). Off a non-wrapping edge there is nothing to mark.
+			if (x < 0 || x >= map->SceneWidth) {
+				if (!map->WrapX) {
+					return;
+				}
+				x = ((x % map->SceneWidth) + map->SceneWidth) % map->SceneWidth;
+			}
+			if (y < 0 || y >= map->SceneHeight) {
+				if (!map->WrapY) {
+					return;
+				}
+				y = ((y % map->SceneHeight) + map->SceneHeight) % map->SceneHeight;
+			}
+			MarkChangeTile(*map, x / c_ChangeTileSize, y / c_ChangeTileSize);
+		}
+
+		static inline std::atomic<ChangeTiles*> s_ChangeTiles{nullptr}; //!< The current changed-terrain map, or null before any terrain is loaded.
+		static inline std::unique_ptr<ChangeTiles> s_CurrentChangeTiles; //!< Owns the current map.
+		static inline std::unique_ptr<ChangeTiles> s_RetiredChangeTiles; //!< Owns the map before it, kept for one more load (see ResetChangeTiles).
 	};
 } // namespace RTE

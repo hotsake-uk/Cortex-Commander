@@ -366,6 +366,7 @@ void Scene::Clear() {
 	m_NavigableAreas.clear();
 	m_NavigableAreasUpToDate = false;
 	m_GlobalAcc.Reset();
+	m_Atmosphere = Atmosphere();
 	m_SelectedAssemblies.clear();
 	m_AssembliesCounts.clear();
 	m_pPreviewBitmap = 0;
@@ -435,6 +436,7 @@ int Scene::Create(const Scene& reference) {
 		m_AreaList.push_back(new Area(*area));
 
 	m_GlobalAcc = reference.m_GlobalAcc;
+	m_Atmosphere = reference.m_Atmosphere;
 
 	// Deep copy of the bitmap
 	if (reference.m_pPreviewBitmap) {
@@ -1063,6 +1065,13 @@ int Scene::ReadProperty(const std::string_view& propName, Reader& reader) {
 	              // This replaces any existing ones
 	              SetArea(area););
 	MatchProperty("GlobalAcceleration", { reader >> m_GlobalAcc; });
+	MatchProperty("TimeOfDay", { reader >> m_Atmosphere.TimeOfDay; });
+	MatchProperty("DayLengthMinutes", { reader >> m_Atmosphere.DayLengthMinutes; });
+	MatchProperty("WeatherType", { reader >> m_Atmosphere.WeatherType; });
+	MatchProperty("Weather", { m_Atmosphere.WeatherName = reader.ReadPropValue(); });
+	MatchProperty("WeatherIntensity", { reader >> m_Atmosphere.WeatherIntensity; });
+	MatchProperty("Wind", { reader >> m_Atmosphere.Wind; });
+	MatchProperty("PostShader", { m_Atmosphere.PostShader = reader.ReadPropValue(); });
 
 	EndPropertyList;
 }
@@ -1184,6 +1193,27 @@ int Scene::Save(Writer& writer) const {
 	}
 	writer.NewProperty("GlobalAcceleration");
 	writer << m_GlobalAcc;
+	if (m_Atmosphere.TimeOfDay >= 0.0F) {
+		writer.NewPropertyWithValue("TimeOfDay", m_Atmosphere.TimeOfDay);
+	}
+	if (m_Atmosphere.DayLengthMinutes >= 0.0F) {
+		writer.NewPropertyWithValue("DayLengthMinutes", m_Atmosphere.DayLengthMinutes);
+	}
+	if (m_Atmosphere.WeatherType >= 0) {
+		writer.NewPropertyWithValue("WeatherType", m_Atmosphere.WeatherType);
+	}
+	if (!m_Atmosphere.WeatherName.empty()) {
+		writer.NewPropertyWithValue("Weather", m_Atmosphere.WeatherName);
+	}
+	if (m_Atmosphere.WeatherIntensity >= 0.0F) {
+		writer.NewPropertyWithValue("WeatherIntensity", m_Atmosphere.WeatherIntensity);
+	}
+	if (m_Atmosphere.Wind > -10000.0F) {
+		writer.NewPropertyWithValue("Wind", m_Atmosphere.Wind);
+	}
+	if (!m_Atmosphere.PostShader.empty()) {
+		writer.NewPropertyWithValue("PostShader", m_Atmosphere.PostShader);
+	}
 
 	return 0;
 }
@@ -2452,6 +2482,11 @@ void Scene::Update() {
 	ZoneScoped;
 
 	m_PathfindingUpdated = false;
+
+	// The scenery's lamps shine this update (only lights for the renderer: nothing in the simulation reads them).
+	if (m_pTerrain) {
+		m_pTerrain->UpdateLights();
+	}
 
 	if (g_SettingsMan.BlipOnRevealUnseen()) {
 		// Highlight the pixels that have been revealed on the unseen maps
