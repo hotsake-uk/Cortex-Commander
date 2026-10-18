@@ -224,9 +224,9 @@ void ActorFire::Update() {
 	};
 	keepValid(ignitions);
 	keepValid(douses);
-	std::sort(ignitions.begin(), ignitions.end(), byID);
+	std::stable_sort(ignitions.begin(), ignitions.end(), byID);
 	ignitions.erase(std::unique(ignitions.begin(), ignitions.end()), ignitions.end());
-	std::sort(douses.begin(), douses.end(), byID);
+	std::stable_sort(douses.begin(), douses.end(), byID);
 	douses.erase(std::unique(douses.begin(), douses.end()), douses.end());
 	for (MovableObject* object: ignitions) {
 		// A lick of flame doesn't always take: about one update in five of being in the flames does. A second in a flame-thrower's stream still sets anyone alight.

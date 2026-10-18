@@ -1871,7 +1871,7 @@ namespace SandboxDetail {
 			}
 		}
 		const bool wraps = g_SceneMan.SceneWrapsX();
-		std::sort(boarders.begin(), boarders.end(), [vehicle, wraps](const Actor* a, const Actor* b) {
+		std::stable_sort(boarders.begin(), boarders.end(), [vehicle, wraps](const Actor* a, const Actor* b) {
 			return g_SceneMan.ShortestDistance(a->GetPos(), vehicle->GetPos(), wraps).GetSqrMagnitude() < g_SceneMan.ShortestDistance(b->GetPos(), vehicle->GetPos(), wraps).GetSqrMagnitude();
 		});
 		const size_t seats = static_cast<size_t>(FreeSeatsOf(vehicle));
@@ -2592,7 +2592,7 @@ namespace SandboxDetail {
 		}
 		std::vector<Vector> spots = toPlace && !s_SkyOrder ? StandingSpots(place, static_cast<int>(units.size())) : std::vector<Vector>();
 		if (toPlace) {
-			std::sort(units.begin(), units.end(), [&place](Actor* a, Actor* b) {
+			std::stable_sort(units.begin(), units.end(), [&place](Actor* a, Actor* b) {
 				return g_SceneMan.ShortestDistance(place, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(place, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
 			});
 		}
@@ -2727,7 +2727,7 @@ namespace SandboxDetail {
 
 	void DefendUnitsAt(std::vector<Actor*> units, const Vector& point, int facing) {
 		std::vector<Vector> spots = StandingSpots(point, static_cast<int>(units.size()));
-		std::sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
+		std::stable_sort(units.begin(), units.end(), [&point](Actor* a, Actor* b) {
 			return g_SceneMan.ShortestDistance(point, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(point, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
 		});
 		for (size_t i = 0; i < units.size(); ++i) {
@@ -2845,7 +2845,7 @@ namespace SandboxDetail {
 			spots.push_back(StandingSpots(point, static_cast<int>(units.size())));
 		}
 		const Vector& first = points.front();
-		std::sort(units.begin(), units.end(), [&first](Actor* a, Actor* b) {
+		std::stable_sort(units.begin(), units.end(), [&first](Actor* a, Actor* b) {
 			return g_SceneMan.ShortestDistance(first, a->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude() < g_SceneMan.ShortestDistance(first, b->GetPos(), g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
 		});
 		for (size_t i = 0; i < units.size(); ++i) {

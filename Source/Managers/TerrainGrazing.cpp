@@ -68,7 +68,7 @@ namespace {
 
 	/// Keeps a place among the ones found if no kept one is within spacing of it, until there are most.
 	void KeepSpaced(std::vector<std::pair<float, Vector>>& found, std::vector<Vector>& kept, float spacing, int most) {
-		std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 		for (const auto& [distance, place]: found) {
 			if (static_cast<int>(kept.size()) >= most) {
 				break;
@@ -307,7 +307,7 @@ void TerrainGrazing::TakeBite(SLTerrain* terrain, const Vector& at, float radius
 			}
 		}
 	}
-	std::sort(food.begin(), food.end(), [](const auto& a, const auto& b) { return a.second != b.second ? a.second < b.second : std::abs(a.first) < std::abs(b.first); });
+	std::stable_sort(food.begin(), food.end(), [](const auto& a, const auto& b) { return a.second != b.second ? a.second < b.second : std::abs(a.first) < std::abs(b.first); });
 	int eaten = 0;
 	long long now = g_TimerMan.GetSimTimeMS();
 	for (const auto& [dx, dy]: food) {

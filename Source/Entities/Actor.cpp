@@ -2773,7 +2773,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		candidates.push_back({actor, toTarget, distance, offAim, off});
 	}
 	// The likeliest first: nearest the aim, then nearest, so the budget goes where a person would look.
-	std::sort(candidates.begin(), candidates.end(), [narrowReach](const Candidate& a, const Candidate& b) { return a.offAim / 90.0F + a.distance / narrowReach < b.offAim / 90.0F + b.distance / narrowReach; });
+	std::stable_sort(candidates.begin(), candidates.end(), [narrowReach](const Candidate& a, const Candidate& b) { return a.offAim / 90.0F + a.distance / narrowReach < b.offAim / 90.0F + b.distance / narrowReach; });
 
 	// The looks: the likeliest enemy's body always, then, starting where the last scan stopped, the likeliest's head and each other
 	// enemy's body and head in turn. (Taken in rank order every time, an enemy near the aim but hidden behind a wall spent the whole
@@ -2833,7 +2833,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 		float visibility = std::clamp(angle * far * hidden.Light * hidden.Moving * profile, 0.05F, 1.0F);
 		m_Sightings.push_back({candidate.actor, hitPos, visibility, candidate.distance, head});
 	}
-	std::sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
+	std::stable_sort(m_Sightings.begin(), m_Sightings.end(), [](const ActorSighting& a, const ActorSighting& b) { return a.Visibility > b.Visibility; });
 	return m_Sightings;
 }
 

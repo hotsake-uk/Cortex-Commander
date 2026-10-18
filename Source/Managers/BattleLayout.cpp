@@ -406,7 +406,7 @@ namespace SandboxDetail {
 			if (candidates.empty()) {
 				return Place();
 			}
-			std::sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.Score > b.Score; });
+			std::stable_sort(candidates.begin(), candidates.end(), [](const Candidate& a, const Candidate& b) { return a.Score > b.Score; });
 			candidates.resize(std::min(candidates.size(), size_t(8)));
 			Place best = candidates.front().At;
 			float bestScore = std::numeric_limits<float>::max();

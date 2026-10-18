@@ -644,7 +644,7 @@ namespace {
 		if (crossings.size() < 2) {
 			return false;
 		}
-		std::sort(crossings.begin(), crossings.end(), [](const Crossing& a, const Crossing& b) { return a.Along < b.Along; });
+		std::stable_sort(crossings.begin(), crossings.end(), [](const Crossing& a, const Crossing& b) { return a.Along < b.Along; });
 		// The stretch of the line inside the blob that the hit is on: crossings go in and out by turns along it.
 		size_t pick = 0;
 		float best = 1e9F;

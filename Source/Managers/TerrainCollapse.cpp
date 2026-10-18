@@ -3735,7 +3735,7 @@ void TerrainCollapse::Update() {
 		std::scoped_lock lock(s_QueueMutex);
 		// Sort for a fixed order, whatever order the gib code queued them in. The crater is still being dug by the blast's particles,
 		// so check after half a second and again after a second and a half.
-		std::sort(s_Pending.begin(), s_Pending.end(), [](const Check& a, const Check& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
+		std::stable_sort(s_Pending.begin(), s_Pending.end(), [](const Check& a, const Check& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 		pending.swap(s_Pending);
 		chunks.swap(s_ChunkRequests);
 		footfalls.swap(s_Footfalls);
@@ -3760,7 +3760,7 @@ void TerrainCollapse::Update() {
 		DropBox(terrain, request, now);
 	}
 	// Steps on loose ground, in a fixed order, a few an update.
-	std::sort(footfalls.begin(), footfalls.end(), [](const Footfall& a, const Footfall& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Direction < b.Direction); });
+	std::stable_sort(footfalls.begin(), footfalls.end(), [](const Footfall& a, const Footfall& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Direction < b.Direction); });
 	for (size_t i = 0; i < footfalls.size() && i < 8; ++i) {
 		Scuff(terrain, footfalls[i]);
 	}
@@ -3772,7 +3772,7 @@ void TerrainCollapse::Update() {
 			blasts.swap(s_Blasts);
 		}
 		s_Rested.erase(std::remove_if(s_Rested.begin(), s_Rested.end(), [now](const Rested& rested) { return now - rested.When > c_RestedUpdates; }), s_Rested.end());
-		std::sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Push < b.Push); });
+		std::stable_sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Push < b.Push); });
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		for (const BlastRequest& blast: blasts) {
 			glm::vec2 from(static_cast<float>(blast.X), static_cast<float>(blast.Y));

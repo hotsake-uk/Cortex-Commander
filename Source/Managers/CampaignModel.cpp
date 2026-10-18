@@ -157,7 +157,7 @@ namespace RTE::CampaignModel {
 					pairs.emplace_back(a, b);
 				}
 			}
-			std::sort(pairs.begin(), pairs.end(), [&](const auto& p, const auto& q) { return distance(p.first, p.second) < distance(q.first, q.second); });
+			std::stable_sort(pairs.begin(), pairs.end(), [&](const auto& p, const auto& q) { return distance(p.first, p.second) < distance(q.first, q.second); });
 			for (const auto& [a, b]: pairs) {
 				if (distance(a, b) > spacing * 2.3F) {
 					break;
@@ -302,7 +302,7 @@ namespace RTE::CampaignModel {
 				type.Size = big ? 3 : 4;
 				types.push_back(type);
 			}
-			std::sort(types.begin(), types.end(), [](const SquadType& a, const SquadType& b) { return a.SoldierCost < b.SoldierCost; });
+			std::stable_sort(types.begin(), types.end(), [](const SquadType& a, const SquadType& b) { return a.SoldierCost < b.SoldierCost; });
 			const int count = static_cast<int>(types.size());
 			for (int i = 0; i < count; ++i) {
 				types[i].Tier = count <= 1 ? 1 : 1 + (i * 3) / count;
@@ -1542,7 +1542,7 @@ namespace RTE::CampaignModel {
 			choice.Name = data->GetFriendlyName().empty() ? choice.Module : data->GetFriendlyName();
 			factions.push_back(choice);
 		}
-		std::sort(factions.begin(), factions.end(), [](const FactionChoice& a, const FactionChoice& b) { return a.Name < b.Name; });
+		std::stable_sort(factions.begin(), factions.end(), [](const FactionChoice& a, const FactionChoice& b) { return a.Name < b.Name; });
 		return factions;
 	}
 

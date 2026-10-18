@@ -58,7 +58,7 @@ void MagicEffects::Update() {
 		return;
 	}
 	// (Casts made from parallel scripts are sorted so they land in the same order every time.)
-	std::sort(pushes.begin(), pushes.end(), [](const PushRequest& a, const PushRequest& b) {
+	std::stable_sort(pushes.begin(), pushes.end(), [](const PushRequest& a, const PushRequest& b) {
 		return a.Origin.m_Y != b.Origin.m_Y ? a.Origin.m_Y < b.Origin.m_Y : (a.Origin.m_X != b.Origin.m_X ? a.Origin.m_X < b.Origin.m_X : (a.Power != b.Power ? a.Power < b.Power : a.CasterID < b.CasterID));
 	});
 	for (const PushRequest& push: pushes) {

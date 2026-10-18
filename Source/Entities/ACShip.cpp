@@ -1710,7 +1710,7 @@ void ACShip::UpdateAIRides() {
 		}
 		candidates.emplace_back(toShip.GetMagnitude(), unit);
 	}
-	std::sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+	std::stable_sort(candidates.begin(), candidates.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 	for (const auto& [distance, unit]: candidates) {
 		if (room <= 0 || searchesLeft <= 0) {
 			break;

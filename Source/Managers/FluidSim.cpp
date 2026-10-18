@@ -298,7 +298,7 @@ namespace {
 		void SortHighestFirst() {
 			size_t count = Keys.size();
 			if (count < 4096) {
-				std::sort(Keys.begin(), Keys.end(), std::greater<int>());
+				std::stable_sort(Keys.begin(), Keys.end(), std::greater<int>());
 				return;
 			}
 			static std::vector<int> scratch;
@@ -1476,7 +1476,7 @@ void FluidSim::Update() {
 		bloodSettled.swap(s_BloodSettled);
 	}
 	// Blood that settled runs as blood (FluidSim::BloodFlows): the water pixel it became, still red, turns to the Blood liquid and wakes.
-	std::sort(bloodSettled.begin(), bloodSettled.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
+	std::stable_sort(bloodSettled.begin(), bloodSettled.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
 	for (glm::ivec2 spot: bloodSettled) {
 		int x = s_WrapsX ? ((spot.x % width) + width) % width : spot.x;
 		int y = spot.y;
@@ -1488,7 +1488,7 @@ void FluidSim::Update() {
 	// Liquid that something came to rest in (a chip or a grain of dirt sunk to the bottom, a stain) goes back at the surface above where it was:
 	// up through the liquid over it to the first free pixel, or failing that up a column beside it. Drawn over and lost, a pool that a burst of
 	// dirt or a spray of chips fell into went down by a pixel for every one of them, and looked to be eaten away.
-	std::sort(kept.begin(), kept.end(), [](const KeptLiquid& a, const KeptLiquid& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : (a.Material != b.Material ? a.Material < b.Material : a.Color < b.Color)); });
+	std::stable_sort(kept.begin(), kept.end(), [](const KeptLiquid& a, const KeptLiquid& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : (a.Material != b.Material ? a.Material < b.Material : a.Color < b.Color)); });
 	for (const KeptLiquid& liquid: kept) {
 		int keptX = s_WrapsX ? ((liquid.X % width) + width) % width : liquid.X;
 		bool placed = false;
@@ -1515,7 +1515,7 @@ void FluidSim::Update() {
 		}
 	}
 	// Liquid thrown into the air by blasts and by things falling in. Each pixel thrown becomes a flying drop that joins the liquid again where it lands, so none is lost.
-	std::sort(splashRequests.begin(), splashRequests.end(), [](const SplashRequest& a, const SplashRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
+	std::stable_sort(splashRequests.begin(), splashRequests.end(), [](const SplashRequest& a, const SplashRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 	int dropsLeft = 260;
 	for (const SplashRequest& splash: splashRequests) {
 		BITMAP* splashBitmap = terrain->GetBitmap();
@@ -1568,7 +1568,7 @@ void FluidSim::Update() {
 	}
 	const long long pourUpdate = g_TimerMan.GetSimUpdateCount();
 	const float pourSeconds = std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F);
-	std::sort(pours.begin(), pours.end(), [](const PourRequest& a, const PourRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
+	std::stable_sort(pours.begin(), pours.end(), [](const PourRequest& a, const PourRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Radius < b.Radius); });
 	for (const PourRequest& pour: pours) {
 		// (Looked up in the table built with the kinds, not by comparing every material's name per pour: L-6.)
 		auto byName = s_PourableByName.find(pour.Name);
@@ -1594,7 +1594,7 @@ void FluidSim::Update() {
 	}
 	// A drop of a liquid that fades that landed is tagged with its lifetime like a poured pixel, so it goes that long after, wherever it has flowed
 	// to. (The drop became the pixel it settled at; one already swept along by the time this runs is looked for beside it.)
-	std::sort(fadingSettled.begin(), fadingSettled.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
+	std::stable_sort(fadingSettled.begin(), fadingSettled.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y < b.y : a.x < b.x; });
 	for (glm::ivec2 spot: fadingSettled) {
 		int spotX = s_WrapsX ? ((spot.x % width) + width) % width : spot.x;
 		// The spot itself first, then the eight around it.
@@ -1634,7 +1634,7 @@ void FluidSim::Update() {
 			}
 		}
 	}
-	std::sort(disturbances.begin(), disturbances.end(), [](const auto& a, const auto& b) { return a.first.y != b.first.y ? a.first.y < b.first.y : (a.first.x != b.first.x ? a.first.x < b.first.x : a.second < b.second); });
+	std::stable_sort(disturbances.begin(), disturbances.end(), [](const auto& a, const auto& b) { return a.first.y != b.first.y ? a.first.y < b.first.y : (a.first.x != b.first.x ? a.first.x < b.first.x : a.second < b.second); });
 	for (const auto& [center, radius]: disturbances) {
 		int centerX = s_WrapsX ? ((center.x % width) + width) % width : center.x;
 		int reach = std::min(radius, width / 2);
@@ -2191,7 +2191,7 @@ std::string FluidSim::GetSaveState() {
 		}
 		// And what liquid covers (grass under water), lowest key first, so it comes back when the liquid goes.
 		std::vector<std::pair<int, Covered>> covered(s_Covered.begin(), s_Covered.end());
-		std::sort(covered.begin(), covered.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		std::stable_sort(covered.begin(), covered.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 		stream << " H " << covered.size();
 		for (const auto& [key, what]: covered) {
 			stream << ' ' << key % width << ' ' << key / width << ' ' << static_cast<int>(what.Material) << ' ' << what.Color;

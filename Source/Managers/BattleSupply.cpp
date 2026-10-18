@@ -137,7 +137,7 @@ namespace SandboxDetail {
 					Note(loadout.Thrown, item);
 				}
 			});
-			std::sort(guns.begin(), guns.end(), [](const MovableObject* a, const MovableObject* b) { return a->GetGoldValue() > b->GetGoldValue(); });
+			std::stable_sort(guns.begin(), guns.end(), [](const MovableObject* a, const MovableObject* b) { return a->GetGoldValue() > b->GetGoldValue(); });
 			for (const MovableObject* gun: guns) {
 				Note(loadout.Guns, gun);
 			}

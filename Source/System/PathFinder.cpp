@@ -2848,7 +2848,7 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 		}
 	}
 	// Cheapest first: a wide window offers many near-alike landings, and AddFlightLinks takes the first few.
-	std::sort(links.begin(), links.end(), [](const FlightLink& a, const FlightLink& b) { return a.cost < b.cost; });
+	std::stable_sort(links.begin(), links.end(), [](const FlightLink& a, const FlightLink& b) { return a.cost < b.cost; });
 }
 
 void PathFinder::AddFlightLinks(const PathNode& node, std::vector<micropather::StateCost>* adjacentList) {

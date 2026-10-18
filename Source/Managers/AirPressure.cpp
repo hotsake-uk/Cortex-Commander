@@ -526,9 +526,9 @@ void AirPressure::Update() {
 		blasts.swap(s_Blasts);
 		gusts.swap(s_Gusts);
 	}
-	std::sort(gusts.begin(), gusts.end(), [](const GustRequest& a, const GustRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Strength < b.Strength); });
+	std::stable_sort(gusts.begin(), gusts.end(), [](const GustRequest& a, const GustRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Strength < b.Strength); });
 	// (Blasts made from parallel code are sorted so they land in the same order every time.)
-	std::sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Energy < b.Energy); });
+	std::stable_sort(blasts.begin(), blasts.end(), [](const BlastRequest& a, const BlastRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : a.Energy < b.Energy); });
 	// The area is grown for every blast first, so what is open is worked out once for them all.
 	for (const BlastRequest& blast: blasts) {
 		if (int cell = CellAt(Vector(static_cast<float>(blast.X), static_cast<float>(blast.Y))); cell >= 0) {

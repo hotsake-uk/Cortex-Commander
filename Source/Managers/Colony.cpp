@@ -404,7 +404,7 @@ namespace {
 				}
 			}
 		}
-		std::sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+		std::stable_sort(found.begin(), found.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 		std::vector<std::pair<int, int>> pixels;
 		pixels.reserve(found.size());
 		for (const auto& [distance, pixel]: found) {

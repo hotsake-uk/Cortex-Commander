@@ -345,7 +345,7 @@ namespace {
 		}
 		if (!anyWax && !onGround) {
 			// Bottom up, so the wick doesn't overwrite itself.
-			std::sort(wick.begin(), wick.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y > b.y : a.x < b.x; });
+			std::stable_sort(wick.begin(), wick.end(), [](const glm::ivec2& a, const glm::ivec2& b) { return a.y != b.y ? a.y > b.y : a.x < b.x; });
 			for (const glm::ivec2& pixel: wick) {
 				int material = ground.Material(pixel.x, pixel.y);
 				int color = ground.Color(pixel.x, pixel.y);

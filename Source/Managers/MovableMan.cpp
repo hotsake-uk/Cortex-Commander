@@ -732,9 +732,9 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 
 void MovableMan::SortAddedMOs() {
 	auto uniqueIDOrder = [](const MovableObject* lhs, const MovableObject* rhs) { return lhs->GetUniqueID() < rhs->GetUniqueID(); };
-	std::sort(m_AddedActors.begin(), m_AddedActors.end(), uniqueIDOrder);
-	std::sort(m_AddedItems.begin(), m_AddedItems.end(), uniqueIDOrder);
-	std::sort(m_AddedParticles.begin(), m_AddedParticles.end(), uniqueIDOrder);
+	std::stable_sort(m_AddedActors.begin(), m_AddedActors.end(), uniqueIDOrder);
+	std::stable_sort(m_AddedItems.begin(), m_AddedItems.end(), uniqueIDOrder);
+	std::stable_sort(m_AddedParticles.begin(), m_AddedParticles.end(), uniqueIDOrder);
 }
 
 void MovableMan::HashState(StateHasher& hasher) const {
@@ -1942,7 +1942,7 @@ void MovableMan::Update() {
 			// With settling off they are only removed.
 			if (maxLooseChunks > 0 && looseChunks.size() > static_cast<size_t>(maxLooseChunks)) {
 				const size_t excess = looseChunks.size() - static_cast<size_t>(maxLooseChunks);
-				std::nth_element(looseChunks.begin(), looseChunks.begin() + excess, looseChunks.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() > second->GetAge(); });
+				std::nth_element(looseChunks.begin(), looseChunks.begin() + excess, looseChunks.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() != second->GetAge() ? first->GetAge() > second->GetAge() : first->GetUniqueID() < second->GetUniqueID(); });
 				for (size_t i = 0; i < excess; ++i) {
 					MOSRotating* chunk = static_cast<MOSRotating*>(looseChunks[i]);
 					if (!chunk->GetVel().MagnitudeIsLessThan(4.0F)) {
@@ -1969,7 +1969,7 @@ void MovableMan::Update() {
 					return;
 				}
 				const size_t excess = bits.size() - static_cast<size_t>(most);
-				std::nth_element(bits.begin(), bits.begin() + excess, bits.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() > second->GetAge(); });
+				std::nth_element(bits.begin(), bits.begin() + excess, bits.end(), [](const MovableObject* first, const MovableObject* second) { return first->GetAge() != second->GetAge() ? first->GetAge() > second->GetAge() : first->GetUniqueID() < second->GetUniqueID(); });
 				for (size_t i = 0; i < excess; ++i) {
 					MovableObject* bit = bits[i];
 					if (!bit->GetVel().MagnitudeIsLessThan(4.0F)) {
@@ -2073,7 +2073,8 @@ void MovableMan::Update() {
 		{
 			// DEATH //////////////////////////////////////////////////////////
 			// Transfer dead actors from Actor list to particle list
-			aIt = partition(m_Actors.begin(), m_Actors.end(), std::not_fn(std::mem_fn(&Actor::IsDead)));
+			// (Stable partitions here and below: the order the lists are updated in is part of the simulation, and an unstable one's order is up to the standard library.)
+			aIt = std::stable_partition(m_Actors.begin(), m_Actors.end(), std::not_fn(std::mem_fn(&Actor::IsDead)));
 			amidIt = aIt;
 
 			// Move dead Actor to particles list
@@ -2124,7 +2125,7 @@ void MovableMan::Update() {
 			// DELETE //////////////////////////////////////////////////////////
 			// Only delete after all travels & updates are done
 			// Actors
-			aIt = partition(m_Actors.begin(), m_Actors.end(), std::not_fn(std::mem_fn(&MovableObject::ToDelete)));
+			aIt = std::stable_partition(m_Actors.begin(), m_Actors.end(), std::not_fn(std::mem_fn(&MovableObject::ToDelete)));
 			amidIt = aIt;
 
 			while (aIt != m_Actors.end()) {
@@ -2165,7 +2166,7 @@ void MovableMan::Update() {
 			m_Items.erase(imidIt, m_Items.end());
 
 			// Particles
-			parIt = partition(m_Particles.begin(), m_Particles.end(), std::not_fn(std::mem_fn(&MovableObject::ToDelete)));
+			parIt = std::stable_partition(m_Particles.begin(), m_Particles.end(), std::not_fn(std::mem_fn(&MovableObject::ToDelete)));
 			midIt = parIt;
 
 			while (parIt != m_Particles.end()) {
@@ -2180,7 +2181,7 @@ void MovableMan::Update() {
 		// SETTLE PARTICLES //////////////////////////////////////////////////
 		// Only settle after all updates and deletions are done
 		if (m_SettlingEnabled) {
-			parIt = partition(m_Particles.begin(), m_Particles.end(), std::not_fn(std::mem_fn(&MovableObject::ToSettle)));
+			parIt = std::stable_partition(m_Particles.begin(), m_Particles.end(), std::not_fn(std::mem_fn(&MovableObject::ToSettle)));
 			midIt = parIt;
 
 			while (parIt != m_Particles.end()) {

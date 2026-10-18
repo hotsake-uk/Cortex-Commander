@@ -1206,7 +1206,7 @@ namespace SandboxDetail {
 					const float distance = g_SceneMan.ShortestDistance(actor->GetPos(), flag.Home, g_SceneMan.SceneWrapsX()).GetSqrMagnitude();
 					enemies.emplace_back(dynamic_cast<const AHuman*>(actor) ? distance : distance + 1.0e8F, actor);
 				}
-				std::sort(enemies.begin(), enemies.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+				std::stable_sort(enemies.begin(), enemies.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 				enemies.resize(std::min<size_t>(enemies.size(), 3));
 				const auto reachable = [&enemies](const Vector& at) {
 					return enemies.empty() || std::any_of(enemies.begin(), enemies.end(), [&at](const auto& enemy) { return CanReach(enemy.second, at); });
@@ -3993,12 +3993,12 @@ namespace SandboxDetail {
 					return RefersTo(squad.Leader, a) && !RefersTo(squad.Leader, b);
 				});
 				if (members.size() > 1 && !RefersTo(squad.Leader, members.front())) {
-					std::sort(members.begin(), members.end(), LeadsBefore);
+					std::stable_sort(members.begin(), members.end(), LeadsBefore);
 				}
 				// Too big for the team as it is now: the furthest from the leader leave it.
 				if (static_cast<int>(members.size()) > size) {
 					Actor* leader = members.front();
-					std::sort(members.begin() + 1, members.end(), [&](const Actor* a, const Actor* b) { return distance(a, leader) < distance(b, leader); });
+					std::stable_sort(members.begin() + 1, members.end(), [&](const Actor* a, const Actor* b) { return distance(a, leader) < distance(b, leader); });
 					for (auto unit = members.begin() + size; unit != members.end(); ++unit) {
 						SendAgain(*unit);
 					}
@@ -4084,7 +4084,7 @@ namespace SandboxDetail {
 							near.emplace_back(apart, *other);
 						}
 					}
-					std::sort(near.begin(), near.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+					std::stable_sort(near.begin(), near.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 					for (const auto& [apart, other]: near) {
 						if (static_cast<int>(group.size()) >= size) {
 							break;
@@ -4095,7 +4095,7 @@ namespace SandboxDetail {
 					if (group.size() < 2) {
 						continue;
 					}
-					std::sort(group.begin(), group.end(), LeadsBefore);
+					std::stable_sort(group.begin(), group.end(), LeadsBefore);
 					AISquad squad;
 					squad.Team = side;
 					squad.Number = s_NextSquadNumber++;
@@ -4204,7 +4204,7 @@ namespace SandboxDetail {
 			if (units.empty() || share <= 0) {
 				return 0;
 			}
-			std::sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+			std::stable_sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 			const int count = std::clamp(static_cast<int>(std::lround(static_cast<float>(total) * static_cast<float>(share) / 100.0F)), 1, total);
 			int given = 0;
 			for (const auto& [apart, unit]: units) {
@@ -4498,7 +4498,7 @@ namespace SandboxDetail {
 						units.emplace_back(CommanderRoll(id), &defender);
 					}
 				}
-				std::sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+				std::stable_sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
 				const int ahead = next >= 0 ? static_cast<int>(std::lround(static_cast<float>(units.size()) * static_cast<float>(std::clamp(share, 0, 100)) / 100.0F)) : 0;
 				const BattleSettings nowPost = ZonePost(now);
 				const BattleSettings nextPost = ZonePost(next);

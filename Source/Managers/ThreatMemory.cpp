@@ -98,7 +98,7 @@ void ThreatMemory::ApplyReports() {
 		return;
 	}
 	// In a fixed order, whichever thread reported first, so the game plays out the same.
-	std::sort(reports.begin(), reports.end(), [](const PendingReport& a, const PendingReport& b) {
+	std::stable_sort(reports.begin(), reports.end(), [](const PendingReport& a, const PendingReport& b) {
 		return a.Update != b.Update ? a.Update < b.Update : a.ReporterID != b.ReporterID ? a.ReporterID < b.ReporterID : a.EnemyID < b.EnemyID;
 	});
 	for (const PendingReport& report: reports) {

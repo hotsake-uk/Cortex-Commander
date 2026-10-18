@@ -484,12 +484,12 @@ void TerrainFire::Update() {
 		areas.swap(s_AreaQueue);
 		douses.swap(s_DouseQueue);
 	}
-	std::sort(ignitions.begin(), ignitions.end(), [](const auto& a, const auto& b) { return a.second != b.second ? a.second < b.second : a.first < b.first; });
+	std::stable_sort(ignitions.begin(), ignitions.end(), [](const auto& a, const auto& b) { return a.second != b.second ? a.second < b.second : a.first < b.first; });
 	ignitions.erase(std::unique(ignitions.begin(), ignitions.end()), ignitions.end());
 	for (const auto& [x, y]: ignitions) {
 		TryIgnite(terrain, x, y, width, height);
 	}
-	std::sort(areas.begin(), areas.end(), [](const auto& a, const auto& b) { return a.first.y != b.first.y ? a.first.y < b.first.y : (a.first.x != b.first.x ? a.first.x < b.first.x : a.second < b.second); });
+	std::stable_sort(areas.begin(), areas.end(), [](const auto& a, const auto& b) { return a.first.y != b.first.y ? a.first.y < b.first.y : (a.first.x != b.first.x ? a.first.x < b.first.x : a.second < b.second); });
 	for (const auto& [center, radius]: areas) {
 		int reach = static_cast<int>(radius);
 		int centerX = static_cast<int>(std::floor(center.x));
@@ -505,7 +505,7 @@ void TerrainFire::Update() {
 		}
 	}
 	// Water last, so it wins over anything set alight at the same time.
-	std::sort(douses.begin(), douses.end(), [](const glm::ivec3& a, const glm::ivec3& b) { return a.y != b.y ? a.y < b.y : (a.x != b.x ? a.x < b.x : a.z < b.z); });
+	std::stable_sort(douses.begin(), douses.end(), [](const glm::ivec3& a, const glm::ivec3& b) { return a.y != b.y ? a.y < b.y : (a.x != b.x ? a.x < b.x : a.z < b.z); });
 	for (const glm::ivec3& douse: douses) {
 		TerrainCandle::Douse(douse.x, douse.y, douse.z);
 		if (s_Burning.empty()) {

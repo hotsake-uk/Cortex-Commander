@@ -1148,7 +1148,7 @@ namespace {
 				inis.emplace_back(entry.last_write_time(error), entry.path());
 			}
 		}
-		std::sort(inis.begin(), inis.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
+		std::stable_sort(inis.begin(), inis.end(), [](const auto& a, const auto& b) { return a.first > b.first; });
 		for (size_t i = c_FilesKept; i < inis.size(); ++i) {
 			std::filesystem::path stem = inis[i].second;
 			std::filesystem::remove(stem, error);

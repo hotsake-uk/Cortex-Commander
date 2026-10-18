@@ -630,7 +630,7 @@ void GasGrid::Update() {
 		requests.swap(s_Requests);
 	}
 	// (Gas let out from parallel code is sorted so it lands in the same order every time.)
-	std::sort(requests.begin(), requests.end(), [](const GasRequest& a, const GasRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : (a.Kind != b.Kind ? a.Kind < b.Kind : a.Amount < b.Amount)); });
+	std::stable_sort(requests.begin(), requests.end(), [](const GasRequest& a, const GasRequest& b) { return a.Y != b.Y ? a.Y < b.Y : (a.X != b.X ? a.X < b.X : (a.Kind != b.Kind ? a.Kind < b.Kind : a.Amount < b.Amount)); });
 	for (const GasRequest& request: requests) {
 		int cell = CellAt(Vector(static_cast<float>(request.X), static_cast<float>(request.Y)));
 		if (cell < 0) {
