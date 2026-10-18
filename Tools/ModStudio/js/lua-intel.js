@@ -458,11 +458,14 @@ window.MS = window.MS || {};
 			this.symbolNames = []; // top-level names (before any "."), for completion
 		}
 
+		// The API of the game the mods are for (MS.target): this game's in data/, a Community Edition release's in data/targets/<id>/.
 		async load() {
-			const response = await fetch('data/lua-api.json', { cache: 'no-cache' });
+			const data = MS.target.get().data;
+			const response = await fetch(data + 'lua-api.json', { cache: 'no-cache' });
 			this.api = await response.json();
-			// The same API as Lua (LuaLS annotations), where go to definition takes a game name.
-			fetch('data/lua-api.d.lua', { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : '')).then((text) => this.setApiText(text)).catch(() => {});
+			this.apiData = data;
+			// The same API as Lua (LuaLS annotations), where go to definition takes a game name. Not waited for: completion doesn't need it.
+			this.apiTextLoading = fetch(data + 'lua-api.d.lua', { cache: 'no-cache' }).then((r) => (r.ok ? r.text() : '')).then((text) => this.setApiText(text)).catch(() => {});
 		}
 
 		// The game's API as a Lua file (data/lua-api.d.lua), indexed by what each line declares: "Actor", "Actor.GetController", "MovableMan".

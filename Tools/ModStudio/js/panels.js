@@ -57,7 +57,9 @@ window.MS = window.MS || {};
 	// { icon, name, note, title, onclick }), isOpen(p) (marks the row of what is open). register() adds one: a new editor adds its category and
 	// is browsed like everything else.
 	const CATEGORIES = [];
-	const categoryOf = (id) => CATEGORIES.find((c) => c.id === id) || CATEGORIES[0];
+	// the kinds the target game has (when: Classic mode has no missions)
+	const shownCategories = () => CATEGORIES.filter((c) => !c.when || c.when());
+	const categoryOf = (id) => shownCategories().find((c) => c.id === id) || shownCategories()[0];
 	const byClass = (...names) => {
 		const set = new Set(names);
 		const match = (p) => set.has(p.cls);
@@ -125,7 +127,7 @@ window.MS = window.MS || {};
 		open: (p) => openInEditor('effects', p, { kind: p.cls === 'AEmitter' ? 'emitters' : 'particles' }), isOpen: (p) => editorShows('effects', p), editors: [['Effects', 'effects']],
 	});
 	register({
-		id: 'missions', title: 'Missions', icon: '⚑', hint: 'Scenarios and their mission logic', match: (p) => p.node.key === 'AddActivity',
+		id: 'missions', title: 'Missions', icon: '⚑', hint: 'Scenarios and their mission logic', match: (p) => p.node.key === 'AddActivity', when: () => !MS.target.classic(),
 		open: (p) => MS.missionEditor.open(p),
 		isOpen: (p) => {
 			const t = MS.ide && MS.ide.active;
@@ -142,7 +144,7 @@ window.MS = window.MS || {};
 		id: 'scenes', title: 'Scenes', icon: '▤', hint: 'Maps: terrain, backdrops and areas', match: byClass('Scene'), thumb: 'scene',
 		open: (p) => openInEditor('scenes', p), isOpen: (p) => editorShows('scenes', p), editors: [['Scenes', 'scenes']],
 		extra: (p) => {
-			if (!MS.missionEditor || !MS.missionEditor.sceneOf) {
+			if (!MS.missionEditor || !MS.missionEditor.sceneOf || MS.target.classic()) {
 				return [];
 			}
 			const missions = app.lib.presets.filter((m) => m.topLevel && m.node.key === 'AddActivity' && (() => {
@@ -450,7 +452,7 @@ window.MS = window.MS || {};
 			$('libGroup').value = '';
 			showLibrary();
 		};
-		const counted = CATEGORIES.map((c) => ({ c, n: inCategory(c).length }));
+		const counted = shownCategories().map((c) => ({ c, n: inCategory(c).length }));
 		const menu = (list, placeholder) => {
 			const select = document.createElement('select');
 			select.className = 'ed-input lib-cat-menu';
@@ -503,8 +505,8 @@ window.MS = window.MS || {};
 	function showLibrary() {
 		const list = $('libList');
 		list.innerHTML = '';
-		if (!CATEGORIES.some((c) => c.id === tab)) {
-			tab = CATEGORIES[0].id;
+		if (!shownCategories().some((c) => c.id === tab)) {
+			tab = shownCategories()[0].id;
 		}
 		const category = categoryOf(tab);
 		renderCategories();
@@ -647,7 +649,7 @@ window.MS = window.MS || {};
 			return box;
 		}
 		files.related = MS.nav.related(preset, files);
-		const category = CATEGORIES.find((c) => c.match(preset)) || null;
+		const category = shownCategories().find((c) => c.match(preset)) || null;
 		for (const [title, rows] of category && category.extra ? category.extra(preset) : []) {
 			const head = document.createElement('div');
 			head.className = 'lf-head';
@@ -706,7 +708,7 @@ window.MS = window.MS || {};
 		note.className = 'lf-note';
 		if (kind === 'related') {
 			const p = item.preset;
-			const own = CATEGORIES.find((c) => c.match(p));
+			const own = shownCategories().find((c) => c.match(p));
 			const designable = !!own;
 			icon.className = 'x-ext part';
 			icon.textContent = '≈';
@@ -1159,6 +1161,10 @@ window.MS = window.MS || {};
 	}
 
 	function vectorRow(rows, part, key, label, locked, fallbackKey) {
+		// a setting the target game doesn't read isn't offered (Classic mode)
+		if (MS.target.commanderOnly(part.ent.cls, key)) {
+			return;
+		}
 		const useKey = fallbackKey && !part.ent.has(key) && part.ent.has(fallbackKey) ? fallbackKey : key;
 		const row = document.createElement('div');
 		row.className = 'row';
@@ -1212,6 +1218,9 @@ window.MS = window.MS || {};
 	}
 
 	function numberRow(rows, part, key, label, fallback, locked) {
+		if (MS.target.commanderOnly(part.ent.cls, key)) {
+			return;
+		}
 		const row = document.createElement('div');
 		row.className = 'row';
 		const l = document.createElement('label');
@@ -1234,6 +1243,9 @@ window.MS = window.MS || {};
 	}
 
 	function boolRow(rows, part, key, label, fallback, locked) {
+		if (MS.target.commanderOnly(part.ent.cls, key)) {
+			return;
+		}
 		const row = document.createElement('div');
 		row.className = 'row';
 		const l = document.createElement('label');
@@ -1879,7 +1891,8 @@ window.MS = window.MS || {};
 			}
 			keysOfClass.set(cls, [...keys].sort());
 		}
-		return keysOfClass.get(cls);
+		// not the keys only Commander reads, when the mod is for Community Edition
+		return keysOfClass.get(cls).filter((key) => !MS.target.commanderOnly(cls, key));
 	}
 
 	function allSettings(insp, part, ent, locked) {
@@ -2173,6 +2186,14 @@ window.MS = window.MS || {};
 		if (MS.settings) {
 			MS.settings.on('browseLayout', () => app.lib && showLibrary());
 		}
+		// another game to make mods for: the kinds it has, and the settings it reads
+		MS.target.on(() => {
+			if (app.lib) {
+				showLibrary();
+				renderInspector();
+				MS.ide.refreshForm();
+			}
+		});
 		let searchTimer = null;
 		$('libSearch').oninput = () => {
 			clearTimeout(searchTimer);
@@ -2203,7 +2224,7 @@ window.MS = window.MS || {};
 		filesOpen: () => openFiles !== null,
 		TAB_CLASSES,
 		register,
-		categories: () => CATEGORIES.slice(),
+		categories: () => shownCategories(),
 		showPartMenu,
 	};
 })();

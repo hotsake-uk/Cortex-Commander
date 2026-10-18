@@ -143,6 +143,7 @@ window.MS = window.MS || {};
 				await open();
 			}
 			app.fs = fs;
+			await MS.target.detect(fs);
 			app.images = new MS.Images(fs);
 			await app.images.loadPalette();
 			app.lib = new MS.Library(fs);
@@ -233,7 +234,7 @@ window.MS = window.MS || {};
 	const MEDIEVAL = new Set(['medieval.rte', 'felllegion.rte']);
 	app.hiddenModule = function (pathOrModule) {
 		const module = String(pathOrModule || '').split('/')[0].toLowerCase();
-		if (!module || (app.project && module === app.project.toLowerCase()) || !MS.settings) {
+		if (!module || (app.project && module === app.project.toLowerCase()) || !MS.settings || MS.target.classic()) {
 			return false;
 		}
 		if (MEDIEVAL.has(module) && MS.settings.get('game.disableMedieval', false)) {

@@ -134,7 +134,8 @@ window.MS = window.MS || {};
 
 		// The lights a building piece puts in the terrain (AddLight = TerrainLight), each at an offset from the pictures' top-left corner.
 		get lights() {
-			if (this.ent.cls !== 'TerrainObject') {
+			// Community Edition's building pieces have no lights
+			if (this.ent.cls !== 'TerrainObject' || MS.target.commanderOnly('TerrainObject', 'AddLight')) {
 				return null;
 			}
 			const lib = this.library || this.ent.library;

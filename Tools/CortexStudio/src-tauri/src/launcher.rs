@@ -1491,6 +1491,48 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 	Ok(log)
 }
 
+// ---- Classic mode: a release build of Community Edition, played where it is ----
+
+/// The program of a Community Edition release in its own folder, as the release zips unpack: "Cortex Command.exe" (the nightly's is
+/// "Cortex Command.debug.release.exe") on Windows, CortexCommand.AppImage on Linux, and the app CortexCommand.tar holds on macOS.
+pub fn release_exe(game_dir: &Path) -> Option<PathBuf> {
+	let entries: Vec<PathBuf> = fs::read_dir(game_dir).ok()?.filter_map(|e| e.ok()).map(|e| e.path()).collect();
+	let name = |p: &PathBuf| p.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
+	if cfg!(windows) {
+		let mut exes: Vec<&PathBuf> = entries.iter().filter(|p| p.is_file() && name(p).starts_with("Cortex Command") && name(p).to_lowercase().ends_with(".exe")).collect();
+		exes.sort_by_key(|p| (name(p) != "Cortex Command.exe", name(p)));
+		exes.first().map(|p| p.to_path_buf())
+	} else if cfg!(target_os = "macos") {
+		let app = entries.iter().find(|p| p.is_dir() && name(p).to_lowercase().ends_with(".app") && name(p).starts_with("Cortex"))?;
+		fs::read_dir(app.join("Contents").join("MacOS")).ok()?.filter_map(|e| e.ok()).map(|e| e.path()).find(|p| p.is_file())
+	} else {
+		entries.into_iter().find(|p| p.is_file() && name(p).starts_with("CortexCommand") && (name(p).ends_with(".AppImage") || !name(p).contains('.')))
+	}
+}
+
+/// Starts the release build in the game folder: to play, or in one of the game's editors. Nothing is copied or linked into it, and its
+/// own Settings.ini is the one it uses.
+fn launch_release(game_dir: &Path, mode: &str) -> Result<Vec<String>, String> {
+	let exe = release_exe(game_dir).ok_or_else(|| format!("There's no Cortex Command program in {}. Studio plays the release build that's in the game folder.", game_dir.display()))?;
+	let args: Vec<&str> = match mode {
+		"" | "play" => vec![],
+		"editor" => vec!["-editor", "ActorEditor"],
+		"sceneeditor" => vec!["-editor", "SceneEditor"],
+		"areaeditor" => vec!["-editor", "AreaEditor"],
+		"assemblyeditor" => vec!["-editor", "AssemblyEditor"],
+		"gibeditor" => vec!["-editor", "GibEditor"],
+		other => return Err(format!("'{other}' needs Cortex Commander: Community Edition starts to play or in one of its editors.")),
+	};
+	let mut command = Command::new(&exe);
+	command.args(&args).current_dir(game_dir);
+	// libfmod sits next to the program in the Linux and macOS zips
+	if !cfg!(windows) {
+		command.env(if cfg!(target_os = "macos") { "DYLD_LIBRARY_PATH" } else { "LD_LIBRARY_PATH" }, game_dir);
+	}
+	command.spawn().map_err(|e| format!("Couldn't start the game: {e}"))?;
+	Ok(vec![format!("Launched {}{}.", exe.file_name().unwrap().to_string_lossy(), if args.is_empty() { String::new() } else { format!(" {}", args.join(" ")) })])
+}
+
 // ---- folder and file pickers (native dialogs, so the page can offer Browse buttons) ----
 
 type MainThread = Box<dyn Fn(Box<dyn FnOnce() + Send>) + Send + Sync>;
@@ -1706,6 +1748,11 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 		"reset" => match reset(&config) {
 			Ok(log) => ok(json!({ "log": log })),
 			Err(e) => fail(500, e),
+		},
+		"release" => ok(json!({ "exe": release_exe(game_dir) })),
+		"launch-release" => match launch_release(game_dir, &arg(body, "mode")) {
+			Ok(log) => ok(json!({ "log": log })),
+			Err(e) => fail(400, e),
 		},
 		"pick" => ok(json!({ "path": pick(&query("kind").unwrap_or_default(), &query("title").unwrap_or_else(|| "Pick a folder".into())) })),
 		_ => fail(404, "Unknown request."),

@@ -1,19 +1,25 @@
 // Writes Mod Studio's Lua API (data/lua-api.json, used for autocomplete, hover help and checks) from the game's own Lua bindings,
 // so what Studio offers is what the engine exposes. Run it after changing Source/Lua/LuaBindings*.cpp:
 //
-//   node Tools/ModStudio/tools/make-lua-api.js
+//   node Tools/ModStudio/tools/make-lua-api.js [--root <game checkout>] [--out <folder>]
+//
+// --root reads another checkout's Source (Community Edition's, for Studio's Classic mode: tools/make-targets.js does that) and --out
+// writes there instead of data/.
 //
 // It reads the luabind registrations (classes, .def, .property, .def_readwrite, .enum_, constructors, luabind::def), then looks up each
 // bound C++ function in the headers for its arguments, return type and /// comment. It is a careful reader of this codebase's style,
 // not a C++ parser: a signature it can't work out is left without types rather than guessed. Also writes data/lua-api.d.lua, LuaLS
 // annotations for the same API, for VS Code users.
-'use strict';
-const fs = require('fs');
-const path = require('path');
+import fs from 'node:fs';
+import path from 'node:path';
 
-const repo = path.resolve(__dirname, '..', '..', '..');
+const option = (name) => {
+	const at = process.argv.indexOf(name);
+	return at > 0 ? process.argv[at + 1] : null;
+};
+const repo = path.resolve(option('--root') || path.join(import.meta.dirname, '..', '..', '..'));
 const source = path.join(repo, 'Source');
-const outDir = path.join(__dirname, '..', 'data');
+const outDir = path.resolve(option('--out') || path.join(import.meta.dirname, '..', 'data'));
 
 // ---- reading C++ ----
 

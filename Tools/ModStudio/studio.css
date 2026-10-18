@@ -1563,3 +1563,7 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 .insp-tables .watch-table td, .insp-mindtable td { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .insp-tables .watch-table { width: calc(100% - 24px); }
 .insp-tables .watch-table td:first-child { width: clamp(110px, 32%, 190px); }
+
+/* Classic mode (target.js): a Community Edition game. What only Commander's engine does is hidden; the badge says which game it is. */
+body.classic .commander-only { display: none !important; }
+.target-badge { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn-text); border-radius: 99px; padding: 2px 10px; font-size: 12px; white-space: nowrap; }

@@ -269,6 +269,10 @@ window.MS = window.MS || {};
 
 	// Writes the script's live copy (or an empty one when it has no markers, if it had a copy), before the game is asked to reload it.
 	L.afterSave = async function (path, text) {
+		// live values need Commander's engine
+		if (MS.target.classic()) {
+			return;
+		}
 		const lower = path.toLowerCase();
 		const result = L.instrument(path, text, logLinesOf(path));
 		if (result.error) {
@@ -298,6 +302,9 @@ window.MS = window.MS || {};
 
 	// Markers in a script that's open but not saved since Studio started: shown as waiting, so you can see they were read.
 	L.noteOpen = function (path, text) {
+		if (MS.target.classic()) {
+			return;
+		}
 		const lower = path.toLowerCase();
 		if (!L.probes.has(lower)) {
 			const result = L.instrument(path, text);

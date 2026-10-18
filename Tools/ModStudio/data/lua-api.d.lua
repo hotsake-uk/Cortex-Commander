@@ -968,6 +968,7 @@ function ACRocket:UpdateAutopilot() end
 ---@field MOMoveTarget number
 ---@field MovePath Vector[] The place the current route was asked for to (a scene point, not an MO), kept apart from the route's last point, which a cut-short route stops short of.
 ---@field Inventory MovableObject[]
+---@field ShotAtAgeMS number How long ago, in sim ms, this was shot at: hit, or a shot passing close by (Actor::ShotPassing). Large if never.
 ---@field STABLE number One of Actor.Status.
 ---@field UNSTABLE number One of Actor.Status.
 ---@field INACTIVE number One of Actor.Status.
@@ -1445,6 +1446,7 @@ ActorSighting = {}
 ---@field HopSpeed number Gets how fast it jumps up off its springs when the driver jumps, in m/s. 0 can't.
 ---@field Acceleration number Gets how hard it speeds up with the wheels down, in m/s each second: its power, and so the steepest slope it can drive up.
 ---@field Grip number Gets how much of its weight on the wheels it can push or brake with before they slip, 0 to about 1 (more for tracks).
+---@field TyreGive number Gets how far its tyres squash before the rims meet the ground, in pixels. 0: hard wheels, felt for the ground by three looks straight down. More: soft tyres, felt for the ground right round their lower half, that roll up steps, take landings and ride rough ground smoothly.
 ---@field BrakeStrength number Gets how hard it slows with the brake on, in m/s each second.
 ---@field RollingResistance number Gets how much rolling on its own slows it, in m/s each second: how far it coasts.
 ---@field WaterThrust number Gets how hard it speeds up in water when driven, in m/s each second. 0: it doesn't drive in water (it isn't a boat).
@@ -6999,6 +7001,8 @@ function CameraManager:AddScreenShake(magnitude, position) end
 ---@field AICombatTargetMemory number
 ---@field AICombatGrenadeUse number
 ---@field AICombatBurst number
+---@field AICombatHearing number
+---@field AICombatInvestigateNoises boolean
 ---@field NavDebugOverlay number Gets what the navigation debug overlay shows: 0 nothing, 1 the path grid in view (where a unit stands, crawls or doesn't fit, and the step-overs, stairs and leaps between), 2 that and each flight's landing and the engine pilot's predicted path (see PathFinder::DrawDebug), 3 that and the node under the pointer: what the grid makes of it and every way out of it with its cost (see DebugOverlays::DrawNavNode), 4 the flights alone: each unit's flight (take-off, landing, the plan, the way it went, its fuel) and the pilot's predicted path, with no grid and no route.
 ---@field UnitInspector number Gets which units the unit inspector overlay labels with their AI state: 0 none, 1 the inspected ones (Ctrl+I, sandbox selection, the one a player controls), 2 every unit in view.
 ---@field ShowSquadLinks boolean Gets whether the squad links and trails overlay is on: for inspected squad units, the leader-to-follower line, the leader's trail and each follower's place in line (drawn by the AI scripts).
@@ -8163,6 +8167,14 @@ function SandboxBattleStop() end
 ---@param byShip boolean
 function SandboxBattleMode(mode, teamSize, byShip) end
 
+--- The next thing that happened in a battle mode's game that a script may react to (Lua: SandboxBattleEvent), or an empty string when nothing new has: "started MODE", "score SIDE TOTAL" (a capture, goal, landing or hill taken), "objective SIDE TAKEN" (assault: an objective taken), "ended WINNER" (the side that won, -1 for nobody). Each is given once, oldest first.
+---@return string
+function SandboxBattleEvent() end
+
+--- Whether a battle mode's game is on (won or not yet): the pause menu shows its battle entries then (B-14).
+---@return boolean
+function SandboxBattleRunning() end
+
 --- Lays one of the Battle Director's modes out on the map loaded (Lua: SandboxBattleLayout), as the Battle tab's Generate layout does: the spawn zones of the teams ticked (red and green, with fewer than two) and the mode's flags, hills, objectives, goals or ship positions, replacing what was drawn. Start it with SandboxBattleMode. Not while a mode's game is on.
 ---@param mode number
 ---@param seed number
@@ -8302,6 +8314,25 @@ function RoundFloatToPrecision(input, precision, roundingMode) end
 ---@param multiple number
 ---@return number
 function RoundToNearestMultiple(num, multiple) end
+
+--- StudioWatch(name, value) in Lua: shows a value in Studio's Watch panel, updated a few times a second.
+---@param name string
+---@param value string
+function _StudioWatch(name, value) end
+
+--- _StudioLive(key, value) in Lua, called by the probes in a live copy: counts the probe's runs and keeps its last values, written to ModStudio/Live.ini a few times a second for Studio to show beside the line.
+---@param key string
+---@param value string
+function _StudioLive(key, value) end
+
+--- _StudioLiveCode(path) in Lua: the text of the live copy of a script that require is about to load, so required libraries (like Base.rte/AI/HumanBehaviors.lua) show live values too.
+---@param scriptPath string
+---@return string
+function _StudioLiveCode(scriptPath) end
+
+--- _StudioClock() in Lua: seconds on a steady clock, for the timing probes ("--?."). Wall time, unlike os.clock, which is the whole process's CPU time on some systems and so counts other threads' work.
+---@return number
+function _StudioClock() end
 
 --- Treats an object as a SoundContainer, for its SoundContainer functions and properties. Use IsSoundContainer first when it might be something else.
 ---@param entity Entity

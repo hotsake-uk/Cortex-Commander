@@ -55,6 +55,27 @@ Studio app does this itself).
   Everything is still read, so copies and inheritance across modules keep working.
 - **Undo and redo** everything (Ctrl+Z, Ctrl+Y). Press **?** for all the keys.
 
+## Classic mode: mods for Community Edition
+
+Studio also makes mods for a release build of Cortex Command Community Edition (6.2.2, or the nightly), so a modder doesn't need to
+build the game. Point Studio at the folder you unzipped the release into (the one with `Data/Base.rte`). Studio sees it isn't
+Cortex Commander and works in **Classic** mode, with a badge beside the project name saying which game; click the badge (or ⚙,
+**Game the mods are for**) to pick another.
+
+- Autocomplete, hover help and checks follow that release's engine: its Lua API and the INI properties each class reads come with
+  Studio (`data/targets/<id>/`, since a release has no engine source). A key only Cortex Commander reads is underlined ("does
+  nothing there") and isn't offered; a class only Commander has (AMech, ACShip...) is an error.
+- The designer, sprites, gibs, guns, effects, walk paths, buy menu, loadouts, sounds, scenes, scenarios, the script editor and
+  packaging all work. What only Commander's engine does is hidden: Preview in game, Live, Spawn, the console, Watch, Profiler,
+  Inspector, reload on save, live values, Missions, building lights, scene weather, scenario settings, and the materials, walk paths
+  and settings Community Edition doesn't have.
+- New mods are written with the `SupportedGameVersion` that release loads (6.0.0 for 6.2.2, 7.0.0 for the nightly).
+- In the Cortex Studio app, **▶ Play** starts the release in the game folder, and its ▾ has the Actor, Gib and Scene editors. The Game
+  screen (building versions) is Commander's only.
+
+`node tools/make-targets.js --ce <clone of cortex-command-community/Cortex-Command-Community-Project>` writes `data/targets/` from each
+release's tag in the clone (fetch its tags first; `nightly` moves), and `data/ini-surface.json` for Commander.
+
 ## Design and Script modes
 
 The switch at the top left picks how much Studio shows.
@@ -179,6 +200,8 @@ All scripts are plain classic scripts (no modules), so the page works from `file
 | `js/lua-intel.js` | Lua completion, hover, signature help, go to definition and checks. |
 | `js/ini-intel.js` | INI completion, hover, go to definition and checks, learned from every file Studio read. |
 | `data/lua-api.json` | The game's Lua API, written from `Source/Lua/LuaBindings*.cpp` by `tools/make-lua-api.js` (run it with Node after changing the bindings). `data/lua-api.d.lua` is the same API as LuaLS annotations, for VS Code: add it to `Lua.workspace.library`. |
+| `js/target.js` | The game the mods are for: Commander, or a Community Edition release (Classic mode), found from the game folder. |
+| `data/targets/<id>/` | A Community Edition release's Lua API and INI properties, written by `tools/make-targets.js`; `data/ini-surface.json` is Commander's INI properties, for comparing. |
 
 The engine side of the preview is `Source/Managers/ModStudioPreview.cpp` (reading the request, reloading files, making the unit,
 making it your sandbox character), used by `Source/Activities/ActorEditor.cpp`, plus `PresetMan::ReloadPresetFile`. In games

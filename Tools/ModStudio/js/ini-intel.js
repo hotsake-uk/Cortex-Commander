@@ -100,6 +100,10 @@ window.MS = window.MS || {};
 				}
 				const items = [];
 				for (const [key, count] of counts || []) {
+					// a Commander key in someone's mod isn't one to offer for a game that ignores it
+					if (block && MS.target.commanderOnly(block.cls, key)) {
+						continue;
+					}
 					const listy = MS.LIST_KEYS.has(key) || /^Add/.test(key);
 					items.push({
 						label: key, kind: listy ? 'module' : 'property', detail: (block ? block.cls + ' · ' : '') + 'used ' + count + ' time' + (count > 1 ? 's' : '') + (siblings.has(key) && !listy ? ' · already set here' : ''),
@@ -207,6 +211,13 @@ window.MS = window.MS || {};
 			for (const node of parsed.walk()) {
 				if (!node.line) {
 					continue;
+				}
+				// Classic mode: what Community Edition's engine doesn't have
+				if (node.parent && node.parent !== parsed.root && MS.target.commanderOnly(node.parent.value, node.key)) {
+					problems.push({ line: node.line, col: 1, endLine: node.line, endCol: 200, severity: 'warning', message: node.key + ' is a Cortex Commander setting. ' + MS.target.get().name + ' doesn\'t read it, so it does nothing there.' });
+				}
+				if (node.children.length && MS.target.commanderOnlyClass(node.value)) {
+					problems.push({ line: node.line, col: 1, endLine: node.line, endCol: 200, severity: 'error', message: 'Only Cortex Commander has ' + node.value + '. ' + MS.target.get().name + ' can\'t make one, so the mod won\'t load there.' });
 				}
 				if (node.key === 'CopyOf' && node.value && !lib.find(node.value, node.parent && node.parent.value, moduleName)) {
 					problems.push({ line: node.line, col: 1, endLine: node.line, endCol: 200, severity: 'error', message: 'CopyOf "' + node.value + '" isn\'t a preset Studio can find. The game stops loading here.' });

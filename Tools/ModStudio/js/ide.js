@@ -51,6 +51,25 @@ window.MS = window.MS || {};
 		ide.lua = new MS.LuaIntel(app);
 		ide.ini = new MS.IniIntel(app);
 		MS.nav = new MS.Nav(app);
+		// Another game to make mods for: its API and its keys, and every open file checked again against them.
+		MS.target.on(async () => {
+			ide.ini.invalidate();
+			if (ide.lua.api) {
+				await ide.lua.load();
+				await ide.lua.apiTextLoading;
+				const model = ide.monaco && ide.monaco.editor.getModel(ide.monaco.Uri.from({ scheme: 'cortex', path: '/' + MS.LuaIntel.API_PATH }));
+				if (model) {
+					model.setValue(ide.lua.apiText || '');
+				}
+			}
+			for (const tab of ide.tabs) {
+				if (tab.kind === 'code' && !tab.virtual) {
+					checkSoon(tab);
+				}
+			}
+			ide.showPanel(ide.panel || 'console', true);
+			$('btnStatusPanel').firstChild.textContent = MS.target.classic() ? '▴ Problems ' : '▴ Console ';
+		});
 		pollBridge();
 		bindGroups();
 		for (const b of document.querySelectorAll('#modeSwitch button')) {
@@ -1759,7 +1778,8 @@ window.MS = window.MS || {};
 	let requestTimer = 0;
 	let lastRequestAt = 0;
 	ide.requestScripts = function (request, loud) {
-		if (!app.fs || !app.fs.writable) {
+		// a Community Edition game has no link to Studio to send it to
+		if (!app.fs || !app.fs.writable || MS.target.classic()) {
 			return;
 		}
 		const merged = Object.assign(pendingRequest || {}, request);
@@ -2226,6 +2246,10 @@ window.MS = window.MS || {};
 	}
 
 	ide.showPanel = function (panel, keepHidden) {
+		// Classic mode has only Problems: the other panels show a game linked to Studio
+		if (MS.target.classic()) {
+			panel = 'problems';
+		}
 		ide.panel = panel;
 		for (const b of document.querySelectorAll('#bottomTabs button[data-panel]')) {
 			b.classList.toggle('sel', b.dataset.panel === panel);

@@ -250,16 +250,18 @@ window.MS = window.MS || {};
 			a.status('Told the game to start ' + p.name + '. It only works in a game started from Studio.');
 		} });
 
+		// Community Edition: no Mission Editor, no scenario settings, and no game linked to Studio to play it in
+		const classic = MS.target.classic();
 		return el('div', { className: 'sc' },
 			el('div', { className: 'sc-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }),
-				el('button', { className: 'tb primary', textContent: '⚑ Mission Editor', title: 'Draw the areas on the map and build what happens, side by side', onclick: () => MS.missionEditor.open(p) }), play,
+				classic ? null : el('button', { className: 'tb primary', textContent: '⚑ Mission Editor', title: 'Draw the areas on the map and build what happens, side by side', onclick: () => MS.missionEditor.open(p) }), classic ? null : play,
 				scriptPath ? el('button', { className: 'tb', textContent: 'Open the script', onclick: () => MS.ide.openFile(scriptPath, 1) }) : null,
 				el('button', { className: 'tb', textContent: 'Its lines', onclick: () => MS.ide.openFile(p.doc.path, p.node.line) })),
 			ro ? el('div', { className: 'ed-banner', textContent: p.module + ' is read only here. Make a copy in your mod with + New scenario (as a copy of this one) to change it.' }) : null,
 			el('div', { className: 'sc-grid' },
 				card('Story', 'wide', field('Plays on', scene, 'The scene (map) it is played on'), field('Description', desc, 'What the player reads before choosing it'),
 					el('div', { className: 'sc-inline' }, text('InCampaignStage', 'Campaign stage', 'When it appears in the campaign (1 is the start)', 'number'))),
-				card('Mission', 'accent', missionSummary(p)),
+				classic ? null : card('Mission', 'accent', missionSummary(p)),
 				card('Teams', '',
 					el('div', { className: 'sc-team sc-team-head' }, el('span', {}), el('span', { textContent: 'Name' }), el('span', { textContent: 'Starting gold' })),
 					...teamRows,
@@ -277,11 +279,11 @@ window.MS = window.MS || {};
 							flag('RequireClearPathToOrbitSwitchEnabled', 'The clear sky rule', '', true),
 							flag('DeployUnitsSwitchEnabled', 'Deploying placed units', '', false),
 							flag('GoldSwitchEnabled', 'Starting gold', '', true)))),
-				card('Settings the player gets', 'wide',
+				classic ? null : card('Settings the player gets', 'wide',
 					el('p', { className: 'ed-note', textContent: 'Sliders on the scenario screen. The script reads one with self:GetScenarioSetting("its name").' }),
 					settings.length ? el('div', { className: 'sc-setting sc-setting-head' }, ...['Name in the script', 'What the player sees', 'Unit', 'Smallest', 'Largest', 'Step', 'Start', ''].map((t) => el('span', { textContent: t }))) : null,
 					...settingRows, el('div', {}, addSetting)),
-				card('Areas the scene must have', '',
+				MS.target.commanderOnly(p.cls, 'AddRequiredArea') ? null : card('Areas the scene must have', '',
 					el('div', { className: 'sc-chips' }, ...(areaRows.length ? areaRows : [el('span', { className: 'ed-note', textContent: 'None.' })])),
 					el('div', { className: 'sc-inline' }, areaChoice, el('button', { className: 'tb', textContent: '+ Require it', disabled: ro || !sceneAreas.length, onclick: () => areaChoice.value && change('Require the area ' + areaChoice.value, () => p.node.add('AddRequiredArea', areaChoice.value)) })),
 					el('small', { className: 'ed-note', textContent: sceneAreas.length ? 'From the areas of ' + sceneName + '. Draw new ones in the Mission Editor.' : 'Pick a scene to list its areas.' })),

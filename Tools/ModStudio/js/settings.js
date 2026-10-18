@@ -32,11 +32,14 @@ window.MS = window.MS || {};
 		listeners.set(name, [...(listeners.get(name) || []), fn]);
 	}
 
-	// A section of the menu: { id, title, render(body, redraw) }, in the order added.
+	// A section of the menu: { id, title, render(body, redraw), first, when }, in the order added (first: at the top). when(): shown only
+	// while it says so.
 	function section(spec) {
 		const at = SECTIONS.findIndex((s) => s.id === spec.id);
 		if (at >= 0) {
 			SECTIONS[at] = spec;
+		} else if (spec.first) {
+			SECTIONS.unshift(spec);
 		} else {
 			SECTIONS.push(spec);
 		}
@@ -103,6 +106,8 @@ window.MS = window.MS || {};
 	// launch) and are hidden across Studio: the library, the pickers, the faction lists.
 	section({
 		id: 'game', title: 'Game options',
+		// Commander's own: a Community Edition game keeps its own settings
+		when: () => !(MS.target && MS.target.classic()),
 		render(body, redraw) {
 			const changed = () => {
 				if (MS.panels && MS.app && MS.app.lib) {
@@ -165,7 +170,7 @@ window.MS = window.MS || {};
 	let panel = null;
 	let button = null;
 	function draw() {
-		panel.replaceChildren(el('div', { className: 'set-head' }, el('b', { textContent: 'Studio settings' })), ...SECTIONS.map((s) => {
+		panel.replaceChildren(el('div', { className: 'set-head' }, el('b', { textContent: 'Studio settings' })), ...SECTIONS.filter((s) => !s.when || s.when()).map((s) => {
 			const body = el('div', { className: 'set-body' });
 			s.render(body, draw);
 			return el('section', { className: 'set-section' }, el('h4', { textContent: s.title }), body);

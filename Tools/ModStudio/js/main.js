@@ -1,5 +1,7 @@
 // Mod Studio's scripts, in the order they need each other. Each one adds itself to window.MS.
 import './theme.js';
+import './settings.js';
+import './target.js';
 import './ini.js';
 import './gamefs.js';
 import './library.js';
@@ -34,7 +36,6 @@ import './navigation.js';
 import './relations.js';
 import './popout.js';
 import './external.js';
-import './settings.js';
 import './shortcuts.js';
 import './ide.js';
 import './live.js';

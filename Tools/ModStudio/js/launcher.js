@@ -92,7 +92,9 @@ window.MS = window.MS || {};
 			}
 		});
 		await L.refresh();
-		if (L.state && !L.state.config.mode) {
+		// the setup is for building Commander: a Community Edition release is played as it is
+		await MS.target.ready;
+		if (L.state && !L.state.config.mode && !MS.target.classic()) {
 			L.open('setup');
 		}
 		// A build still running when the page reloaded (after a launch moved Studio) keeps showing its output.
@@ -132,6 +134,16 @@ window.MS = window.MS || {};
 		['editor', 'Actor Editor', 'The game\'s Actor Editor, where Preview in game shows your unit'],
 	];
 
+	// Classic mode: a Community Edition release, started in the game folder (launcher.rs launch_release), to play or in an editor.
+	const CLASSIC_LAUNCHES = [
+		['play', '▶ Play', 'The game as players see it'],
+		['editor', 'Actor Editor', 'The game\'s Actor Editor'],
+		['gibeditor', 'Gib Editor', 'Place the gibs of something'],
+		['sceneeditor', 'Scene Editor', 'Place buildings, doors, units and brains on a map'],
+	];
+	const classic = () => MS.target.classic();
+	const launches = () => (classic() ? CLASSIC_LAUNCHES : LAUNCHES);
+
 	// Run configurations: saved ways to start the game (launcher.rs RunConfig), in the Play menu as "cfg:<name>".
 	const runConfigs = () => (L.state && L.state.config.runConfigs) || [];
 	const findRun = (id) => (id && id.startsWith('cfg:') ? runConfigs().find((c) => 'cfg:' + c.name === id) : null);
@@ -145,21 +157,26 @@ window.MS = window.MS || {};
 		try {
 			mode = localStorage.getItem('cortexStudio.lastLaunch') || 'play';
 		} catch (e) {}
-		const run = findRun(mode);
+		const run = classic() ? null : findRun(mode);
 		if (run) {
 			return [mode, '▶ ' + run.name, describeRun(run)];
 		}
-		return LAUNCHES.find((l) => l[0] === mode) || LAUNCHES[0];
+		return launches().find((l) => l[0] === mode) || launches()[0];
 	}
 
 	function updateRunButton() {
 		const [, label, what] = lastLaunch();
 		const run = $('btnRun');
 		run.textContent = label.startsWith('▶') ? label : '▶ ' + label;
-		run.title = L.state && L.state.builtExe ? what + ' (the ▾ has the other ways to start it)' : 'Nothing is built yet: opens the Game screen to build the game';
+		run.title = classic() ? what + ', the release build in the game folder (the ▾ has its editors)' : L.state && L.state.builtExe ? what + ' (the ▾ has the other ways to start it)' : 'Nothing is built yet: opens the Game screen to build the game';
 	}
+	MS.target.on(() => updateRunButton());
 
 	function runLast() {
+		if (classic()) {
+			L.launch(lastLaunch()[0]);
+			return;
+		}
 		if (!L.state || !L.state.builtExe) {
 			L.open('play');
 			return;
@@ -196,6 +213,19 @@ window.MS = window.MS || {};
 			};
 			return b;
 		};
+		if (classic()) {
+			// the release build as it is: no versions, builds or launch settings
+			menu.append(el('div', { className: 'run-status' }, el('span', { className: 'gm-dim', textContent: MS.target.get().name + ' in the game folder' })));
+			for (const [mode, label, what] of CLASSIC_LAUNCHES) {
+				menu.append(item(label.replace('▶ ', ''), what, () => L.launch(mode)));
+			}
+			document.body.append(menu);
+			const box = $('runSplit').getBoundingClientRect();
+			menu.style.left = Math.min(box.left, window.innerWidth - menu.offsetWidth - 8) + 'px';
+			menu.style.top = box.bottom + 4 + 'px';
+			setTimeout(() => document.addEventListener('pointerdown', outside, true), 0);
+			return;
+		}
 		const advanced = s.config.mode === 'advanced';
 		menu.append(el('div', { className: 'run-status' }, s.repoOk ? builtLine() : el('span', { className: 'gm-bad', textContent: 'No game repo yet' }), advanced || !s.repoOk ? null : el('span', { className: 'gm-dim', textContent: ' · ' + s.config.remote + '/' + s.config.branch })));
 		const last = lastLaunch()[0];
@@ -235,6 +265,10 @@ window.MS = window.MS || {};
 	}
 
 	L.open = async function (tab) {
+		if (classic()) {
+			app().toast('Community Edition is played as it is in the game folder: the ▾ beside Play has its editors. Building and versions are for Cortex Commander.', '');
+			return;
+		}
 		$('game').hidden = false;
 		await L.refresh();
 		if (!L.state) {
@@ -625,6 +659,13 @@ window.MS = window.MS || {};
 		try {
 			localStorage.setItem('cortexStudio.lastLaunch', mode);
 		} catch (e) {}
+		if (classic()) {
+			const started = await guarded(() => call('launch-release', { mode }));
+			if (started) {
+				app().toast(started.log[started.log.length - 1] || 'Launched.', 'good');
+			}
+			return;
+		}
 		await L.refresh();
 		if (!L.state.editingSlot && !(await readyToLeave())) {
 			return;
