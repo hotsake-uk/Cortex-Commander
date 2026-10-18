@@ -583,6 +583,11 @@ namespace RTE {
 		/// @param intensity Whether to take the intensity.
 		void AdoptWeatherAsPlayers(bool type = true, bool intensity = true);
 
+		/// Gets the player's own atmosphere: the time of day, weather, wind and grade a new Scene starts from and Settings.ini saves.
+		/// The Lighting settings menu changes these alongside the live settings, so a map's or a game's own atmosphere showing at the time isn't saved as the player's.
+		/// @return The player's own atmosphere.
+		LightingSettings& GetPlayerAtmosphere() { return m_PlayerAtmosphere; }
+
 		/// Turns OverrideMapWeather on or off and puts the weather it means up now: the player's own when on, the map's (or the game's pick) when off.
 		void SetOverrideMapWeather(bool on);
 

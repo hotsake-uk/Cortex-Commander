@@ -5,6 +5,7 @@
 #include "SettingsInputGUI.h"
 #include "SettingsGameplayGUI.h"
 #include "SettingsMiscGUI.h"
+#include "SettingsLightingGUI.h"
 
 #include <array>
 #include <memory>
@@ -58,6 +59,7 @@ namespace RTE {
 			InputSettingsMenu,
 			GameplaySettingsMenu,
 			MiscSettingsMenu,
+			LightingSettingsMenu,
 			SettingsMenuCount
 		};
 
@@ -70,6 +72,7 @@ namespace RTE {
 		std::unique_ptr<SettingsInputGUI> m_InputSettingsMenu; //!< The input settings sub-menu.
 		std::unique_ptr<SettingsGameplayGUI> m_GameplaySettingsMenu; //!< The gameplay settings sub-menu.
 		std::unique_ptr<SettingsMiscGUI> m_MiscSettingsMenu; //!< The misc settings sub-menu.
+		std::unique_ptr<SettingsLightingGUI> m_LightingSettingsMenu; //!< The lighting settings sub-menu.
 
 		/// GUI elements that compose the settings menu screen.
 		GUICollectionBox* m_SettingsTabberBox;

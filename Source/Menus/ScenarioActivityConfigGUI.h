@@ -96,6 +96,10 @@ namespace RTE {
 		std::array<GUIComboBox*, Activity::Teams::MaxTeamCount> m_TeamTechComboBoxes;
 		std::array<GUILabel*, Activity::Teams::MaxTeamCount> m_TeamAISkillLabels;
 		std::array<GUISlider*, Activity::Teams::MaxTeamCount> m_TeamAISkillSliders;
+		GUIButton* m_TimeOfDayButton; //!< Cycles the time of day for the game.
+		GUIButton* m_WeatherButton; //!< Cycles the weather for the game.
+		int m_TimeOfDayChoice = 0; //!< Index into the time of day choices, 0 for the scene's own.
+		int m_WeatherChoice = 0; //!< 0 for the scene's own weather, otherwise the Weather slot plus one.
 
 #pragma region Activity Configuration Screen Handling
 		/// Fills each team's Tech ComboBox with all valid Tech DataModules.
@@ -109,6 +113,9 @@ namespace RTE {
 
 		/// Sets up and starts the currently selected Activity with the configured settings.
 		void StartGame();
+
+		/// Updates the time of day and weather buttons' text to the current choices.
+		void UpdateAtmosphereButtons();
 
 		/// Updates the starting gold slider to the Activity difficulty setting (when applicable) and updates the value in the label according to the value in the slider.
 		/// @return

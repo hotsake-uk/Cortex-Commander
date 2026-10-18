@@ -5,6 +5,8 @@
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "PostProcessMan.h"
+#include "LightingOptions.h"
+#include "Weather.h"
 #include "AudioMan.h"
 #include "PerformanceMan.h"
 #include "UInputMan.h"
@@ -106,7 +108,7 @@ void SettingsMan::UpdateSettingsFile() const {
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {
-	StartPropertyList(return Serializable::ReadProperty(propName, reader));
+	StartPropertyList(return ReadLightingOption(propName, reader));
 
 	MatchProperty("PaletteFile", { reader >> g_FrameMan.m_PaletteFile; });
 	MatchProperty("ResolutionX", { reader >> g_WindowMan.m_ResX; });
@@ -123,16 +125,13 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 		lighting.ApplyQualityPreset(quality);
 		lighting.ApplyShadowPreset(quality);
 	});
-	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
-	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
-	MatchProperty("EffectsSparks", { g_PostProcessMan.GetLightingSettings().EffectsSparks = std::stof(reader.ReadPropValue()); });
-	MatchProperty("EffectsDust", { g_PostProcessMan.GetLightingSettings().EffectsDust = std::stof(reader.ReadPropValue()); });
-	MatchProperty("EffectsDebris", { g_PostProcessMan.GetLightingSettings().EffectsDebris = std::stof(reader.ReadPropValue()); });
+	MatchProperty("WeatherType", {
+		// By number for the built-in weather; a custom one is saved by name as well (WeatherName, after this), since its number depends on the mods loaded.
+		LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		lighting.WeatherType = std::max(std::stoi(reader.ReadPropValue()), 0);
+		lighting.WeatherName.clear();
+	});
+	MatchProperty("WeatherName", { g_PostProcessMan.GetLightingSettings().WeatherName = reader.ReadPropValue(); });
 	MatchProperty("MasterVolume", { g_AudioMan.SetMasterVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("MuteMaster", { reader >> g_AudioMan.m_MuteMaster; });
 	MatchProperty("MusicVolume", { g_AudioMan.SetMusicVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
@@ -226,6 +225,14 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	EndPropertyList;
 }
 
+int SettingsMan::ReadLightingOption(const std::string_view& propName, Reader& reader) {
+	if (const LightingOption* option = LightingOptions::Find(std::string(propName))) {
+		LightingOptions::SetValueText(*option, g_PostProcessMan.GetLightingSettings(), reader.ReadPropValue());
+		return 0;
+	}
+	return Serializable::ReadProperty(propName, reader);
+}
+
 int SettingsMan::Save(Writer& writer) const {
 	Serializable::Save(writer);
 
@@ -241,19 +248,21 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
 	{
-		// Lighting and effects (Video settings). Drawing only: none of these change what happens in a game.
-		const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		// Lighting and effects (Video and Lighting settings). Drawing only: none of these change what happens in a game.
+		// The quality preset first, since reading it sets the effects it covers; the single settings after it then win.
+		const LightingSettings lighting = g_PostProcessMan.GetLightingSettingsToSave();
 		writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
-		writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
-		writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
-		writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
-		writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
-		writer.NewPropertyWithValue("Stains", lighting.Stains);
-		writer.NewPropertyWithValue("LivingWorld", lighting.LivingWorld);
-		writer.NewPropertyWithValue("Embers", lighting.Embers);
-		writer.NewPropertyWithValue("EffectsSparks", lighting.EffectsSparks);
-		writer.NewPropertyWithValue("EffectsDust", lighting.EffectsDust);
-		writer.NewPropertyWithValue("EffectsDebris", lighting.EffectsDebris);
+		for (const LightingOption& option: LightingOptions::GetAll()) {
+			writer.NewPropertyWithValue(option.Key, LightingOptions::GetValueText(option, lighting));
+		}
+		// A custom weather by name too, or the one asked for by name if the Weather presets haven't been loaded yet.
+		if (!lighting.WeatherName.empty()) {
+			writer.NewPropertyWithValue("WeatherName", lighting.WeatherName);
+		} else if (lighting.WeatherType > Weather::c_BuiltInCount) {
+			if (const Weather* weather = Weather::GetSlot(lighting.WeatherType)) {
+				writer.NewPropertyWithValue("WeatherName", weather->GetPresetName());
+			}
+		}
 	}
 
 	writer.NewLine(false, 2);

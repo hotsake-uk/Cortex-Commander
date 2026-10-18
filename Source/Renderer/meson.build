@@ -15,6 +15,7 @@ sources += files(
 'RenderBatch.cpp',
 'RenderMan.cpp',
 'RenderTarget.cpp',
+'LightingOptions.cpp',
 'SceneLighting.cpp',
 'Shader.cpp',
 'Weather.cpp',

@@ -559,6 +559,9 @@
     <ClInclude Include="Source\Menus\SettingsMiscGUI.h">
       <Filter>Menus</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Menus\SettingsLightingGUI.h">
+      <Filter>Menus</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Menus\SettingsInputMappingGUI.h">
       <Filter>Menus</Filter>
     </ClInclude>
@@ -687,6 +690,9 @@
       <Filter>Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Source\Renderer\LightingSettings.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
+    <ClInclude Include="Source\Renderer\LightingOptions.h">
       <Filter>Renderer</Filter>
     </ClInclude>
     <ClInclude Include="Source\Managers\GLStateMan.h">
@@ -1190,6 +1196,9 @@
     <ClCompile Include="Source\Menus\SettingsMiscGUI.cpp">
       <Filter>Menus</Filter>
     </ClCompile>
+    <ClCompile Include="Source\Menus\SettingsLightingGUI.cpp">
+      <Filter>Menus</Filter>
+    </ClCompile>
     <ClCompile Include="Source\Menus\SettingsInputMappingGUI.cpp">
       <Filter>Menus</Filter>
     </ClCompile>
@@ -1323,6 +1332,9 @@
       <Filter>Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Source\Renderer\SceneLighting.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\LightingOptions.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Source\Renderer\Weather.cpp">

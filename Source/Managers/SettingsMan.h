@@ -423,6 +423,12 @@ namespace RTE {
 		/// Clears all the member variables of this SettingsMan, effectively resetting the members of this abstraction level only.
 		void Clear();
 
+		/// Reads a lighting or effects setting (LightingOptions) for a key ReadProperty doesn't know, or passes it on to Serializable if it's not one either.
+		/// @param propName The name of the property to be read.
+		/// @param reader A Reader lined up to the value of the property to be read.
+		/// @return An error return value signaling whether the property was successfully read or not.
+		int ReadLightingOption(const std::string_view& propName, Reader& reader);
+
 		// Disallow the use of some implicit methods.
 		SettingsMan(const SettingsMan& reference) = delete;
 		SettingsMan& operator=(const SettingsMan& rhs) = delete;

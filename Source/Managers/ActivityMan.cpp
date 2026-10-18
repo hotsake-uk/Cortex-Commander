@@ -384,6 +384,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 
 	unzClose(zippedSaveFile);
 
+	// A saved game has its own time of day and weather, not the last scenario setup's picks.
+	g_PostProcessMan.SetActivityAtmosphere(-1.0F, -1);
 	// SetSceneToLoad() doesn't Clone(), but when the Activity starts, it will eventually call LoadScene(), which does a Clone() of scene internally.
 	g_SceneMan.SetSceneToLoad(scene.get(), true, true);
 	// Saved Scenes get their presetname set to their filename to ensure they're separate from the preset Scene they're based off of.

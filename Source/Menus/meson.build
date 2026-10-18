@@ -22,6 +22,7 @@ sources += files(
 'SettingsInputMappingGUI.cpp',
 'SettingsInputMappingWizardGUI.cpp',
 'SettingsMiscGUI.cpp',
+'SettingsLightingGUI.cpp',
 'SettingsVideoGUI.cpp',
 'TitleScreen.cpp',
 )

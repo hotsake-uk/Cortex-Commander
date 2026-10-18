@@ -43,6 +43,9 @@ namespace RTE {
 		/// Handles the player interaction with the SettingsVideoGUI GUI elements.
 		/// @param guiEvent The GUIEvent containing information about the player interaction with an element.
 		void HandleInputEvents(GUIEvent& guiEvent);
+
+		/// Updates the visual effect checkboxes and quality preset list from the current lighting settings.
+		void UpdateVisualEffectControls();
 #pragma endregion
 
 	private:
@@ -135,9 +138,6 @@ namespace RTE {
 		/// @param height Resolution height.
 		/// @return Whether the resolution is supported or not.
 		bool IsSupportedResolution(int width, int height) const;
-
-		/// Updates the visual effect checkboxes and quality preset list from the current lighting settings.
-		void UpdateVisualEffectControls();
 
 		/// Fills the preset resolutions set and combo box with scaled resolutions down to c_MinRes. Defaults the combobox to the closest resolution to c_DefaultRes.
 		void PopulateResolutionsComboBox();

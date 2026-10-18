@@ -787,6 +787,7 @@
     <ClInclude Include="Source\Menus\SettingsInputMappingGUI.h" />
     <ClInclude Include="Source\Menus\SettingsInputMappingWizardGUI.h" />
     <ClInclude Include="Source\Menus\SettingsMiscGUI.h" />
+    <ClInclude Include="Source\Menus\SettingsLightingGUI.h" />
     <ClInclude Include="Source\Menus\SettingsVideoGUI.h" />
     <ClInclude Include="Source\Menus\TitleScreen.h" />
     <ClInclude Include="Resources\Credits.h" />
@@ -810,6 +811,7 @@
     <ClInclude Include="Source\Renderer\Weather.h" />
     <ClInclude Include="Source\Renderer\VisualWind.h" />
     <ClInclude Include="Source\Renderer\LightingSettings.h" />
+    <ClInclude Include="Source\Renderer\LightingOptions.h" />
     <ClInclude Include="Source\System\AllegroTools.h" />
     <ClInclude Include="Source\System\Atom.h" />
     <ClInclude Include="Source\System\Base64\base64.h" />
@@ -1060,6 +1062,7 @@
     <ClCompile Include="Source\Menus\SettingsInputMappingGUI.cpp" />
     <ClCompile Include="Source\Menus\SettingsInputMappingWizardGUI.cpp" />
     <ClCompile Include="Source\Menus\SettingsMiscGUI.cpp" />
+    <ClCompile Include="Source\Menus\SettingsLightingGUI.cpp" />
     <ClCompile Include="Source\Menus\SettingsVideoGUI.cpp" />
     <ClCompile Include="Source\Menus\TitleScreen.cpp" />
     <ClCompile Include="Source\Menus\InventoryMenuGUI.cpp" />
@@ -1077,6 +1080,7 @@
     <ClCompile Include="Source\Renderer\BigTexture.cpp" />
     <ClCompile Include="Source\Renderer\EffectsParticles.cpp" />
     <ClCompile Include="Source\Renderer\SceneLighting.cpp" />
+    <ClCompile Include="Source\Renderer\LightingOptions.cpp" />
     <ClCompile Include="Source\Renderer\Weather.cpp" />
     <ClCompile Include="Source\Renderer\VisualWind.cpp" />
     <ClCompile Include="Source\System\AllegroTools.cpp" />

@@ -34,12 +34,14 @@ SettingsGUI::SettingsGUI(AllegroScreen* guiScreen, GUIInputWrapper* guiInput, bo
 	m_SettingsMenuTabs[SettingsMenuScreen::InputSettingsMenu] = dynamic_cast<GUITab*>(m_GUIControlManager->GetControl("TabInputSettings"));
 	m_SettingsMenuTabs[SettingsMenuScreen::GameplaySettingsMenu] = dynamic_cast<GUITab*>(m_GUIControlManager->GetControl("TabGameplaySettings"));
 	m_SettingsMenuTabs[SettingsMenuScreen::MiscSettingsMenu] = dynamic_cast<GUITab*>(m_GUIControlManager->GetControl("TabMiscSettings"));
+	m_SettingsMenuTabs[SettingsMenuScreen::LightingSettingsMenu] = dynamic_cast<GUITab*>(m_GUIControlManager->GetControl("TabLightingSettings"));
 
 	m_VideoSettingsMenu = std::make_unique<SettingsVideoGUI>(m_GUIControlManager.get());
 	m_AudioSettingsMenu = std::make_unique<SettingsAudioGUI>(m_GUIControlManager.get());
 	m_InputSettingsMenu = std::make_unique<SettingsInputGUI>(m_GUIControlManager.get());
 	m_GameplaySettingsMenu = std::make_unique<SettingsGameplayGUI>(m_GUIControlManager.get());
 	m_MiscSettingsMenu = std::make_unique<SettingsMiscGUI>(m_GUIControlManager.get());
+	m_LightingSettingsMenu = std::make_unique<SettingsLightingGUI>(m_GUIControlManager.get());
 
 	if (createForPauseMenu) {
 		m_SettingsTabberBox->SetPositionAbs((rootBox->GetWidth() - m_SettingsTabberBox->GetWidth()) / 2, (rootBox->GetHeight() - m_SettingsTabberBox->GetHeight() - 30) / 2);
@@ -97,10 +99,13 @@ void SettingsGUI::SetActiveSettingsMenuScreen(SettingsMenuScreen activeMenu, boo
 	m_InputSettingsMenu->SetEnabled(false);
 	m_GameplaySettingsMenu->SetEnabled(false);
 	m_MiscSettingsMenu->SetEnabled(false);
+	m_LightingSettingsMenu->SetEnabled(false);
 
 	switch (activeMenu) {
 		case SettingsMenuScreen::VideoSettingsMenu:
 			m_VideoSettingsMenu->SetEnabled(true);
+			// The Lighting menu may have changed the effects or made the quality preset custom.
+			m_VideoSettingsMenu->UpdateVisualEffectControls();
 			break;
 		case SettingsMenuScreen::AudioSettingsMenu:
 			m_AudioSettingsMenu->SetEnabled(true);
@@ -113,6 +118,9 @@ void SettingsGUI::SetActiveSettingsMenuScreen(SettingsMenuScreen activeMenu, boo
 			break;
 		case SettingsMenuScreen::MiscSettingsMenu:
 			m_MiscSettingsMenu->SetEnabled(true);
+			break;
+		case SettingsMenuScreen::LightingSettingsMenu:
+			m_LightingSettingsMenu->SetEnabled(true);
 			break;
 		default:
 			RTEAbort("Invalid settings menu passed to SettingsGUI::SetActiveSettingsMenuScreen!");
@@ -153,6 +161,8 @@ bool SettingsGUI::HandleInputEvents() {
 					SetActiveSettingsMenuScreen(SettingsMenuScreen::GameplaySettingsMenu);
 				} else if (guiEvent.GetControl() == m_SettingsMenuTabs[SettingsMenuScreen::MiscSettingsMenu]) {
 					SetActiveSettingsMenuScreen(SettingsMenuScreen::MiscSettingsMenu);
+				} else if (guiEvent.GetControl() == m_SettingsMenuTabs[SettingsMenuScreen::LightingSettingsMenu]) {
+					SetActiveSettingsMenuScreen(SettingsMenuScreen::LightingSettingsMenu);
 				}
 			}
 		}
@@ -171,6 +181,9 @@ bool SettingsGUI::HandleInputEvents() {
 				break;
 			case SettingsMenuScreen::MiscSettingsMenu:
 				m_MiscSettingsMenu->HandleInputEvents(guiEvent);
+				break;
+			case SettingsMenuScreen::LightingSettingsMenu:
+				m_LightingSettingsMenu->HandleInputEvents(guiEvent);
 				break;
 			default:
 				RTEAbort("Trying to handle input events for an invalid settings menu in SettingsGUI::HandleInputEvents!");

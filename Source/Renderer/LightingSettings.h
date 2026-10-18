@@ -42,7 +42,7 @@ namespace RTE {
 			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3, false, 0.5F, 0.0F}, // Low
 			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4, false, 1.0F, 0.7F}, // Medium
 			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6, false, 1.0F, 1.0F}, // High
-			    {true, true, true, true, 1.3F, 0.8F, 0.45F, 12, true, 1.5F, 1.2F}, // Ultra
+			    {true, true, true, true, 1.3F, 0.13F, 0.45F, 12, true, 1.5F, 0.0F}, // Ultra
 			};
 			const Preset& preset = presets[quality];
 			Enabled = preset.Lighting;
@@ -66,7 +66,7 @@ namespace RTE {
 			// Lights traced through the terrain distance field from Medium up; Low keeps the cheaper fixed march.
 			LightShadowField = quality >= QualityMedium;
 			// The fog volume: one pass over the light grid a frame, from Medium up.
-			FogVolume = quality >= QualityMedium ? 0.6F : 0.0F;
+			FogVolume = quality >= QualityUltra ? 0.71F : (quality >= QualityMedium ? 0.6F : 0.0F);
 			// Low lights its steady scenery lamps once into a map instead of every frame.
 			LampCache = quality == QualityLow;
 			// The sun's shadow map: remade only when the ground changes or the sun moves, from Low up (Potato has no sun shadows).
@@ -195,17 +195,19 @@ namespace RTE {
 			if (quality < QualityPotato || quality >= QualityCustom) {
 				return;
 			}
-			SunShadows = quality >= QualityLow ? 0.55F : 0.0F;
-			BackgroundShadows = quality >= QualityLow ? 0.6F : 0.0F;
-			UnitShadows = quality >= QualityMedium ? 0.85F : 0.0F;
-			ContactShading = quality >= QualityMedium ? 0.4F : 0.0F;
+			// Ultra is the default look: the values the settings start with.
+			bool ultra = quality >= QualityUltra;
+			SunShadows = ultra ? 1.0F : (quality >= QualityLow ? 0.55F : 0.0F);
+			BackgroundShadows = ultra ? 0.56F : (quality >= QualityLow ? 0.6F : 0.0F);
+			UnitShadows = ultra ? 1.0F : (quality >= QualityMedium ? 0.85F : 0.0F);
+			ContactShading = ultra ? 0.52F : (quality >= QualityMedium ? 0.4F : 0.0F);
 		}
 
 		bool Enabled = true; //!< Whether scene lighting is applied at all. Glows and bloom still apply when disabled.
 		glm::vec3 Ambient = {0.6F, 0.59F, 0.63F}; //!< Light where no sky light reaches: bunker interiors and caves.
 		glm::vec3 SkyColor = {1.0F, 0.98F, 0.95F}; //!< Light under open sky.
-		glm::vec3 ForegroundAmbient = {0.654423F, 0.641335F, 0.6806F}; //!< Minimum light on the foreground terrain and objects, so the playfield stays readable deep underground. Caves behind stay darker.
-		float AirFalloff = 0.96F; //!< How much sky light is kept per grid cell travelled through air.
+		glm::vec3 ForegroundAmbient = {0.127692F, 0.125138F, 0.1328F}; //!< Minimum light on the foreground terrain and objects, so the playfield stays readable deep underground. Caves behind stay darker.
+		float AirFalloff = 0.941F; //!< How much sky light is kept per grid cell travelled through air.
 		float SolidFalloff = 0.6F; //!< How much sky light is kept per grid cell travelled into terrain.
 		int PropagationIterationsPerFrame = 12; //!< Sky light propagation iterations per frame. Light settles into new terrain over a few frames.
 
@@ -213,33 +215,33 @@ namespace RTE {
 		glm::vec3 AtmosphereColor = {0.62F, 0.74F, 0.95F}; //!< Color of the atmosphere at noon, linear. Tinted by the time of day.
 
 		int WeatherType = 0; //!< The weather's slot (Weather.h): 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on the other Weather presets, mods' included.
-		std::string WeatherName; //!< A custom weather (slot 5 on) asked for by name before the presets were loaded (saved settings); picked up into WeatherType once they are.
-		bool OverrideMapWeather = false; //!< The player's weather (WeatherType and WeatherIntensity) is used on every map, over the weather a map sets for itself. A game's own pick on the scenario start screen and a saved game's weather still win. Off: a map with its own weather has it, as before.
+		std::string WeatherName = "Diamond Dust"; //!< A custom weather (slot 5 on) asked for by name before the presets were loaded (saved settings); picked up into WeatherType once they are.
+		bool OverrideMapWeather = true; //!< The player's weather (WeatherType and WeatherIntensity) is used on every map, over the weather a map sets for itself. A game's own pick on the scenario start screen and a saved game's weather still win. Off: a map with its own weather has it, as before.
 		bool CustomWeather = true; //!< Weather types past the built-in four (data and mods' Weather presets) can be chosen. Off: they fall clear and the menu lists the built-in four.
 		float WeatherGlow = 1.0F; //!< How much light glowing weather (acid rain, embers) gives off, 0 to 2. Built-in weather doesn't glow.
-		float WeatherIntensity = 0.6F; //!< How heavy the rain or snow is, 0 to 1.
-		float WeatherSpeed = 1.0F; //!< How fast the weather's drops move against their preset's own speeds: fall, wind drift, sway, swirl and flicker. 1 is as the preset has it.
+		float WeatherIntensity = 0.16F; //!< How heavy the rain or snow is, 0 to 1.
+		float WeatherSpeed = 1.04F; //!< How fast the weather's drops move against their preset's own speeds: fall, wind drift, sway, swirl and flicker. 1 is as the preset has it.
 		bool WeatherEverywhere = false; //!< The weather's drops show everywhere but over the terrain and its back walls: under roofs and overhangs and in cave mouths too, wherever the sky or the backdrop shows. Ground wetness, snow cover and splashes still keep to shelter. Off: drops keep out of shelter, as before.
 		bool WeatherOverBackground = true; //!< The weather's drops are drawn over the background: the sky and the distant scenery. Off: they only show in front of the terrain's back walls, units and the rest of the scene.
 		float Wind = 60.0F; //!< Horizontal wind speed for precipitation, pixels per second. Negative blows left.
 
-		float TimeOfDay = 6.323529F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
-		float DayLengthMinutes = 25.4F; //!< Real minutes for a full day/night cycle (in sim time, so it pauses with the game). 0 keeps the time of day fixed.
+		float TimeOfDay = 18.8F; //!< Hours, 0 to 24. Tints and dims the sky light through dawn, day, dusk and night. Noon reproduces the classic look.
+		float DayLengthMinutes = 0.0F; //!< Real minutes for a full day/night cycle (in sim time, so it pauses with the game). 0 keeps the time of day fixed.
 
 		float GlowLightIntensity = 2.5F; //!< Brightness of the lights cast by glow effects.
 		float GlowLightRadiusScale = 8.0F; //!< Radius of glow lights relative to the glow sprite's size.
 		int MaxScreenLights = 1024; //!< Most lights (glow lights and dynamic lights together) drawn on one player screen; past it the faintest dynamic lights are left out. Each costs a full-radius quad with a shadow march, twice for cone lights.
-		float ShadowStrength = 0.85F; //!< How much terrain blocks dynamic lights, 0 to 1.
+		float ShadowStrength = 1.0F; //!< How much terrain blocks dynamic lights, 0 to 1.
 		bool LightShadowField = true; //!< Lights' terrain shadows are traced through a distance field of the terrain: thin walls stop light instead of leaking it, and shadows soften with distance from what casts them. Off: eleven evenly spaced samples of the light grid, as before.
 		bool SoftWallLight = true; //!< Where a lamp, fire or flash touches a wall, the lit edge on the wall is feathered by tracing its shadow from three points across the light instead of one. Off: the hard edge as before. Needs LightShadowField.
-		float LightShadowSoftness = 1.0F; //!< How soft those shadows' edges are, 0 (sharp) to 2. Bigger lights soften more.
-		float UnitShadows = 0.85F; //!< How dark the shadows are that solid objects (units, devices, doors, wreckage) cast from lights and from the sun, 0 to 1. 0 turns them off.
+		float LightShadowSoftness = 2.0F; //!< How soft those shadows' edges are, 0 (sharp) to 2. Bigger lights soften more.
+		float UnitShadows = 1.0F; //!< How dark the shadows are that solid objects (units, devices, doors, wreckage) cast from lights and from the sun, 0 to 1. 0 turns them off.
 		bool SunShadowMap = true; //!< Sun (and moon) shadows from a shadow map of the scene: pixel-sharp next to what casts them and softer further off, and they follow the sun at once. Off: from the light grid, 4 px cells that catch up with the sun over a few frames, as before.
-		float SunShadowSoftness = 1.0F; //!< How soft those shadows grow with distance from what casts them, 0 (sharp) to 2.
+		float SunShadowSoftness = 1.33F; //!< How soft those shadows grow with distance from what casts them, 0 (sharp) to 2.
 		float SunShadows = 1.0F; //!< Directional daylight: how much dimmer and cooler ground, walls and units are where the sun (or the moon at night) can't be seen, 0 to 1. 0 turns it off.
-		float BackgroundShadows = 0.6F; //!< How dark the drop shadow is that the terrain casts on the background scenery behind it, offset away from the sun (or the moon at night), so the ground stands out from the backdrop instead of looking pasted flat on it, 0 to 1. 0 turns them off, as before. Never on the sky itself.
-		float BackgroundShadowLength = 1.0F; //!< How far that shadow is offset, 0.25 to 3: 1 is about 10 pixels on the nearest scenery up to about 26 on the furthest, whose edge is also softer.
-		float ContactShading = 0.4F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.
+		float BackgroundShadows = 0.56F; //!< How dark the drop shadow is that the terrain casts on the background scenery behind it, offset away from the sun (or the moon at night), so the ground stands out from the backdrop instead of looking pasted flat on it, 0 to 1. 0 turns them off, as before. Never on the sky itself.
+		float BackgroundShadowLength = 0.25F; //!< How far that shadow is offset, 0.25 to 3: 1 is about 10 pixels on the nearest scenery up to about 26 on the furthest, whose edge is also softer.
+		float ContactShading = 0.52F; //!< How much background walls darken right next to solid objects and terrain, 0 to 1. 0 turns it off.
 		float EmissiveIntensity = 1.4F; //!< Brightness of glow sprites drawn as emitted light. Above 1 lets the brightest glows feed the bloom.
 		float IndirectLight = 0.45F; //!< One bounce of light: lit surfaces bleed their color onto their surroundings. 0 to disable.
 		bool RadianceCascades = true; //!< Global illumination by radiance cascades: glows light their surroundings with soft occlusion, and light bounces off surfaces. Replaces the simpler indirect light.
@@ -550,19 +552,19 @@ namespace RTE {
 		float Metals = 1.0F; //!< How strongly metallic surfaces mirror their surroundings (sky from above, ground from below) and glint in the sun, 0 for none.
 		float Relief = 1.5F; //!< How much the lighting reads sprites' and terrain's own shading as relief (plates, rivets, folds catch the light), 0 for the outline only.
 		float SunDisc = 1.0F; //!< Brightness of the sun drawn in the sky by day, 0 for none.
-		float CloudShadows = 0.54F; //!< How much drifting clouds shade the ground under open sky, 0 for none. Needs SunShadows.
+		float CloudShadows = 0.5F; //!< How much drifting clouds shade the ground under open sky, 0 for none. Needs SunShadows.
 		bool CloudLayer = true; //!< Clouds are drawn in the sky, as thick and as stormy as the shadows crossing the ground; they gather in bad weather and break up after it. Off: no clouds in the sky and the shadows keep their fixed spread, as before.
-		float CloudCover = 0.47F; //!< How much of the sky is cloud in clear weather, 0 to 1 (0.5 is the spread the shadows always had). Rain, snow and ash fall add to it.
-		float CloudOpacity = 0.68F; //!< How solid the clouds in the sky are drawn, 0 to 1.
-		float CloudSize = 1.0F; //!< How big the clouds are, 0.4 to 2.5: the width of the patches (in the sky and their shadows alike), their puffs, and how deep the band they sit in is (with the square of the size, so small clouds stay long and shallow).
-		float CloudHeight = 0.81F; //!< How high in the sky the cloud band sits, 0 to 1: 1 along the top of the view as before, 0 starting halfway down it.
+		float CloudCover = 0.16F; //!< How much of the sky is cloud in clear weather, 0 to 1 (0.5 is the spread the shadows always had). Rain, snow and ash fall add to it.
+		float CloudOpacity = 0.33F; //!< How solid the clouds in the sky are drawn, 0 to 1.
+		float CloudSize = 0.4F; //!< How big the clouds are, 0.4 to 2.5: the width of the patches (in the sky and their shadows alike), their puffs, and how deep the band they sit in is (with the square of the size, so small clouds stay long and shallow).
+		float CloudHeight = 0.76F; //!< How high in the sky the cloud band sits, 0 to 1: 1 along the top of the view as before, 0 starting halfway down it.
 		bool SurfaceStates = true; //!< Units and objects show what has happened to them: wet, sooty, snowed on, glowing hot.
 		bool TracerLights = true; //!< Fast projectiles with a trail (tracers) light what they pass.
 		float WaterFoam = 1.0F; //!< How much thin, broken water (a stream off a ledge, spray, the lip of a pour) is drawn as froth, with froth filling the air beside it. 0 for none. Visual only.
 		float WaterFoamStray = 0.25F; //!< How much of that froth a stray pixel or two of water thrown clear gets, against a stream: 0 none (bare pixels), 1 as much as a stream.
 		float WaterFoamBrightness = 1.0F; //!< How bright froth is drawn.
 		float WaterFoamGlow = 0.45F; //!< How much light of its own froth carries, so it shows at night. 0: lit only by what lights the scene.
-		float SoftSmoke = 0.39F; //!< How much soft, billowing smoke the game's smoke sprites trail, so smoke hangs and rolls instead of being a cluster of sprites. 0 for none. Visual only.
+		float SoftSmoke = 0.49F; //!< How much soft, billowing smoke the game's smoke sprites trail, so smoke hangs and rolls instead of being a cluster of sprites. 0 for none. Visual only.
 		/// The visual-only effects that can be drawn in the effects layer (c_EffectsDepth) instead of in front of everything.
 		enum EffectLayer {
 			LayerSmoke, //!< The game's smoke sprites, and the light smoke scatters.
@@ -602,7 +604,7 @@ namespace RTE {
 		float WaterLightGlow = 0.01F; //!< How much the light of lamps, fires and blasts shows as a glow in water it passes through, in the light's own colour. 0: water is only lit like a surface.
 		bool WaterReflections = true; //!< Water mirrors what's above it, shows what's behind it bent by its ripples, and its rippled surface catches lamps and the sun. Off: water as it was, flat and tinted.
 		float WaterReflectionStrength = 0.5F; //!< How strongly water mirrors the scene above it, 0 for none.
-		float WaterRefraction = 0.72F; //!< How much water's ripples bend what's seen through it, and how much it darkens with depth, 0 for none.
+		float WaterRefraction = 0.5F; //!< How much water's ripples bend what's seen through it, and how much it darkens with depth, 0 for none.
 		float WaterRipples = 1.0F; //!< How much the surface ripples tilt the light and the reflection, 0 for a flat mirror.
 		bool WaterMirrorSurface = true; //!< The reflection ripples with the surface above it, each column as one, so it reads as a mirror image on moving water and goes clean on still water. Off: each pixel's own ripple shifts it, as before. Strength is WaterRipples.
 		bool WaterSoftReflection = true; //!< The reflection is blurred more the deeper it is, fades out with depth and where the open air above the pool ends, and isn't clipped hard at the edge of the screen or other water. Off: sharp and cut off, as before.
@@ -641,7 +643,7 @@ namespace RTE {
 		float WaterMistBrightness = 1.0F; //!< How bright the spray is drawn.
 		float WaterMistGlow = 0.4F; //!< The least light the spray is drawn with, so it shows at night. 0: lit only by what lights the scene.
 		bool ShelterMask = true; //!< Where rain, snow and ash can't reach, from a shelter map of the scene made the way the weather falls: overhangs, roofs and caves keep drops, splashes, wetness and snow out right to the edge, however far up the shelter is. Off: each drop and each patch of ground marches up the light grid to look for shelter, as before, which gives up a few hundred pixels up. On from the Low preset up.
-		float ShelterSoftness = 1.0F; //!< How soft the edge of a shelter is for drops and splashes, 0 (ruled) to 2 (spread up to eight pixels either way).
+		float ShelterSoftness = 2.0F; //!< How soft the edge of a shelter is for drops and splashes, 0 (ruled) to 2 (spread up to eight pixels either way).
 		float RainSplashes = 1.0F; //!< How many little splashes rain makes where it lands on ground, water, roofs and units. 0 for none. Visual only.
 		float WeatherLight = 0.35F; //!< The least light rain, snow, ash and dust are drawn with, so weather shows on a dark night and not only where a lamp catches it. 0 leaves it to the sky and lamps.
 		float TracerGlow = 0.8F; //!< How strongly tracers and their trails shine in their own color (and so bloom), 0 for none.
@@ -658,15 +660,15 @@ namespace RTE {
 		bool LampCache = false; //!< Steady scenery lamps are lit once into a map of the world and only relit where the ground around them changes, instead of every frame: lamp-filled bases cost about the same as one lamp, and lamps no longer count against MaxScreenLights. Units cast no shadows from them, and their shadows are as coarse as the map. Off: every lamp is drawn every frame, as before.
 		int LampCacheDetail = 1; //!< How fine that map is: 0 coarse (8 px a texel), 1 (4 px), 2 fine (2 px). Large scenes get coarser so the map stays under about 64 MB.
 
-		float HeadlampBrightness = 0.39F; //!< Brightness of soldiers' headlamp beams.
-		float HeadlampReach = 64.0F; //!< How far the beams reach, in pixels.
-		float HeadlampWidth = 19.0F; //!< Half-angle of the beams, in degrees.
-		glm::vec3 HeadlampColor = {1.0F, 0.875F, 0.687F}; //!< Color of the beams (linear).
-		float HeadlampGlow = 0.99F; //!< Brightness of the small glow around the lamp itself.
+		float HeadlampBrightness = 0.03F; //!< Brightness of soldiers' headlamp beams.
+		float HeadlampReach = 153.0F; //!< How far the beams reach, in pixels.
+		float HeadlampWidth = 80.0F; //!< Half-angle of the beams, in degrees.
+		glm::vec3 HeadlampColor = {0.743056F, 0.939333F, 1.0F}; //!< Color of the beams (linear).
+		float HeadlampGlow = 0.04F; //!< Brightness of the small glow around the lamp itself.
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
 		float SaberLightBrightness = 1.0F; //!< Brightness of the light lightsaber blades (energy blades) throw on what's around them.
 		float SaberLightReach = 0.8F; //!< Multiplier for how far that light reaches.
-		float JetpackLightBrightness = 1.0F; //!< Brightness of all the light jetpacks give off: the glow at the nozzle while they fire, and the light of their flames, flashes and exhaust glows. 0 for none.
+		float JetpackLightBrightness = 0.25F; //!< Brightness of all the light jetpacks give off: the glow at the nozzle while they fire, and the light of their flames, flashes and exhaust glows. 0 for none.
 		float JetpackLightReach = 1.0F; //!< Multiplier for how far that light reaches.
 		float SaberAirGlow = 1.0F; //!< How strongly blades glow in the air around them, 0 for none.
 		bool AimDotsLight = false; //!< The dots that show where a weapon is aimed light the scene around them. Off, they still glow but cast no light.
@@ -681,7 +683,7 @@ namespace RTE {
 		bool EventFireWarmth = true; //!< The warmer grade standing by a fire (LookWarm).
 		bool DepthOfField = true; //!< Blur what's nearer or further than the focus by how far it is from it, like a camera lens. Off: everything is sharp as before.
 		float DepthOfFieldFocus = 0.0F; //!< Where the focus is: 0 the battlefield (units and terrain), 1 the furthest background.
-		float DepthOfFieldStrength = 0.08F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).
+		float DepthOfFieldStrength = 0.13F; //!< How strong the blur gets, 0 to 2 (2 is about 16 px at its widest).
 		bool TiltShift = false; //!< Blur the top and bottom of the screen and keep a band sharp, so the battlefield reads as a model diorama. Off: as before.
 		float TiltShiftLine = 0.54F; //!< Where the sharp band is, 0 the top of the screen to 1 the bottom.
 		float TiltShiftStrength = 0.0F; //!< How strong its blur gets, 0 to 2.
@@ -689,7 +691,7 @@ namespace RTE {
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
-		float HeatHaze = 2.2F; //!< Heat haze shimmer, in pixels at full heat.
+		float HeatHaze = 0.44F; //!< Heat haze shimmer, in pixels at full heat.
 		bool HazeFromHeat = true; //!< Heat haze rises from hot things (fire, burning ground, blasts, warm glows) only. Off: from anything bright, lamps included, as before.
 		enum FireStyles {
 			FireBoth = 0,
@@ -697,33 +699,33 @@ namespace RTE {
 			FireShaderOnly = 2
 		};
 		int FireStyle = FireBoth; //!< How fire is drawn (FireStyles): the pixel fire (a flickering dot and tongue per burning pixel, the flame sprites of flame particles), the shader's flames (shape and motion, a dark core, embers off the tips) or both, the shader's over the pixels.
-		float FireFlameSize = 0.2F; //!< How tall the flames of burning ground stand.
-		float FireFlameBrightness = 0.54F; //!< How bright those flames are.
-		float ShockwaveStrength = 1.3F; //!< Multiplier for explosion shockwave refraction.
+		float FireFlameSize = 1.0F; //!< How tall the flames of burning ground stand.
+		float FireFlameBrightness = 1.0F; //!< How bright those flames are.
+		float ShockwaveStrength = 0.78F; //!< Multiplier for explosion shockwave refraction.
 
 		bool UnitTeamColorParts = false; //!< The parts of units' sprites that mods mark (TeamColorIndex, TeamColorMapFile) are drawn in their side's colour (red, green, blue, yellow). Off: in the mod's default colour, or as painted.
 		bool UnitOutline = true; //!< A stroke round each unit and what it holds, over the sky, the background and other objects but never over terrain. Off: no outline, as before.
-		bool UnitOutlineOverEverything = false; //!< The stroke is drawn over terrain and water too (everything but the post-processing), so a unit hidden behind them still shows its outline. Off: never over foreground terrain.
+		bool UnitOutlineOverEverything = true; //!< The stroke is drawn over terrain and water too (everything but the post-processing), so a unit hidden behind them still shows its outline. Off: never over foreground terrain.
 		float UnitOutlineWidth = 1.0F; //!< How thick the stroke is, in the game's pixels (1 to 4). Zoomed out it is thickened to keep its size on screen.
 		bool UnitOutlineTeamColor = true; //!< Each unit's stroke is its side's colour (red, green, blue, yellow; white for no side). Off: all are UnitOutlineColor.
-		glm::vec3 UnitOutlineColor = {1.0F, 1.0F, 1.0F}; //!< The stroke's colour when not by side, as shown on screen.
+		glm::vec3 UnitOutlineColor = {0.986722F, 0.043981F, 1.0F}; //!< The stroke's colour when not by side, as shown on screen.
 		float UnitOutlineOpacity = 0.33F; //!< How solid the stroke is, 0 (unseen) to 1.
-		float UnitOutlineGlow = 0.0F; //!< How brightly each outlined unit lights what's round it, in its outline's colour (its side's, UnitOutlineColor, or a highlighted unit's pink), 0 to 2. Needs lighting on. 0: no light, as before.
+		float UnitOutlineGlow = 0.06F; //!< How brightly each outlined unit lights what's round it, in its outline's colour (its side's, UnitOutlineColor, or a highlighted unit's pink), 0 to 2. Needs lighting on. 0: no light, as before.
 		bool HighlightUnits = false; //!< Set by the game, not saved: some unit is highlighted (Actor::SetHighlighted), so the outline pass runs for its bright, pulsing glow even with UnitOutline off.
 
 		bool PaletteAnimation = true; //!< Animated palette flags: glowing liquids (lava) breathe, and colours set in Base.rte/PaletteAnimation.ini or by scripts pulse or cycle. Off: the palette stands still, as before.
 		float PaletteAnimationStrength = 1.0F; //!< How far the pulses swing from each colour's own glow, 0 to 1.
 
-		float DeepNightDarkness = 0.63F; //!< How much darker the scene is in the dead of night (eleven to two) than at nightfall: 0 not at all, 0.5 half the light, 0.9 a tenth. Lamps, fires and headlamps are not dimmed.
+		float DeepNightDarkness = 0.69F; //!< How much darker the scene is in the dead of night (eleven to two) than at nightfall: 0 not at all, 0.5 half the light, 0.9 a tenth. Lamps, fires and headlamps are not dimmed.
 		float SkyFollowsTime = 1.0F; //!< How far the sky art (painted as a blue day) takes the colours of the hour away from midday: a dark night sky, a red dawn and dusk, grey in bad weather. 0 only darkens the art, as before.
-		float FogVolume = 0.6F; //!< How thick mist and dust in the air are drawn: dawn mist in valleys, steam off water on lava, dust after a collapse, mist from scripts. It drifts with the wind, is lit by the sky and lamps and clears with time. 0: none, as before.
+		float FogVolume = 0.71F; //!< How thick mist and dust in the air are drawn: dawn mist in valleys, steam off water on lava, dust after a collapse, mist from scripts. It drifts with the wind, is lit by the sky and lamps and clears with time. 0: none, as before.
 		float FogMorningMist = 0.5F; //!< How much mist gathers low in open valleys around dawn (and a little at night and in rain), 0 to 1.
-		float FogOpacity = 0.85F; //!< How much of what's behind the thickest mist and dust is hidden, 0 to 1. Lower lets more of its colour through.
-		float FogClearSeconds = 25.0F; //!< About how long mist and dust take to clear, in game seconds.
+		float FogOpacity = 0.14F; //!< How much of what's behind the thickest mist and dust is hidden, 0 to 1. Lower lets more of its colour through.
+		float FogClearSeconds = 3.0F; //!< About how long mist and dust take to clear, in game seconds.
 		bool LightningBolts = true; //!< Lightning is drawn as a jagged, forked bolt of light from the sky that lights up where it strikes. Off: the sandbox's bolt is a line of particles, as before.
 		float LightningBrightness = 1.0F; //!< How bright lightning bolts, the light they cast and storms' sky flashes are, 0 to 2. 1: as first made.
 		bool StormFlashes = true; //!< Storms (heavy rain, and weather with lightning in it) flash the whole sky now and then. Off for players bothered by flashing.
-		float GodRays = 0.8F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
+		float GodRays = 0.13F; //!< Strength of the light shafts in the air of caves and bunkers where the sun (or moon) gets in, 0 to disable.
 
 		float Embers = 1.3F; //!< Amount of embers rising from fire and other warm glows, 0 to disable.
 		float EffectsSparks = 1.5F; //!< Amount of visual sparks from explosions and hard impacts, 0 for none.
@@ -732,7 +734,7 @@ namespace RTE {
 		float EffectsDebris = 1.5F; //!< Amount of visual debris chips from explosions and impacts, 0 for none. Embers, smoke, fire and spray follow the largest of the three.
 		bool SmokeShading = true; //!< Smoke takes its own colour, shadows itself (dark on the side away from a fire or the sun, lit on the near side) and has its top painted by the sun. Off: one pale tint lit evenly through, as before.
 		float SmokeShadingStrength = 1.0F; //!< How strongly, 0 to 1.
-		float SmokeScattering = 1.2F; //!< How brightly smoke catches the light passing through it (fire, muzzle flashes, lamps), 0 to disable.
+		float SmokeScattering = 0.0F; //!< How brightly smoke catches the light passing through it (fire, muzzle flashes, lamps), 0 to disable.
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
@@ -743,7 +745,7 @@ namespace RTE {
 		bool WetnessMap = true; //!< Rain wets the ground place by place and it dries after, hard rock and concrete slower than earth, with puddles in the dips after long rain. Off: all exposed ground is equally wet, as before.
 		float WetDrySeconds = 120.0F; //!< Game seconds for wet earth to dry once the rain stops, 10 to 600; rock takes up to three times as long.
 		float Puddles = 1.0F; //!< How much water standing in dips is drawn as reflecting puddles, 0 (none) to 1.
-		bool Headlamps = false; //!< Where it's dark around them (at night, in caves, under roofs), soldiers switch on headlamps that light the way they're looking.
+		bool Headlamps = true; //!< Where it's dark around them (at night, in caves, under roofs), soldiers switch on headlamps that light the way they're looking.
 		bool NightAffectsAI = false; //!< Stealth (AC-11): at night the AI sees less far and less in the dark, under a roof or away from lights, a lit headlamp gives its wearer away, and footsteps are heard (Actor::HearFootsteps). Changes gameplay; off by default so the AI is not handicapped.
 		bool LivingWorld = true; //!< Vegetation sways in the wind and bends in blasts; snow settles and rain wets exposed ground.
 		float HotSpotSeconds = 3.5F; //!< How long freshly blasted terrain glows.
@@ -751,24 +753,24 @@ namespace RTE {
 		bool BloomEnabled = true;
 		float BloomThreshold = 3.67F;
 		float BloomKnee = 0.4F;
-		float BloomIntensity = 0.03F;
+		float BloomIntensity = 0.14F;
 
-		float Exposure = 2.06F;
+		float Exposure = 2.09F;
 		float AutoExposure = 0.48F; //!< How strongly exposure adapts when the scene is much brighter or darker than usual (flashes, pitch black caves), 0 to disable.
 		float AutoExposureLow = 0.021F; //!< Average scene luminance below which exposure starts to brighten. Ordinary scenes, night included, stay above it.
 		bool AutoExposureGameTime = true; //!< Exposure adapts in game time, so it holds while paused and captures are repeatable. Off: in real time, as before, still adapting while paused.
 		float AutoExposureHigh = 0.487F; //!< Average scene luminance above which exposure starts to darken, e.g. a big explosion filling the screen.
-		float ShoulderStart = 0.75F; //!< Linear brightness above which highlights are softly compressed.
-		float Vignette = 0.04F;
-		float Saturation = 1.28F;
+		float ShoulderStart = 0.44F; //!< Linear brightness above which highlights are softly compressed.
+		float Vignette = 0.3F;
+		float Saturation = 1.21F;
 
 		float Temperature = 0.0F; //!< Color grading white balance, -1 cool to 1 warm.
 		float Tint = 0.0F; //!< Color grading tint, -1 green to 1 magenta.
 		float Contrast = 1.0F; //!< Color grading contrast around mid grey.
 		glm::vec3 ShadowTint = {1.0F, 1.0F, 1.0F}; //!< Color multiplier for the shadows.
 		glm::vec3 HighlightTint = {1.0F, 1.0F, 1.0F}; //!< Color multiplier for the highlights.
-		float FilmGrain = 0.28F; //!< Film grain strength, 0 to 1.
-		float ChromaticAberration = 0.18F; //!< Lens color fringing towards the screen edges, in pixels.
+		float FilmGrain = 0.08F; //!< Film grain strength, 0 to 1.
+		float ChromaticAberration = 0.0F; //!< Lens color fringing towards the screen edges, in pixels.
 		bool ModShaders = true; //!< Mods' own shaders: objects drawn with a Shader of their own, and a scene's or activity's post pass. Off: everything is drawn with the game's shaders, as before.
 		float ModShaderStrength = 1.0F; //!< How strongly mods' shaders apply, 0 to 1, handed to them as rteStrength (a mod's shader may ignore it).
 		bool SpriteMaps = true; //!< Sprites that come with authored normal and emissive maps (NormalMapFile, EmissiveMapFile) are lit and glow as drawn. Off: every sprite gets the automatic bevel and palette glow, as before.

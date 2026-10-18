@@ -5,10 +5,12 @@
 #include "FrameMan.h"
 #include "SceneMan.h"
 #include "LuaMan.h"
+#include "PostProcessMan.h"
 
 #include "DataModule.h"
 #include "GameActivity.h"
 #include "Scene.h"
+#include "Weather.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -65,6 +67,10 @@ ScenarioActivityConfigGUI::ScenarioActivityConfigGUI(GUIControlManager* parentCo
 	m_CPULockLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelCPUTeamLock"));
 	m_StartErrorLabel = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelStartError"));
 	m_StartGameButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonStartGame"));
+
+	m_TimeOfDayButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonTimeOfDay"));
+	m_WeatherButton = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonWeather"));
+	UpdateAtmosphereButtons();
 }
 
 void ScenarioActivityConfigGUI::PopulateTechComboBoxes() {
@@ -117,6 +123,7 @@ void ScenarioActivityConfigGUI::SetEnabled(bool enable, const Activity* selected
 
 		int startingGoldOverride = selectingPreviousActivityWithManuallyAdjustedGold ? m_StartingGoldSlider->GetValue() : -1;
 		ResetActivityConfigBox();
+		UpdateAtmosphereButtons();
 
 		if (startingGoldOverride >= 0) {
 			m_StartingGoldSlider->SetValue(startingGoldOverride);
@@ -215,7 +222,41 @@ void ScenarioActivityConfigGUI::ResetActivityConfigBox() {
 	}
 }
 
+namespace {
+	/// A time of day the game can start at: its name and hour, or -1 for the scene's own.
+	struct TimeOfDayChoice {
+		const char* Name;
+		float Hour;
+	};
+	constexpr TimeOfDayChoice c_TimeOfDayChoices[] = {{"Scene default", -1.0F}, {"Dawn", 6.5F}, {"Morning", 9.0F}, {"Noon", 12.0F}, {"Afternoon", 15.5F}, {"Dusk", 18.8F}, {"Night", 23.0F}};
+
+	/// Gets the weather choices: the scene's own, then each Weather slot (custom ones only when they're turned on).
+	std::vector<std::string> GetWeatherChoices() {
+		std::vector<std::string> choices{"Scene default"};
+		std::vector<std::string> slotNames = Weather::GetSlotNames();
+		bool customWeather = g_PostProcessMan.GetLightingSettings().CustomWeather;
+		for (size_t slot = 0; slot < slotNames.size() && (customWeather || slot <= Weather::c_BuiltInCount); ++slot) {
+			choices.push_back(slotNames[slot]);
+		}
+		return choices;
+	}
+} // namespace
+
+void ScenarioActivityConfigGUI::UpdateAtmosphereButtons() {
+	m_TimeOfDayChoice %= static_cast<int>(std::size(c_TimeOfDayChoices));
+	if (m_TimeOfDayButton) {
+		m_TimeOfDayButton->SetText(std::string("Time: ") + c_TimeOfDayChoices[m_TimeOfDayChoice].Name);
+	}
+	std::vector<std::string> weatherChoices = GetWeatherChoices();
+	m_WeatherChoice %= static_cast<int>(weatherChoices.size());
+	if (m_WeatherButton) {
+		m_WeatherButton->SetText("Weather: " + weatherChoices[m_WeatherChoice]);
+	}
+}
+
 void ScenarioActivityConfigGUI::StartGame() {
+	// Drawing only: the time of day and weather change how the game looks, not what happens in it.
+	g_PostProcessMan.SetActivityAtmosphere(c_TimeOfDayChoices[m_TimeOfDayChoice].Hour, m_WeatherChoice - 1);
 	GameActivity* gameActivity = dynamic_cast<GameActivity*>(m_SelectedActivity->Clone());
 
 	gameActivity->SetDifficulty(m_ActivityDifficultySlider->GetValue());
@@ -427,6 +468,14 @@ bool ScenarioActivityConfigGUI::HandleInputEvents() {
 			if (guiEvent.GetControl() == m_CancelConfigButton) {
 				g_GUISound.BackButtonPressSound()->Play();
 				SetEnabled(false);
+			} else if (m_TimeOfDayButton && guiEvent.GetControl() == m_TimeOfDayButton) {
+				g_GUISound.ButtonPressSound()->Play();
+				++m_TimeOfDayChoice;
+				UpdateAtmosphereButtons();
+			} else if (m_WeatherButton && guiEvent.GetControl() == m_WeatherButton) {
+				g_GUISound.ButtonPressSound()->Play();
+				++m_WeatherChoice;
+				UpdateAtmosphereButtons();
 			} else if (guiEvent.GetControl() == m_StartGameButton) {
 				// Make sure all players have known input devices if multimouse is enabled.
 				g_GUISound.ButtonPressSound()->Play();
