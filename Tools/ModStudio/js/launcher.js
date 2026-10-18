@@ -92,11 +92,21 @@ window.MS = window.MS || {};
 			}
 		});
 		await L.refresh();
+		// The first start with no game: Studio opened on the folder Community Edition goes in, and gets it now.
+		if (info.game === false && info.download) {
+			L.firstRun = true;
+			$('game').hidden = false;
+			L.tab = 'community';
+			render();
+			startJob('community-get', { id: info.download }, afterDownload(info.download, true));
+			return;
+		}
 		// the setup is for building Commander: a Community Edition release is played as it is
 		await MS.target.ready;
 		if (L.state && !L.state.config.mode && !MS.target.classic()) {
 			L.open('setup');
 		}
+		checkForNewerBuild();
 		// A build still running when the page reloaded (after a launch moved Studio) keeps showing its output.
 		const job = await guarded(() => call('job', undefined, { from: 0 }));
 		if (job && job.state === 'running') {
@@ -265,21 +275,22 @@ window.MS = window.MS || {};
 	}
 
 	L.open = async function (tab) {
-		if (classic()) {
-			app().toast('Community Edition is played as it is in the game folder: the ▾ beside Play has its editors. Building and versions are for Cortex Commander.', '');
-			return;
-		}
 		$('game').hidden = false;
 		await L.refresh();
 		if (!L.state) {
 			return;
 		}
-		L.tab = tab || (!L.state.config.mode ? 'setup' : L.tab === 'setup' ? 'play' : L.tab);
+		// Community Edition is played as it is in its folder, so in Classic the screen is only for getting it
+		L.tab = classic() || L.firstRun ? 'community' : tab || (!L.state.config.mode ? 'setup' : L.tab === 'setup' ? 'play' : L.tab);
 		render();
 	};
 
 	L.close = function () {
-		if (L.state && !L.state.config.mode) {
+		if (L.firstRun) {
+			app().toast('Studio opens on the game once it has downloaded.', '');
+			return;
+		}
+		if (L.state && !L.state.config.mode && !classic()) {
 			app().toast('You can finish the setup any time from the Game button.', '');
 		}
 		$('game').hidden = true;
@@ -291,13 +302,16 @@ window.MS = window.MS || {};
 		const tabs = $('gameTabs');
 		tabs.innerHTML = '';
 		const advanced = L.state.config.mode === 'advanced';
-		const list = [
-			['play', 'Play'],
-			advanced ? ['versions', 'Versions'] : null,
-			['settings', 'Launch settings'],
-			['runs', 'Run configurations'],
-			['setup', 'Setup'],
-		].filter(Boolean);
+		const list = (classic() || L.firstRun
+			? [['community', 'Community Edition']]
+			: [
+				['play', 'Play'],
+				advanced ? ['versions', 'Versions'] : null,
+				['settings', 'Launch settings'],
+				['runs', 'Run configurations'],
+				['community', 'Community Edition'],
+				['setup', 'Setup'],
+			]).filter(Boolean);
 		for (const [id, label] of list) {
 			const b = el('button', { textContent: label, className: L.tab === id ? 'sel' : '' });
 			b.onclick = () => {
@@ -311,7 +325,7 @@ window.MS = window.MS || {};
 		// The setup keeps its narrow column; the other screens use the window's width.
 		body.classList.toggle('wide', L.tab !== 'setup');
 		L.rendered = (L.rendered || 0) + 1;
-		const view = { play: renderPlay, versions: renderVersions, settings: renderSettings, runs: renderRuns, setup: renderSetup }[L.tab] || renderPlay;
+		const view = { play: renderPlay, versions: renderVersions, settings: renderSettings, runs: renderRuns, community: renderCommunity, setup: renderSetup }[L.tab] || renderPlay;
 		view(body);
 	}
 
@@ -598,7 +612,7 @@ window.MS = window.MS || {};
 
 	// Saves unsaved work first when the launch will move Studio to another folder (the page reloads there).
 	async function readyToLeave() {
-		const dirty = app().dirtyDocs().length + MS.ide.dirtyCount();
+		const dirty = app().lib ? app().dirtyDocs().length + MS.ide.dirtyCount() : 0;
 		if (!dirty) {
 			return true;
 		}
@@ -899,6 +913,129 @@ window.MS = window.MS || {};
 		log.innerHTML = '';
 		for (const line of lines) {
 			log.append(el('div', { textContent: line }));
+		}
+	}
+
+	// ---- Community Edition: its release builds, downloaded for Classic mode (community.rs) ----
+
+	const ABOUT = {
+		'ce-6.2.2': 'The stable release most players have. Mods made for it load in later 6.x builds too.',
+		'ce-nightly': 'The newest build, remade whenever Community Edition changes. It is game version 7, which loads only mods made for 7.',
+	};
+
+	async function renderCommunity(body) {
+		const info = await guarded(() => call('community'));
+		if (!info) {
+			return;
+		}
+		if (!info.supported) {
+			body.append(card('Community Edition', el('p', { textContent: 'Community Edition has no release build for this computer (' + info.platform + '). Get it some other way and pick its folder in Settings.' })));
+			return;
+		}
+		body.append(el('p', { className: 'gm-dim', textContent: 'Studio downloads Community Edition from its GitHub releases (github.com/cortex-command-community) and makes mods for the one you pick. Getting a newer build replaces the game and its Data folder and keeps your Mods and the game\'s settings.' }));
+		const grid = el('div', { className: 'gm-grid' });
+		const newsLines = {};
+		for (const r of info.releases) {
+			const got = r.download && r.download.downloaded;
+			const news = el('p', { className: 'gm-dim', textContent: 'Checking GitHub for the newest build…' });
+			const again = button(r.installed ? 'Download again' : 'Download', () => startJob('community-get', { id: r.id }, afterDownload(r.id, r.editing || L.firstRun)), { primary: !r.installed, disabled: !!L.jobPolling });
+			newsLines[r.id] = { news, again };
+			grid.append(card(
+				r.name,
+				el('p', { textContent: ABOUT[r.id] || '' }),
+				r.installed
+					? el('p', {}, el('span', { className: 'gm-good', textContent: '● ' }), 'In ', el('code', { textContent: r.dir }), got ? ', downloaded ' + when(got) : '', r.editing ? '. Studio is making mods for this one.' : '.')
+					: el('p', {}, 'Not downloaded yet. It goes in ', el('code', { textContent: r.dir }), '.'),
+				news,
+				row(
+					r.installed && !r.editing && !L.firstRun ? button('Make mods for this one', () => useRelease(r), { primary: true }) : null,
+					again,
+				),
+			));
+		}
+		const folder = el('input', { type: 'text', value: info.base, className: 'gm-input gm-wide', readOnly: true });
+		body.append(grid, card(
+			'Where downloads go',
+			row(
+				folder,
+				button('Browse…', async () => {
+					const answer = await guarded(() => call('pick', undefined, { kind: 'folder', title: 'Where Community Edition goes' }));
+					if (answer && answer.path) {
+						await saveConfig({ communityDir: answer.path });
+						render();
+					}
+				}, { disabled: !!L.firstRun }),
+				button('Default', async () => {
+					await saveConfig({ communityDir: '' });
+					render();
+				}, { disabled: !!L.firstRun || info.base === info.defaultBase }),
+			),
+			el('p', { className: 'gm-dim', textContent: 'Each release gets a folder of its own in here. Games already downloaded somewhere else stay where they are.' }),
+		));
+		const check = await guarded(() => call('community-check'));
+		for (const [id, { news, again }] of Object.entries(newsLines)) {
+			const c = check && check[id];
+			if (!c || c.error) {
+				news.textContent = c && c.error ? c.error : 'Couldn\'t reach GitHub.';
+				continue;
+			}
+			const latest = c.latest;
+			const built = latest.updatedAt ? when(latest.updatedAt) : '';
+			news.textContent = c.newer
+				? 'A newer build is out: ' + built + '.'
+				: 'Newest build: ' + built + (latest.size ? ', ' + size(latest.size) : '') + '.';
+			news.className = c.newer ? 'gm-good' : 'gm-dim';
+			if (c.newer) {
+				again.textContent = 'Get the newer build';
+				again.classList.add('primary');
+			}
+		}
+	}
+
+	// After a download: the folder Studio is in reloads with the game; another one is offered.
+	function afterDownload(id, reload) {
+		return async (state) => {
+			if (state !== 'ok') {
+				return;
+			}
+			if (reload) {
+				app().toast('Community Edition is ready. Opening it…', 'good');
+				MS.leaving = true;
+				setTimeout(() => location.reload(), 900);
+				return;
+			}
+			app().toast('Downloaded.', 'good', { label: 'Make mods for it', run: () => useRelease({ id }) });
+		};
+	}
+
+	async function useRelease(r) {
+		if (!(await readyToLeave())) {
+			return;
+		}
+		const answer = await guarded(() => call('community-use', { id: r.id }));
+		if (answer && answer.switched) {
+			MS.leaving = true;
+			location.reload();
+		}
+	}
+
+	// Once a day, when Studio is making mods for a Community Edition it downloaded: say when GitHub has a newer build of it.
+	async function checkForNewerBuild() {
+		const info = await call('community').catch(() => null);
+		const mine = info && info.releases.find((r) => r.editing && r.installed && r.download && r.download.updatedAt);
+		if (!mine) {
+			return;
+		}
+		const key = 'cortexStudio.communityChecked';
+		try {
+			if (Date.now() - Number(localStorage.getItem(key) || 0) < 864e5) {
+				return;
+			}
+			localStorage.setItem(key, String(Date.now()));
+		} catch (e) {}
+		const check = await call('community-check').catch(() => null);
+		if (check && check[mine.id] && check[mine.id].newer) {
+			app().toast('A newer build of ' + mine.name + ' is out.', '', { label: 'Get it', run: () => L.open('community') });
 		}
 	}
 

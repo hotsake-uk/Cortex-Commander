@@ -58,7 +58,8 @@ Studio app does this itself).
 ## Classic mode: mods for Community Edition
 
 Studio also makes mods for a release build of Cortex Command Community Edition (6.2.2, or the nightly), so a modder doesn't need to
-build the game. Point Studio at the folder you unzipped the release into (the one with `Data/Base.rte`). Studio sees it isn't
+build the game. Point Studio at the folder you unzipped the release into (the one with `Data/Base.rte`), or let the Cortex Studio
+app download it (the Game screen's **Community Edition** tab, or ⚙ **Get Community Edition…**). Studio sees it isn't
 Cortex Commander and works in **Classic** mode, with a badge beside the project name saying which game; click the badge (or ⚙,
 **Game the mods are for**) to pick another.
 
@@ -71,7 +72,7 @@ Cortex Commander and works in **Classic** mode, with a badge beside the project 
   and settings Community Edition doesn't have.
 - New mods are written with the `SupportedGameVersion` that release loads (6.0.0 for 6.2.2, 7.0.0 for the nightly).
 - In the Cortex Studio app, **▶ Play** starts the release in the game folder, and its ▾ has the Actor, Gib and Scene editors. The Game
-  screen (building versions) is Commander's only.
+  screen has only its Community Edition tab: building versions is Commander's only.
 
 `node tools/make-targets.js --ce <clone of cortex-command-community/Cortex-Command-Community-Project>` writes `data/targets/` from each
 release's tag in the clone (fetch its tags first; `nightly` moves), and `data/ini-surface.json` for Commander.

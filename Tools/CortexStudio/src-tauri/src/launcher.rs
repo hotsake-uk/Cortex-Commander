@@ -54,6 +54,8 @@ pub struct Config {
 	pub unlock_linked: Vec<String>,
 	/// Saved ways to start the game (the Play menu's run configurations).
 	pub run_configs: Vec<RunConfig>,
+	/// Where Community Edition releases are downloaded to (community.rs); "" is Documents/Cortex Studio.
+	pub community_dir: String,
 }
 
 /// A saved way to start the game: what to start, on which map, and how.
@@ -273,10 +275,10 @@ pub struct Job {
 }
 
 #[derive(Clone)]
-struct JobCtx(Arc<Mutex<Job>>);
+pub(crate) struct JobCtx(pub(crate) Arc<Mutex<Job>>);
 
 impl JobCtx {
-	fn log(&self, line: impl Into<String>) {
+	pub(crate) fn log(&self, line: impl Into<String>) {
 		let mut job = self.0.lock().unwrap();
 		job.lines.push(line.into());
 		if job.lines.len() > 20000 {
@@ -284,12 +286,12 @@ impl JobCtx {
 		}
 	}
 
-	fn cancelled(&self) -> bool {
+	pub(crate) fn cancelled(&self) -> bool {
 		self.0.lock().unwrap().cancel
 	}
 
 	/// Runs a program, its output going to the job's log. Ok(()) only when it exits with 0.
-	fn run(&self, program: &str, args: &[&str], cwd: &Path, env: &[(&str, String)]) -> Result<(), String> {
+	pub(crate) fn run(&self, program: &str, args: &[&str], cwd: &Path, env: &[(&str, String)]) -> Result<(), String> {
 		if self.cancelled() {
 			return Err("Cancelled.".into());
 		}
@@ -341,7 +343,7 @@ impl Launcher {
 		Launcher { config: Mutex::new(Config::load(game_dir)), job: Arc::new(Mutex::new(Job { state: "idle".into(), ..Job::default() })) }
 	}
 
-	fn start_job<F>(&self, title: &str, work: F) -> Result<u64, String>
+	pub(crate) fn start_job<F>(&self, title: &str, work: F) -> Result<u64, String>
 	where
 		F: FnOnce(&JobCtx) -> Result<(), String> + Send + 'static,
 	{
@@ -1754,6 +1756,27 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			Ok(log) => ok(json!({ "log": log })),
 			Err(e) => fail(400, e),
 		},
+		// Community Edition releases, downloaded for Classic mode (community.rs), into the folder in communityDir.
+		"community" => ok(crate::community::overview(&config.community_dir, game_dir)),
+		"community-check" => ok(crate::community::check(&config.community_dir)),
+		"community-get" => {
+			let id = arg(body, "id");
+			let Some(dir) = crate::community::folder(&id, &config.community_dir) else {
+				return fail(400, "Studio doesn't know that release.");
+			};
+			let name = crate::community::RELEASES.iter().find(|r| r.id == id).map(|r| r.name).unwrap_or("Community Edition");
+			job_answer(launcher.start_job(&format!("Getting {name}"), move |ctx| crate::community::get(ctx, &id, &dir)))
+		}
+		"community-use" => {
+			let Some(dir) = crate::community::folder(&arg(body, "id"), &config.community_dir) else {
+				return fail(400, "Studio doesn't know that release.");
+			};
+			if !dir.join("Data").join("Base.rte").is_dir() {
+				return fail(400, format!("{} has no game in it yet. Download it first.", dir.display()));
+			}
+			let switch = fs::canonicalize(game_dir).ok() != fs::canonicalize(&dir).ok();
+			Answer { status: 200, body: json!({ "ok": true, "switched": switch }).to_string(), switch_to: switch.then_some(dir) }
+		}
 		"pick" => ok(json!({ "path": pick(&query("kind").unwrap_or_default(), &query("title").unwrap_or_else(|| "Pick a folder".into())) })),
 		_ => fail(404, "Unknown request."),
 	}

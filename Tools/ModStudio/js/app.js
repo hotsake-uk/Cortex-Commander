@@ -87,7 +87,17 @@ window.MS = window.MS || {};
 			// Started by Mod Studio.bat or the launcher: the game folder is already chosen.
 			$('btnOpen').hidden = true;
 			const fs = new MS.GameFS();
-			loadGame(() => fs.useServer(token), fs);
+			// The first start with no game: the Game screen (launcher.js) downloads Community Edition, then the page reloads on it.
+			fetch('/api/info', { headers: { 'X-ModStudio-Token': token }, cache: 'no-store' })
+				.then((r) => r.json())
+				.catch(() => ({}))
+				.then((info) => {
+					if (info.game === false) {
+						note.textContent = 'Getting Community Edition. Studio opens on it once it has downloaded.';
+						return;
+					}
+					loadGame(() => fs.useServer(token), fs);
+				});
 		} else {
 			note.textContent = 'Opened straight from disk, Studio can read the game folder but not save into it: your changes download as a zip to unpack over it. To save straight into the game, start Mod Studio.bat in Tools\\ModStudio, or use the launcher\'s Mod Studio button.';
 		}
