@@ -600,6 +600,9 @@ window.MS = window.MS || {};
 	}
 
 	// A scenario started straight away on its own map (the Mission Editor's Play in the game, when no game from Studio is running).
+	// Studio's game options (the Game section of the settings), sent with every launch.
+	const gameOptions = () => ({ disableMedieval: !!MS.settings.get('game.disableMedieval', false), disabledMods: MS.settings.get('game.disabledMods', []) || [] });
+
 	L.launchScenario = async function (name) {
 		await L.refresh();
 		if (!L.state.editingSlot && !(await readyToLeave())) {
@@ -608,7 +611,7 @@ window.MS = window.MS || {};
 		if (app().project) {
 			await MS.friendly.repairProject(app().project);
 		}
-		const answer = await guarded(() => call('launch', { mode: 'scenario', map: name }));
+		const answer = await guarded(() => call('launch', Object.assign({ mode: 'scenario', map: name }, gameOptions())));
 		if (!answer) {
 			return;
 		}
@@ -646,7 +649,7 @@ window.MS = window.MS || {};
 				body.preview = text;
 			}
 		}
-		const answer = await guarded(() => call('launch', body));
+		const answer = await guarded(() => call('launch', Object.assign(body, gameOptions())));
 		if (!answer) {
 			return;
 		}

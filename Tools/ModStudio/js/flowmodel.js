@@ -151,6 +151,7 @@ window.MS = window.MS || {};
 		['group', 'text', 'group (of the team\'s tech)', 'Actors - Light'],
 		['loadout', 'text', 'loadout', 'Infantry Heavy'],
 		['team', 'team', 'for team', 0],
+		['faction', 'text', 'from faction (empty: the team\'s own)', ''],
 		['area', 'area', 'in area', ''],
 		['perBox', 'bool', 'one in each box of the area', false],
 		['count', 'value', 'how many', V(1)],
@@ -162,13 +163,14 @@ window.MS = window.MS || {};
 		['arm', 'choice', 'arm them with', 'light', ARMS],
 		['brainOf', 'choice', 'the first one becomes the brain of', 'none', [['none', 'nobody'], ['0', 'player 1'], ['1', 'player 2'], ['2', 'player 3'], ['3', 'player 4']]],
 	], STEP, {
-		optional: ['goTo', 'tag'],
+		optional: ['goTo', 'tag', 'faction'],
 		relevant: (p, key) => (key === 'brainOf' ? p.arrive !== 'dropship' && p.arrive !== 'rocket' : key === 'preset' ? (p.source || 'preset') === 'preset' : key === 'group' || key === 'arm' ? p.source === 'group' : key === 'loadout' ? p.source === 'loadout' : key === 'goTo' ? p.ai === 'goto' : key === 'count' ? !p.perBox : true),
 	});
 	// The players' start, as the game's own missions do it in their scripts: each human player gets a brain (the team's Infantry Brain
 	// loadout, or a brain of its tech) that is made theirs, with the camera on it, and a squad beside it, all standing on the ground in an area.
 	kind('playerStart', 'action', 'Start the players: a brain each and a squad', [
 		['team', 'team', 'team', 0],
+		['faction', 'text', 'from faction (empty: the team\'s own)', ''],
 		['area', 'area', 'in area', ''],
 		['brain', 'choice', 'each brain is', 'loadout', [['loadout', 'the team\'s brain'], ['preset', 'this unit'], ['group', 'a unit of a group']]],
 		['brainPreset', 'preset', 'brain unit', ''],
@@ -176,7 +178,7 @@ window.MS = window.MS || {};
 		['squad', 'value', 'units with each brain', V(4)],
 		['group', 'text', 'squad from group (of the team\'s tech)', 'Actors - Light'],
 		['arm', 'choice', 'squad armed with', 'light', ARMS],
-	], STEP, { relevant: (p, key) => (key === 'brainPreset' ? p.brain === 'preset' : key === 'brainGroup' ? p.brain === 'group' : true) });
+	], STEP, { optional: ['faction'], relevant: (p, key) => (key === 'brainPreset' ? p.brain === 'preset' : key === 'brainGroup' ? p.brain === 'group' : true) });
 	// Any unit as a player's brain: if it dies, the player has lost their brain (the game shows DEAD; "A player's brain is lost" and the brain
 	// goals follow it). Counted as a brain too, so the AI hunts it.
 	kind('setBrain', 'action', 'Make a unit a player\'s brain', [

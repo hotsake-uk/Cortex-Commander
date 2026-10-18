@@ -1553,3 +1553,7 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* the right group's designer: its toolbar over its view */
 #g2Main { flex: 1; min-width: 0; display: flex; flex-direction: column; }
 #g2Tools { flex: none; flex-wrap: wrap; }
+
+/* the settings menu's game options: a mod per line, ticked when switched off */
+.set-check { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
+.set-mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; max-height: 220px; overflow: auto; }

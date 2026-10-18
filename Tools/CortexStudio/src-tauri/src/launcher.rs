@@ -70,6 +70,32 @@ pub struct RunConfig {
 	pub time_scale: String,
 	/// "WxH": change the resolution to this once the game is going (CCCP_TEST_RESOLUTION), "" for your settings.
 	pub resolution: String,
+	/// Studio's game options, sent with every launch (not kept with a run): the medieval factions switched off (DisableMedievalUnits)...
+	#[serde(skip_serializing)]
+	pub disable_medieval: Option<bool>,
+	/// ...and mods switched off (DisableMod), as well as any the game's own mod manager switched off.
+	#[serde(skip_serializing)]
+	pub disabled_mods: Option<Vec<String>>,
+}
+
+/// Mods switched off in Settings.ini: each one a DisableMod line, those already there kept.
+fn add_disabled_mods(text: &str, mods: &[String]) -> String {
+	let newline = if text.contains("\r\n") { "\r\n" } else { "\n" };
+	let mut out = text.to_string();
+	for module in mods {
+		let module = module.trim();
+		if module.is_empty() || module.contains(['/', '\\']) {
+			continue;
+		}
+		let present = text.lines().any(|line| line.trim().split_once('=').map(|(k, v)| k.trim() == "DisableMod" && v.trim().eq_ignore_ascii_case(module)).unwrap_or(false));
+		if !present {
+			if !out.ends_with('\n') {
+				out.push_str(newline);
+			}
+			out.push_str(&format!("\tDisableMod = {module}{newline}"));
+		}
+	}
+	out
 }
 
 pub fn config_dir() -> Option<PathBuf> {
@@ -1376,6 +1402,27 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 			fs::write(&path, updated).map_err(|e| format!("Couldn't write the default preset into Settings.ini: {e}"))?;
 		}
 		log.push(format!("The game loads the settings preset {preset} at start."));
+	}
+	// Studio's game options: the medieval factions on or off, and mods switched off.
+	if run.disable_medieval.is_some() || run.disabled_mods.as_ref().is_some_and(|m| !m.is_empty()) {
+		let userdata = slot.join("Userdata");
+		let _ = fs::create_dir_all(&userdata);
+		let path = userdata.join("Settings.ini");
+		let text = fs::read_to_string(&path).unwrap_or_else(|_| "Settings\n".into());
+		let mut updated = text.clone();
+		if let Some(off) = run.disable_medieval {
+			updated = set_setting_line(&updated, "DisableMedievalUnits", if off { "1" } else { "0" });
+			if off {
+				log.push("The medieval factions (Kingdom and Fell Legion) are switched off.".into());
+			}
+		}
+		if let Some(mods) = run.disabled_mods.as_ref().filter(|m| !m.is_empty()) {
+			updated = add_disabled_mods(&updated, mods);
+			log.push(format!("Mods switched off: {}.", mods.join(", ")));
+		}
+		if updated != text {
+			fs::write(&path, updated).map_err(|e| format!("Couldn't write the game options into Settings.ini: {e}"))?;
+		}
 	}
 	let mut args: Vec<String> = match mode {
 		"test" => vec!["-modstudio".into(), "-test".into()],

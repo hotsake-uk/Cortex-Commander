@@ -99,6 +99,44 @@ window.MS = window.MS || {};
 		},
 	});
 
+	// The game Studio starts: the medieval factions, and mods, switched off. They stay off in that game (written into its settings at each
+	// launch) and are hidden across Studio: the library, the pickers, the faction lists.
+	section({
+		id: 'game', title: 'Game options',
+		render(body, redraw) {
+			const changed = () => {
+				if (MS.panels && MS.app && MS.app.lib) {
+					MS.panels.showLibrary();
+				}
+				redraw();
+			};
+			const medieval = el('input', { type: 'checkbox', checked: !!get('game.disableMedieval', false) });
+			medieval.onchange = () => {
+				set('game.disableMedieval', medieval.checked);
+				changed();
+			};
+			body.append(el('label', { className: 'set-check', title: 'Kingdom (Medieval.rte) and Fell Legion (FellLegion.rte): no longer factions and not for sale in the game, and hidden in Studio. Their presets stay loaded, since other parts of the game use them.' },
+				medieval, 'Switch off the medieval factions (Kingdom and Fell Legion)'));
+			const mods = MS.app && MS.app.lib ? MS.app.lib.modules.filter((m) => !m.official).map((m) => m.name).sort((a, b) => a.localeCompare(b)) : [];
+			const off = new Set((get('game.disabledMods', []) || []).map((m) => String(m).toLowerCase()));
+			body.append(el('p', { className: 'set-note', textContent: mods.length ? 'Mods switched off (not loaded by the game Studio starts, and hidden here; the mod you\'re working on always shows):' : 'No mods loaded.' }));
+			const list = el('div', { className: 'set-mods' });
+			for (const name of mods) {
+				const box = el('input', { type: 'checkbox', checked: off.has(name.toLowerCase()) });
+				box.onchange = () => {
+					const now = (get('game.disabledMods', []) || []).filter((m) => String(m).toLowerCase() !== name.toLowerCase());
+					if (box.checked) {
+						now.push(name);
+					}
+					set('game.disabledMods', now);
+					changed();
+				};
+				list.append(el('label', { className: 'set-check' }, box, name.replace(/\.rte$/i, '')));
+			}
+			body.append(list);
+		},
+	});
+
 	section({
 		id: 'look', title: 'Look',
 		render(body) {

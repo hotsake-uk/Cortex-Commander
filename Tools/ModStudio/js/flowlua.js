@@ -250,7 +250,7 @@ window.MS = window.MS || {};
 			}
 			case 'tech': return ['self:SetTeamTech(' + luaNum(a.team) + ', ' + luaStr(a.tech) + ')'];
 			case 'playerStart': return [
-				'local zone = ' + area(a.area), 'local team = ' + luaNum(a.team), 'local tech = studioTech(self, team)',
+				'local zone = ' + area(a.area), 'local team = ' + luaNum(a.team), 'local tech = ' + techLua(a),
 				'local x = zone and zone.Center.X or 0', 'local top = zone and (zone.Center.Y - 40) or 0',
 				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then',
 				...playerBrainLua(a),
@@ -295,6 +295,12 @@ window.MS = window.MS || {};
 
 	// Spawning: a unit picked, a random one of a group (in the team's tech) or a loadout; in the area at random, or one in each of its boxes; there
 	// and then, or brought in by a craft; facing a way; set to an AI mode (going to an area); and put in a group for later orders.
+	// The tech units come from (and are armed from): the faction picked, or the team's own (and the game's own when that isn't loaded).
+	function techLua(a) {
+		const faction = String(a.faction || '').trim();
+		return faction ? 'studioFaction(self, ' + luaStr(faction) + ', ' + luaNum(a.team) + ')' : 'studioTech(self, ' + luaNum(a.team) + ')';
+	}
+
 	// The brain a player starts with: the team's brain (its Infantry Brain loadout, or a brain of its tech), a unit picked, or a unit of a group.
 	function playerBrainLua(a) {
 		if (a.brain === 'preset') {
@@ -318,7 +324,7 @@ window.MS = window.MS || {};
 		const mode = a.ai || 'sentry';
 		const L = [
 			'local where = ' + area(a.area),
-			'local tech = studioTech(self, ' + luaNum(a.team) + ')',
+			'local tech = ' + techLua(a),
 			'local target = ' + (mode === 'goto' ? area(a.goTo) : 'nil'),
 			'if where then',
 			'\tlocal spots = {}',
@@ -589,6 +595,8 @@ window.MS = window.MS || {};
 			'local function studioCount(team, region)', '\tlocal n = 0', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and (team < 0 or actor.Team == team) and (region == nil or region:IsInside(actor.Pos)) then n = n + 1 end', '\tend', '\treturn n', 'end', '',
 				'-- A team\'s tech as a module id: the one it plays, or the game\'s own (Base.rte) when it has none.',
 				'local function studioTech(act, team)', '\tlocal id = PresetMan:GetModuleID(act:GetTeamTech(team) or "")', '\tif not id or id < 0 then id = PresetMan:GetModuleID("Base.rte") end', '\treturn id', 'end',
+				'-- A faction picked by name (Mod.rte): its module id, or the team\'s tech when it isn\'t loaded.',
+				'local function studioFaction(act, name, team)', '\tlocal id = PresetMan:GetModuleID(name)', '\tif id and id >= 0 then return id end', '\treturn studioTech(act, team)', 'end',
 				'-- A random unit of a group, from the tech if it has one there, else from any.',
 				'local function studioUnit(group, tech)', '\tlocal unit = RandomAHuman(group, tech)', '\tif not unit then unit = RandomAHuman(group, "Base.rte") end', '\tif not unit then unit = RandomAHuman("Actors", tech) end', '\treturn unit', 'end',
 				'-- What a unit carries: a random unit of a group comes with nothing, so it is given weapons of its tech (as the game\'s missions do).',
