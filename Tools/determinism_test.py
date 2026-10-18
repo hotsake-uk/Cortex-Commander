@@ -72,7 +72,9 @@ def run_game(exe, scenario_args, checker_args, headless, settings, instance, tim
         result = subprocess.run(args, timeout=timeout, stderr=subprocess.PIPE, text=True, env=environment)
     except subprocess.TimeoutExpired:
         return False, f"It was still going after {timeout} seconds."
-    return result.returncode == 0, result.stderr.strip() or f"It exited with code {result.returncode}."
+    # Only the lines that aren't library noise are worth reporting, and the exit code says whether it crashed rather than diverged.
+    report = "\n".join(line for line in result.stderr.splitlines() if line.strip() and not line.startswith("libpng warning"))
+    return result.returncode == 0, f"{report}\nIt exited with code {result.returncode}.".strip()
 
 
 def test_scenario(name, scenario_args, options, trace_dir):

@@ -117,6 +117,13 @@ void DeterminismChecker::CheckpointSimState(std::string_view label, bool checkSc
 	g_MovableMan.HashState(movableObjectsHasher);
 	Checkpoint(std::format("{} - MovableObjects", label), movableObjectsHasher.GetHash());
 
+	// For finding which object two platforms' runs differ on: CCCP_DUMP_MOS_AT names a sim update to write every object's state out at, at each checkpoint, next to the trace.
+	if (const char* dumpAt = std::getenv("CCCP_DUMP_MOS_AT"); dumpAt && g_TimerMan.GetSimUpdateCount() == std::atoll(dumpAt)) {
+		std::ofstream dump(s_TraceFilePath + ".mos", std::ios::app);
+		dump << "== " << label << '\n';
+		g_MovableMan.DumpState(dump);
+	}
+
 	// Unique IDs are handed out from a counter that is never reset, and are used as seeds and sort keys, so the count has to match too.
 	Checkpoint(std::format("{} - Unique ID counter", label), MovableObject::GetUniqueIDCounterHash());
 

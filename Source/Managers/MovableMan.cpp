@@ -36,6 +36,9 @@
 #include "tracy/Tracy.hpp"
 
 #include <execution>
+#include <cstring>
+#include <format>
+#include <ostream>
 
 using namespace RTE;
 
@@ -755,6 +758,33 @@ void MovableMan::HashState(StateHasher& hasher) const {
 	for (const std::deque<MovableObject*>* movableObjects: {&m_Items, &m_AddedItems, &m_Particles, &m_AddedParticles}) {
 		for (const MovableObject* movableObject: *movableObjects) {
 			hashMovableObject(movableObject);
+		}
+	}
+}
+
+void MovableMan::DumpState(std::ostream& stream) const {
+	// The exact bits of each float, so a difference in the last place still shows.
+	auto bits = [](float value) {
+		uint32_t result;
+		std::memcpy(&result, &value, sizeof(result));
+		return std::format("{:08x}", result);
+	};
+	auto dumpMovableObject = [&](const MovableObject* movableObject, std::string_view list) {
+		stream << list << ' ' << movableObject->GetUniqueID() << " \"" << movableObject->GetPresetName() << "\" pos " << bits(movableObject->GetPos().m_X) << ' ' << bits(movableObject->GetPos().m_Y)
+		       << " vel " << bits(movableObject->GetVel().m_X) << ' ' << bits(movableObject->GetVel().m_Y) << " rot " << bits(movableObject->GetRotAngle()) << " angvel " << bits(movableObject->GetAngularVel())
+		       << " flip " << movableObject->IsHFlipped();
+	};
+	for (const std::deque<Actor*>* actors: {&m_Actors, &m_AddedActors}) {
+		for (const Actor* actor: *actors) {
+			dumpMovableObject(actor, actors == &m_Actors ? "actor" : "addedactor");
+			stream << " team " << actor->GetTeam() << " status " << static_cast<int>(actor->GetStatus()) << " health " << bits(actor->GetHealth()) << '\n';
+		}
+	}
+	for (const std::deque<MovableObject*>* movableObjects: {&m_Items, &m_AddedItems, &m_Particles, &m_AddedParticles}) {
+		std::string_view list = movableObjects == &m_Items ? "item" : movableObjects == &m_AddedItems ? "addeditem" : movableObjects == &m_Particles ? "particle" : "addedparticle";
+		for (const MovableObject* movableObject: *movableObjects) {
+			dumpMovableObject(movableObject, list);
+			stream << '\n';
 		}
 	}
 }

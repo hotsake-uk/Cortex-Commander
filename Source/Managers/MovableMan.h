@@ -12,6 +12,7 @@
 #include "BS_thread_pool.hpp"
 
 #include <mutex>
+#include <iosfwd>
 #include <shared_mutex>
 #include <map>
 #include <future>
@@ -315,6 +316,10 @@ namespace RTE {
 		/// Adds the state of all the MovableObjects currently held to a hash, for checking whether two runs of the simulation match.
 		/// @param hasher The StateHasher to add the state to.
 		void HashState(StateHasher& hasher) const;
+
+		/// Writes out every MovableObject's checked state as text, one per line, to compare two platforms' runs object by object.
+		/// @param stream The stream to write to.
+		void DumpState(std::ostream& stream) const;
 
 		/// Sorts the MOs waiting to be added by unique ID. Scripts on different Lua states add MOs at the same time in their threaded updates, in whatever order the threads happen to get there,
 		/// and unique IDs say which thread an MO was made on and how many that thread had made before it, so this puts them in the same order every time.
