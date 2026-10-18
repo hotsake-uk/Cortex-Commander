@@ -3,6 +3,7 @@
 // said, so you know to Rally them (the Rally commander power).
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -85,7 +86,7 @@ namespace SandboxDetail {
 			// Over its rank stars (DrawVeterans), pulsing.
 			Vector onScreen = FromCamera(OverHeadPos(actor) - Vector(0.0F, 18.0F));
 			ImVec2 at(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);
-			const float pulse = 0.65F + 0.35F * std::sin(static_cast<float>(ImGui::GetTime()) * 6.0F);
+			const float pulse = 0.65F + 0.35F * DetMath::Sin(static_cast<float>(ImGui::GetTime()) * 6.0F);
 			const int alpha = static_cast<int>(255.0F * pulse);
 			drawList->AddCircleFilled(at, radius, IM_COL32(240, 150, 40, alpha), 16);
 			drawList->AddCircle(at, radius, IM_COL32(40, 20, 0, alpha), 16, 1.0F);

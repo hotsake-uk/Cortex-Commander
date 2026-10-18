@@ -1,4 +1,5 @@
 #include "SLTerrain.h"
+#include "DetMath.h"
 #include "TerrainFrosting.h"
 #include "TerrainDebris.h"
 #include "TerrainObject.h"
@@ -545,7 +546,7 @@ void SLTerrain::UpdateLights() {
 			brightness *= 1.0F - light->m_Flicker * RandomNum(0.0F, 1.0F);
 		}
 		if (light->m_Pulse > 0.0F) {
-			brightness *= 0.5F + 0.5F * std::sin(time * light->m_Pulse * c_TwoPI + light->m_Pos.m_X);
+			brightness *= 0.5F + 0.5F * DetMath::Sin(time * light->m_Pulse * c_TwoPI + light->m_Pos.m_X);
 		}
 		// The player's settings for scenery lamps: brighter or dimmer, further or nearer, and a tint (applied to the displayed color, so it works like a gel over the lamp).
 		const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
@@ -555,7 +556,7 @@ void SLTerrain::UpdateLights() {
 		glm::vec3 color = glm::vec3(light->m_Color.GetR(), light->m_Color.GetG(), light->m_Color.GetB()) * gel;
 		if (light->m_ConeAngle > 0.0F) {
 			float direction = light->m_ConeDirection * c_PI / 180.0F;
-			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness, LightSource::Lamps);
+			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(DetMath::Cos(direction), DetMath::Sin(direction)), light->m_ConeAngle, color, reach, brightness, LightSource::Lamps);
 		} else {
 			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps, light->m_Flicker <= 0.0F && light->m_Pulse <= 0.0F);
 		}

@@ -1,4 +1,5 @@
 #include "TerrainCollapse.h"
+#include "DetMath.h"
 #include "TerrainTrees.h"
 #include "Actor.h"
 #include "Atom.h"
@@ -583,8 +584,8 @@ namespace {
 	}
 
 	glm::vec2 ToWorld(const Body& body, const glm::vec2& offset, const glm::vec2& pos, float angle) {
-		float c = std::cos(angle);
-		float s = std::sin(angle);
+		float c = DetMath::Cos(angle);
+		float s = DetMath::Sin(angle);
 		return pos + glm::vec2(offset.x * c - offset.y * s, offset.x * s + offset.y * c);
 	}
 
@@ -728,8 +729,8 @@ namespace {
 	/// Draws a body into the terrain where it is. Liquid in its way is pushed aside into the rest of that liquid (PlaceDisplaced) rather than lost.
 	void Stamp(SLTerrain* terrain, Body& body) {
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
-		float c = std::cos(body.Angle);
-		float s = std::sin(body.Angle);
+		float c = DetMath::Cos(body.Angle);
+		float s = DetMath::Sin(body.Angle);
 		int reach = static_cast<int>(std::ceil(body.Radius)) + 1;
 		int centerX = static_cast<int>(std::floor(body.Pos.x));
 		int centerY = static_cast<int>(std::floor(body.Pos.y));
@@ -1011,8 +1012,8 @@ namespace {
 	/// long pieces, and Bend (metal) holds together. Leaves and grass go with the style of what carries them. The pieces become bodies of their own, or loose
 	/// particles if they're tiny.
 	void Break(Body& body, const glm::vec2& hitPoint, float violence) {
-		float c = std::cos(body.Angle);
-		float s = std::sin(body.Angle);
+		float c = DetMath::Cos(body.Angle);
+		float s = DetMath::Sin(body.Angle);
 		glm::vec2 offset = hitPoint - body.Pos;
 		glm::vec2 hitLocal(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
 		// Leaves go with the style that carries the most of the piece.
@@ -1032,7 +1033,7 @@ namespace {
 				glm::vec2 from = at - lines[i].Through;
 				float along = from.x * -lines[i].Across.y + from.y * lines[i].Across.x;
 				// A jagged line rather than a ruled one.
-				float distance = glm::dot(from, lines[i].Across) + lines[i].Wobble * std::sin(along * 0.45F + lines[i].Phase) + 0.6F * std::sin(along * 1.7F);
+				float distance = glm::dot(from, lines[i].Across) + lines[i].Wobble * DetMath::Sin(along * 0.45F + lines[i].Phase) + 0.6F * DetMath::Sin(along * 1.7F);
 				side |= (distance > 0.0F ? 1 : 0) << i;
 			}
 			return side;
@@ -1043,7 +1044,7 @@ namespace {
 		for (int i = 0; i < cuts; ++i) {
 			float angle = Random01() * 3.14159F;
 			glm::vec2 through = i == 0 ? glm::mix(hitLocal, body.Center, 0.35F) : body.Center + glm::vec2(Random01() - 0.5F, Random01() - 0.5F) * body.Radius * 0.8F;
-			cracks.push_back({through, glm::vec2(std::cos(angle), std::sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
+			cracks.push_back({through, glm::vec2(DetMath::Cos(angle), DetMath::Sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
 		}
 		// Splinter: across its long axis (the grain), through the middle nudged toward the hit; a second snap only for a huge hit.
 		std::vector<Cut> snaps;
@@ -1062,15 +1063,15 @@ namespace {
 					}
 				}
 			}
-			float grain = 0.5F * static_cast<float>(std::atan2(2.0 * xy, xx - yy));
-			glm::vec2 along(std::cos(grain), std::sin(grain));
+			float grain = 0.5F * static_cast<float>(DetMath::Atan2(2.0 * xy, xx - yy));
+			glm::vec2 along(DetMath::Cos(grain), DetMath::Sin(grain));
 			float hitAlong = glm::dot(hitLocal - body.Center, along);
 			int count = violence > 2.5F ? 2 : 1;
 			for (int i = 0; i < count; ++i) {
 				float at = i == 0 ? hitAlong * 0.35F : -hitAlong * 0.5F + (Random01() - 0.5F) * body.Radius * 0.4F;
 				// The cut runs across the grain, a little askew, with a ragged, splintery edge.
 				float skew = (Random01() - 0.5F) * 0.5F;
-				glm::vec2 across(std::cos(grain + skew), std::sin(grain + skew));
+				glm::vec2 across(DetMath::Cos(grain + skew), DetMath::Sin(grain + skew));
 				snaps.push_back({body.Center + along * at, across, 1.5F + Random01() * 1.5F, Random01() * 6.28F});
 			}
 		}
@@ -1088,7 +1089,7 @@ namespace {
 					continue;
 				}
 				seed = candidate;
-				if (Random01() < std::exp(-glm::length(candidate - hitLocal) / std::max(body.Radius * 0.5F, 1.0F))) {
+				if (Random01() < DetMath::Exp(-glm::length(candidate - hitLocal) / std::max(body.Radius * 0.5F, 1.0F))) {
 					break;
 				}
 			}
@@ -1120,7 +1121,7 @@ namespace {
 						float best = 1.0e9F;
 						for (size_t i = 0; i < seeds.size(); ++i) {
 							// Jittered, so the shards have jagged edges.
-							float distance = glm::length(at - seeds[i]) + 1.5F * std::sin(at.x * 0.9F + seedPhase[i]) + 1.2F * std::sin(at.y * 1.3F - seedPhase[i]);
+							float distance = glm::length(at - seeds[i]) + 1.5F * DetMath::Sin(at.x * 0.9F + seedPhase[i]) + 1.2F * DetMath::Sin(at.y * 1.3F - seedPhase[i]);
 							if (distance < best) {
 								best = distance;
 								nearest = i;
@@ -1383,8 +1384,8 @@ namespace {
 
 	/// Turns a point in the scene into a body's own bitmap.
 	glm::vec2 ToLocal(const Body& body, const glm::vec2& point) {
-		float c = std::cos(body.Angle);
-		float s = std::sin(body.Angle);
+		float c = DetMath::Cos(body.Angle);
+		float s = DetMath::Sin(body.Angle);
 		glm::vec2 offset = point - body.Pos;
 		return glm::vec2(offset.x * c + offset.y * s + body.Center.x, -offset.x * s + offset.y * c + body.Center.y);
 	}
@@ -1409,8 +1410,8 @@ namespace {
 				}
 			}
 		}
-		float grain = 0.5F * static_cast<float>(std::atan2(2.0 * xy, xx - yy));
-		glm::vec2 along(std::cos(grain), std::sin(grain));
+		float grain = 0.5F * static_cast<float>(DetMath::Atan2(2.0 * xy, xx - yy));
+		glm::vec2 along(DetMath::Cos(grain), DetMath::Sin(grain));
 		glm::vec2 across(-along.y, along.x);
 		double count = static_cast<double>(std::max(body.PixelCount, 1));
 		float varAlong = static_cast<float>((xx * along.x * along.x + 2.0 * xy * along.x * along.y + yy * along.y * along.y) / count);
@@ -1433,8 +1434,8 @@ namespace {
 		glm::vec2 crease = body.Center + along * (hitAlong * 0.3F);
 		glm::vec2 far = hitAlong >= 0.0F ? -along : along;
 		// Turned the way the piece was moving, as the end that hit stops and the rest carries on.
-		float c = std::cos(body.Angle);
-		float s = std::sin(body.Angle);
+		float c = DetMath::Cos(body.Angle);
+		float s = DetMath::Sin(body.Angle);
 		glm::vec2 velLocal(body.Vel.x * c + body.Vel.y * s, -body.Vel.x * s + body.Vel.y * c);
 		glm::vec2 arm = far * (length * 0.5F);
 		if (glm::dot(glm::vec2(-arm.y, arm.x), velLocal) < 0.0F) {
@@ -1457,8 +1458,8 @@ namespace {
 		glm::vec2 shift(0.0F);
 		const BITMAP* materialBitmap = g_SceneMan.GetScene()->GetTerrain()->GetMaterialBitmap();
 		auto tryFold = [&](float fold) {
-			float ca = std::cos(fold);
-			float sa = std::sin(fold);
+			float ca = DetMath::Cos(fold);
+			float sa = DetMath::Sin(fold);
 			// The new bitmap's bounds: the near part where it was, the far part turned.
 			float minX = 0.0F;
 			float minY = 0.0F;
@@ -3188,8 +3189,8 @@ namespace {
 			for (int x = 0; x < body.W; ++x) {
 				float dx = static_cast<float>(x - radius);
 				float dy = static_cast<float>(y - radius);
-				float angle = std::atan2(dy, dx);
-				float edge = static_cast<float>(radius) * (0.78F + 0.12F * std::sin(angle * 3.0F + phase[0]) + 0.07F * std::sin(angle * 5.0F + phase[1]) + 0.03F * std::sin(angle * 9.0F + phase[2]));
+				float angle = DetMath::Atan2(dy, dx);
+				float edge = static_cast<float>(radius) * (0.78F + 0.12F * DetMath::Sin(angle * 3.0F + phase[0]) + 0.07F * DetMath::Sin(angle * 5.0F + phase[1]) + 0.03F * DetMath::Sin(angle * 9.0F + phase[2]));
 				int wx = request.X - radius + x;
 				int wy = request.Y - radius + y;
 				if (dx * dx + dy * dy > edge * edge || !WrapInWorld(wx, wy) || materialBitmap->line[wy][wx] != g_MaterialAir) {
@@ -3243,7 +3244,7 @@ namespace {
 		// How things are round it first, so the check afterwards lets fall only what taking the box cuts loose.
 		int middleX = left + boxWidth / 2;
 		WrapInWorld(middleX, top);
-		int reach = std::min(static_cast<int>(std::hypot(static_cast<float>(boxWidth), static_cast<float>(boxHeight)) * 0.5F) + 40, 600);
+		int reach = std::min(static_cast<int>(DetMath::Hypot(static_cast<float>(boxWidth), static_cast<float>(boxHeight)) * 0.5F) + 40, 600);
 		Check after{middleX, top + boxHeight / 2, reach, 0, LookBefore(terrain, {middleX, top + boxHeight / 2, reach, now, nullptr}), request.Drop};
 
 		// Which chunk each pixel of the box falls in (-1 for no ground): one for a small box, else the nearest of a jittered grid of points.
@@ -3978,8 +3979,8 @@ bool TerrainCollapse::FindPiece(int x, int y, const Vector& at, long& id, Vector
 				body.Id = s_NextPieceId++;
 			}
 			Vector offset = g_SceneMan.ShortestDistance(Vector(body.Pos.x, body.Pos.y), at, g_SceneMan.SceneWrapsX());
-			float c = std::cos(body.Angle);
-			float s = std::sin(body.Angle);
+			float c = DetMath::Cos(body.Angle);
+			float s = DetMath::Sin(body.Angle);
 			id = body.Id;
 			local = Vector(offset.m_X * c + offset.m_Y * s, -offset.m_X * s + offset.m_Y * c);
 			return true;

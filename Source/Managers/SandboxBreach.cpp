@@ -3,6 +3,7 @@
 // their way to the point if there's none in sight. (Ctrl+X, or the order ring's More... page.)
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -233,7 +234,7 @@ namespace SandboxDetail {
 			drawList->AddCircle(at, 7.0F, faded, 0, 2.0F);
 			for (int i = 0; i < 4; ++i) {
 				const float angle = 0.785F + 1.5708F * static_cast<float>(i);
-				drawList->AddLine(ImVec2(at.x + std::cos(angle) * 8.0F, at.y + std::sin(angle) * 8.0F), ImVec2(at.x + std::cos(angle) * 13.0F, at.y + std::sin(angle) * 13.0F), faded, 2.0F);
+				drawList->AddLine(ImVec2(at.x + DetMath::Cos(angle) * 8.0F, at.y + DetMath::Sin(angle) * 8.0F), ImVec2(at.x + DetMath::Cos(angle) * 13.0F, at.y + DetMath::Sin(angle) * 13.0F), faded, 2.0F);
 			}
 			// The diggers' lines to it, while they're still on the way.
 			int diggers = 0;

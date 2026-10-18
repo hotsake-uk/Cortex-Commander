@@ -1,4 +1,5 @@
 #include "ACrab.h"
+#include "DetMath.h"
 #include "ADoor.h"
 #include "MovableMan.h"
 #include "SmokeGrid.h"
@@ -1507,7 +1508,7 @@ void ACrab::Update() {
 	float rot = m_Rotation.GetRadAngle();
 	// Crawling on a surface (CR-10): turned to it, its back to the open air, the way out from the surface its up. No falling over.
 	if (m_Clinging && m_Status == STABLE) {
-		float target = std::atan2(-m_ClingNormal.m_X, -m_ClingNormal.m_Y);
+		float target = DetMath::Atan2(-m_ClingNormal.m_X, -m_ClingNormal.m_Y);
 		float diff = target - rot;
 		while (diff > c_PI) {
 			diff -= c_TwoPI;
@@ -1882,7 +1883,7 @@ void ACrab::UpdateCrawl() {
 	constexpr int c_Rays = 16;
 	for (int i = 0; i < c_Rays; ++i) {
 		const float angle = c_TwoPI * static_cast<float>(i) / static_cast<float>(c_Rays);
-		const Vector dir(std::cos(angle), std::sin(angle));
+		const Vector dir(DetMath::Cos(angle), DetMath::Sin(angle));
 		if (leaveFloor && dir.m_Y > 0.5F) {
 			continue;
 		}
@@ -1982,7 +1983,7 @@ void ACrab::PlaceCrawlingFeet() {
 		// Out from the body along the surface, by the hip's side, and on with the stride: alternate legs a half step apart.
 		const float side = g_SceneMan.ShortestDistance(m_Pos, hip).Dot(along) >= 0.0F ? 1.0F : -1.0F;
 		const float phase = m_CrawlStride + (index % 2 == 0 ? 0.0F : 0.5F);
-		const float step = m_MovementState == WALK ? std::sin(phase * c_TwoPI) * 0.35F : 0.0F;
+		const float step = m_MovementState == WALK ? DetMath::Sin(phase * c_TwoPI) * 0.35F : 0.0F;
 		Vector reach = (-m_ClingNormal + along * (side * 0.7F + step)).GetNormalized() * (length * 1.1F);
 		Vector hit;
 		Vector foot = g_SceneMan.CastStrengthRay(hip, reach, 5.0F, hit, 1) ? hit : hip + reach;
@@ -2502,7 +2503,7 @@ void ACrab::UpdateFlight() {
 			wanted.m_Y *= 0.7F;
 		}
 		m_FlapPhase += deltaTime * (2.5F + intent.GetMagnitude() * 1.5F);
-		wanted.m_Y += std::sin(m_FlapPhase * c_TwoPI) * 0.8F;
+		wanted.m_Y += DetMath::Sin(m_FlapPhase * c_TwoPI) * 0.8F;
 		response = 3.0F;
 	} else {
 		m_FlapPhase += deltaTime * 0.5F;

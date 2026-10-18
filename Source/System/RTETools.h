@@ -3,6 +3,7 @@
 // Header file for global utility methods.
 
 #include "RTEError.h"
+#include "DetMath.h"
 #include "Constants.h"
 
 #include <random>
@@ -404,7 +405,7 @@ namespace RTE {
 	/// @param deltaTime Amount of time of decay to simulate.
 	/// @returns The decayed value.
 	inline float ExpDecay(float current, float target, float decay, float deltaTime) {
-		return target + (current - target) * std::exp(-decay * deltaTime);
+		return target + (current - target) * DetMath::Exp(-decay * deltaTime);
 	}
 		
 #pragma endregion

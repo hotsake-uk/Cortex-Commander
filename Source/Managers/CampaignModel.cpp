@@ -1,6 +1,7 @@
 // Campaign mode's model: making the galaxy, and the rules of a turn. See CampaignModel.h.
 
 #include "CampaignModel.h"
+#include "DetMath.h"
 
 #include "PresetMan.h"
 #include "DataModule.h"
@@ -131,7 +132,7 @@ namespace RTE::CampaignModel {
 			std::vector<StarSystem>& systems = campaign.Systems;
 			const int count = static_cast<int>(systems.size());
 			std::vector<std::pair<int, int>> lanes;
-			auto distance = [&](int a, int b) { return std::hypot(systems[a].X - systems[b].X, systems[a].Y - systems[b].Y); };
+			auto distance = [&](int a, int b) { return DetMath::Hypot(systems[a].X - systems[b].X, systems[a].Y - systems[b].Y); };
 			auto crossesAny = [&](int a, int b) {
 				for (const auto& [c, d]: lanes) {
 					if (c == a || c == b || d == a || d == b) {
@@ -203,7 +204,7 @@ namespace RTE::CampaignModel {
 				for (int attempt = 0; attempt < 60; ++attempt) {
 					point.X = dice.Range(0.12F, 0.88F);
 					point.Y = dice.Range(0.18F, 0.82F);
-					bool clear = std::all_of(planet.Points.begin(), planet.Points.end(), [&](const Point& other) { return std::hypot(other.X - point.X, other.Y - point.Y) > 0.26F; });
+					bool clear = std::all_of(planet.Points.begin(), planet.Points.end(), [&](const Point& other) { return DetMath::Hypot(other.X - point.X, other.Y - point.Y) > 0.26F; });
 					if (clear) {
 						break;
 					}
@@ -222,7 +223,7 @@ namespace RTE::CampaignModel {
 				for (int a = 0; a < count; ++a) {
 					for (int b = 0; b < count; ++b) {
 						if (joined[a] && !joined[b]) {
-							const float d = std::hypot(planet.Points[a].X - planet.Points[b].X, planet.Points[a].Y - planet.Points[b].Y);
+							const float d = DetMath::Hypot(planet.Points[a].X - planet.Points[b].X, planet.Points[a].Y - planet.Points[b].Y);
 							if (d < best) {
 								best = d;
 								bestA = a;
@@ -636,7 +637,7 @@ namespace RTE::CampaignModel {
 				const float rolledDefence = defence * (0.85F + 0.3F * Roll(campaign));
 				outcome.AttackerWon = rolledAttack > rolledDefence;
 				const float ratio = std::clamp(outcome.AttackerWon ? rolledDefence / std::max(rolledAttack, 0.01F) : rolledAttack / std::max(rolledDefence, 0.01F), 0.0F, 1.0F);
-				const float winnerLoss = 0.08F + 0.45F * std::pow(ratio, 1.5F);
+				const float winnerLoss = 0.08F + 0.45F * DetMath::Pow(ratio, 1.5F);
 				const float loserLoss = 0.5F + 0.35F * (1.0F - ratio);
 				if (outcome.AttackerWon) {
 					outcome.AttackerLost = TakeCasualties(campaign, attackers, winnerLoss);
@@ -852,7 +853,7 @@ namespace RTE::CampaignModel {
 			const float rolledDefence = defence * (0.85F + 0.3F * Roll(campaign));
 			outcome.AttackerWon = rolledAttack > rolledDefence;
 			const float ratio = std::clamp(outcome.AttackerWon ? rolledDefence / std::max(rolledAttack, 0.01F) : rolledAttack / std::max(rolledDefence, 0.01F), 0.0F, 1.0F);
-			const float winnerDamage = 0.1F + 0.35F * std::pow(ratio, 1.5F);
+			const float winnerDamage = 0.1F + 0.35F * DetMath::Pow(ratio, 1.5F);
 			const float loserDamage = 0.45F + 0.4F * (1.0F - ratio);
 			const std::vector<long> attackers = {attackerID};
 			std::vector<long> defenderIDs;
@@ -1575,10 +1576,10 @@ namespace RTE::CampaignModel {
 			const float angle = dice.Range(0.0F, 2.0F * c_Pi);
 			const float radius = std::sqrt(dice.Unit()) * 0.46F;
 			StarSystem system;
-			system.X = 0.5F + std::cos(angle) * radius;
-			system.Y = 0.5F + std::sin(angle) * radius * 0.82F;
+			system.X = 0.5F + DetMath::Cos(angle) * radius;
+			system.Y = 0.5F + DetMath::Sin(angle) * radius * 0.82F;
 			const float minimum = tries < 15000 ? spacing : spacing * 0.6F;
-			if (std::any_of(campaign.Systems.begin(), campaign.Systems.end(), [&](const StarSystem& other) { return std::hypot(other.X - system.X, other.Y - system.Y) < minimum; })) {
+			if (std::any_of(campaign.Systems.begin(), campaign.Systems.end(), [&](const StarSystem& other) { return DetMath::Hypot(other.X - system.X, other.Y - system.Y) < minimum; })) {
 				continue;
 			}
 			system.Name = MakeName(dice, 2, 3);

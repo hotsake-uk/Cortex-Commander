@@ -58,6 +58,22 @@ IRTDEF(IRTSIZE)
 };
 
 /* C call info for CALL* instructions. */
+/* Cortex Command: compiled traces call the engine's deterministic maths functions instead of the C library's (see lj_detmath.h). */
+#include "lj_detmath.h"
+#define sin rte_detmath_sin
+#define cos rte_detmath_cos
+#define tan rte_detmath_tan
+#define asin rte_detmath_asin
+#define acos rte_detmath_acos
+#define atan rte_detmath_atan
+#define atan2 rte_detmath_atan2
+#define sinh rte_detmath_sinh
+#define cosh rte_detmath_cosh
+#define tanh rte_detmath_tanh
+#define exp rte_detmath_exp
+#define log rte_detmath_log
+#define log10 rte_detmath_log10
+#define pow rte_detmath_pow
 LJ_DATADEF const CCallInfo lj_ir_callinfo[] = {
 #define IRCALLCI(cond, name, nargs, kind, type, flags) \
   { (ASMFunction)IRCALLCOND_##cond(name), \
@@ -66,6 +82,20 @@ IRCALLDEF(IRCALLCI)
 #undef IRCALLCI
   { NULL, 0 }
 };
+#undef sin
+#undef cos
+#undef tan
+#undef asin
+#undef acos
+#undef atan
+#undef atan2
+#undef sinh
+#undef cosh
+#undef tanh
+#undef exp
+#undef log
+#undef log10
+#undef pow
 
 /* -- IR emitter ---------------------------------------------------------- */
 

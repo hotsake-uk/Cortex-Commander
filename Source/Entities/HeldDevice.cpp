@@ -1,4 +1,5 @@
 #include "HeldDevice.h"
+#include "DetMath.h"
 
 #include "CameraMan.h"
 #include "MovableMan.h"
@@ -589,7 +590,7 @@ Vector HeldDevice::GetStanceOffset() const {
 		return m_CastStanceOffset.GetXFlipped(m_HFlipped);
 	}
 	if (m_SharpAim > 0) {
-		float rotAngleScalar = std::abs(std::sin(GetRootParent()->GetRotAngle()));
+		float rotAngleScalar = std::abs(DetMath::Sin(GetRootParent()->GetRotAngle()));
 		// Deviate the vertical axis towards regular StanceOffset based on the user's rotation so that sharp aiming doesn't look awkward when prone
 		return Vector(m_SharpStanceOffset.GetX(), m_SharpStanceOffset.GetY() * (1.0F - rotAngleScalar) + m_StanceOffset.GetY() * rotAngleScalar).GetXFlipped(m_HFlipped);
 	} else
@@ -1065,7 +1066,7 @@ void HeldDevice::PostUpdate() {
 
 	if (m_BladeEnergy) {
 		// Flickers a little, like it's alive.
-		float flicker = 0.93F + 0.07F * std::sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.037F + static_cast<float>(m_UniqueID));
+		float flicker = 0.93F + 0.07F * DetMath::Sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.037F + static_cast<float>(m_UniqueID));
 		glm::vec3 color(m_BladeColor.GetR(), m_BladeColor.GetG(), m_BladeColor.GetB());
 		float brightness = m_BladeBrightness * flicker * (0.4F + 0.6F * m_BladeExtension);
 		if (m_BladeHiltGap > 0.0F) {
@@ -1711,7 +1712,7 @@ void HeldDevice::UpdateThrown() {
 				break;
 			}
 			// Quivers as it goes in.
-			float quiver = elapsed < 500.0F ? 0.07F * std::sin(elapsed * 0.075F) * std::exp(-elapsed / 140.0F) : 0.0F;
+			float quiver = elapsed < 500.0F ? 0.07F * DetMath::Sin(elapsed * 0.075F) * DetMath::Exp(-elapsed / 140.0F) : 0.0F;
 			SetPos(m_StuckAnchor);
 			SetRotAngle(m_StuckAngle + quiver);
 			m_Vel.Reset();

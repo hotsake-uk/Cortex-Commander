@@ -1,4 +1,5 @@
 #include "SoftBodySim.h"
+#include "DetMath.h"
 #include "Actor.h"
 #include "AirPressure.h"
 #include "Atom.h"
@@ -241,8 +242,8 @@ namespace {
 			float radius = std::sqrt(std::abs(area) / glm::pi<float>());
 			for (size_t i = 0; i < count; ++i) {
 				glm::vec2 way = blob.Points[i].Pos - middle;
-				float angle = glm::length(way) > 1e-4F ? std::atan2(way.y, way.x) : static_cast<float>(i) * glm::two_pi<float>() / static_cast<float>(count);
-				blob.Shape[i] = glm::vec2(std::cos(angle), std::sin(angle)) * radius;
+				float angle = glm::length(way) > 1e-4F ? DetMath::Atan2(way.y, way.x) : static_cast<float>(i) * glm::two_pi<float>() / static_cast<float>(count);
+				blob.Shape[i] = glm::vec2(DetMath::Cos(angle), DetMath::Sin(angle)) * radius;
 			}
 		} else {
 			for (size_t i = 0; i < count; ++i) {
@@ -281,7 +282,7 @@ namespace {
 		for (int i = 0; i < count; ++i) {
 			float angle = static_cast<float>(i) * glm::two_pi<float>() / static_cast<float>(count);
 			Point point;
-			point.Pos = center + glm::vec2(std::cos(angle), std::sin(angle)) * radius;
+			point.Pos = center + glm::vec2(DetMath::Cos(angle), DetMath::Sin(angle)) * radius;
 			// Put down against the ground: drawn in from it towards its middle, so it doesn't start in it.
 			for (int step = 0; step < static_cast<int>(radius) && Solid(point.Pos); ++step) {
 				point.Pos += (center - point.Pos) / std::max(glm::length(center - point.Pos), 1.0F);
@@ -354,7 +355,7 @@ namespace {
 			}
 			float angle = Random01() * glm::two_pi<float>();
 			float speed = 0.5F + 2.5F * Random01();
-			glm::vec2 throwVelocity = velocity + glm::vec2(std::cos(angle), std::sin(angle) - 0.6F) * speed;
+			glm::vec2 throwVelocity = velocity + glm::vec2(DetMath::Cos(angle), DetMath::Sin(angle) - 0.6F) * speed;
 			Color color;
 			color.SetRGBWithIndex(s_Shades[blob.Type][Random01() < 0.7F ? 1 : 2]);
 			// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
@@ -779,8 +780,8 @@ namespace {
 			yy += off.y * off.y;
 			pixels.push_back(pixel);
 		}
-		float angle = 0.5F * std::atan2(2.0F * xy, xx - yy);
-		glm::vec2 way(std::cos(angle), std::sin(angle));
+		float angle = 0.5F * DetMath::Atan2(2.0F * xy, xx - yy);
+		glm::vec2 way(DetMath::Cos(angle), DetMath::Sin(angle));
 		float lowHit = 1e9F;
 		float highHit = -1e9F;
 		for (const glm::vec2& pixel: pixels) {
@@ -865,9 +866,9 @@ namespace {
 			dot += glm::dot(blob.Shape[i], now);
 			cross += Cross(blob.Shape[i], now);
 		}
-		float angle = std::atan2(cross, dot);
-		float c = std::cos(angle);
-		float s = std::sin(angle);
+		float angle = DetMath::Atan2(cross, dot);
+		float c = DetMath::Cos(angle);
+		float s = DetMath::Sin(angle);
 		float scale = std::abs(blob.ShapeArea) > 1e-3F ? std::sqrt(std::abs(blob.RestArea) / std::abs(blob.ShapeArea)) : 1.0F;
 		targets.resize(count);
 		for (size_t i = 0; i < count; ++i) {

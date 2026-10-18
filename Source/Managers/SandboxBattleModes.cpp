@@ -3,6 +3,7 @@
 // Director as it buys and sends units (SandboxBattle.cpp). Capture the flag, king of the hill, assault, last team standing and VIP hunt.
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 #include "ACShip.h"
 
 #include <deque>
@@ -367,7 +368,7 @@ namespace SandboxDetail {
 		}
 
 		/// A pulse from 0 to 1 and back, a few times a second, for what is to catch the eye.
-		float Pulse(float speed = 5.0F) { return 0.5F + 0.5F * std::sin(static_cast<float>(ImGui::GetTime()) * speed); }
+		float Pulse(float speed = 5.0F) { return 0.5F + 0.5F * DetMath::Sin(static_cast<float>(ImGui::GetTime()) * speed); }
 
 		// ---- Where new units appear ----
 
@@ -3515,7 +3516,7 @@ namespace SandboxDetail {
 			std::vector<Vector> zone;
 			for (int i = 0; i <= c_Corners; ++i) {
 				const float turn = static_cast<float>(i) / static_cast<float>(c_Corners) * 6.2831853F;
-				zone.push_back(middle + Vector(std::cos(turn), std::sin(turn)) * outer);
+				zone.push_back(middle + Vector(DetMath::Cos(turn), DetMath::Sin(turn)) * outer);
 				if (band == 0 && i == c_Corners - 1) {
 					break;
 				}
@@ -3523,7 +3524,7 @@ namespace SandboxDetail {
 			if (band > 0) {
 				for (int i = c_Corners; i >= 0; --i) {
 					const float turn = static_cast<float>(i) / static_cast<float>(c_Corners) * 6.2831853F;
-					zone.push_back(middle + Vector(std::cos(turn), std::sin(turn)) * inner);
+					zone.push_back(middle + Vector(DetMath::Cos(turn), DetMath::Sin(turn)) * inner);
 				}
 			}
 			return zone;
@@ -5753,7 +5754,7 @@ namespace SandboxDetail {
 		std::vector<Vector> spots{at};
 		for (int step = 0; step < 16 && radius > 0.0F; ++step) {
 			const float angle = static_cast<float>(step) * c_TwoPI / 16.0F;
-			Vector edge = at + Vector(std::cos(angle) * radius, std::sin(angle) * radius);
+			Vector edge = at + Vector(DetMath::Cos(angle) * radius, DetMath::Sin(angle) * radius);
 			g_SceneMan.WrapPosition(edge);
 			spots.push_back(edge);
 		}

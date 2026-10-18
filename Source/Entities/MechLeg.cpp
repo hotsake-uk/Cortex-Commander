@@ -1,4 +1,5 @@
 #include "MechLeg.h"
+#include "DetMath.h"
 #include "PresetMan.h"
 #include "SceneMan.h"
 
@@ -164,7 +165,7 @@ void MechLeg::SolveBones() {
 
 	// The angle at the hip between the line to the ankle and the thigh (the law of cosines), the knee bent to the front.
 	float cosHip = std::clamp((thigh * thigh + reach * reach - shin * shin) / (2.0F * thigh * reach), -1.0F, 1.0F);
-	float hipAngle = std::acos(cosHip);
+	float hipAngle = DetMath::Acos(cosHip);
 	Vector kneeA = direction.GetRadRotatedCopy(hipAngle) * thigh;
 	Vector kneeB = direction.GetRadRotatedCopy(-hipAngle) * thigh;
 	Vector knee = kneeA.m_X * flip >= kneeB.m_X * flip ? kneeA : kneeB;

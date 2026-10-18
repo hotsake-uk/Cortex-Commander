@@ -1,4 +1,5 @@
 #include "AirPressure.h"
+#include "DetMath.h"
 #include "DeterminismChecker.h"
 #include "ADoor.h"
 #include "Actor.h"
@@ -329,7 +330,7 @@ void AirPressure::BlowSmoke(long long update) {
 		}
 		const Vector& position = particle->GetPos();
 		bool sheltered = IsSheltered(position, wind);
-		float swirl = std::sin(position.m_X * 0.03F + position.m_Y * 0.05F + time);
+		float swirl = DetMath::Sin(position.m_X * 0.03F + position.m_Y * 0.05F + time);
 		Vector velocity = particle->GetVel();
 		if (sheltered) {
 			// Behind a wall or a ridge: the air turns over, back against the wind and up and down.
@@ -557,7 +558,7 @@ void AirPressure::Update() {
 		int originY = cell / s_GridWidth;
 		int reach = static_cast<int>(gust.Length) / c_Cell + 1;
 		float strength = gust.Strength * GetOverall();
-		float cosSpread = std::cos(gust.Spread);
+		float cosSpread = DetMath::Cos(gust.Spread);
 		for (int dy = -reach; dy <= reach; ++dy) {
 			for (int dx = -reach; dx <= reach; ++dx) {
 				int x = originX + dx;

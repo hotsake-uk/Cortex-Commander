@@ -31,6 +31,7 @@ sources += files(
 'Timer.cpp',
 'RTEError.cpp',
 'Matrix.cpp',
+'DetMath.cpp',
 'Serializable.cpp',
 'PieQuadrant.cpp',
 'SpatialPartitionGrid.cpp',

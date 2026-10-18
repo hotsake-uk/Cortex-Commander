@@ -697,7 +697,8 @@
 #endif
 
 /* Various workarounds for embedded operating systems or weak C runtimes. */
-#if defined(__ANDROID__) || defined(__symbian__) || LJ_TARGET_XBOX360 || LJ_TARGET_WINDOWS
+/* Cortex Command: not for Windows, as log2 is the engine's own everywhere (see lj_detmath.h), and math.log with a base has to work it out the same way on every platform. */
+#if defined(__ANDROID__) || defined(__symbian__) || LJ_TARGET_XBOX360
 #define LUAJIT_NO_LOG2
 #endif
 #if LJ_TARGET_CONSOLE || (LJ_TARGET_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_8_0)

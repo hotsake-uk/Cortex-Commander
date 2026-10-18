@@ -4,6 +4,7 @@
 // a stutter of the jet or a turn in the air. Flights are flown by AHuman::PilotFlight. The script keeps its hook: it calls this each
 // tick from a coroutine of its own (SharedBehaviors.GoToRoute), and a mod that replaces that keeps working.
 #include "SoundContainer.h"
+#include "DetMath.h"
 #include "AHuman.h"
 #include "ActorWater.h"
 #include "ADoor.h"
@@ -980,7 +981,7 @@ void AHuman::UpdateLadder() {
 	ladder.climbed += std::abs(dy);
 
 	// Across: eased to the ladder's line, with a little sway towards the wall and back on each pull (over two rungs' climb).
-	float sway = ladder.wallSide != 0 ? 1.2F * std::sin(ladder.climbed * (c_PI / 16.0F)) : 0.0F;
+	float sway = ladder.wallSide != 0 ? 1.2F * DetMath::Sin(ladder.climbed * (c_PI / 16.0F)) : 0.0F;
 	float targetX = ladder.bodyX - static_cast<float>(ladder.wallSide) * std::abs(sway) * 0.5F;
 	float gap = Towards(ladder.pos, Vector(targetX, ladder.pos.m_Y)).m_X;
 	ladder.pos.m_X += gap * std::min(1.0F, dt * 10.0F);
@@ -1392,7 +1393,7 @@ void AHuman::UpdateRopeHoldLimbs() {
 		const float phase = hold.kickPhase + (i == 0 ? 0.0F : c_PI);
 		const Vector down = RotateOffset(Vector(0.0F, 1.0F));
 		const Vector across(-down.m_Y, down.m_X);
-		Vector kickAccel = across * (std::sin(phase) * 900.0F * kick) + down * (std::cos(phase * 2.0F) * 350.0F * kick);
+		Vector kickAccel = across * (DetMath::Sin(phase) * 900.0F * kick) + down * (DetMath::Cos(phase * 2.0F) * 350.0F * kick);
 		Vector accel = gravity - bodyAccel + kickAccel - vel * 4.0F;
 		vel += accel * dt;
 		Vector next = rel + vel * dt;
@@ -1420,7 +1421,7 @@ void AHuman::UpdateRopeHoldLimbs() {
 	}
 	hold.feetSet = true;
 	// The kicks rock the body a little on its hands.
-	m_AngularVel += std::sin(hold.kickPhase) * kick * 0.6F * dt;
+	m_AngularVel += DetMath::Sin(hold.kickPhase) * kick * 0.6F * dt;
 }
 
 // A door of ours, or no one's, whose moving part lies near the line from us to a point, within reach bodies (a body and a half by default).
@@ -1833,7 +1834,7 @@ void AHuman::PushFree(float direction) {
 	const float reach = std::max(6.0F, h * 0.4F);
 	for (int k = 0; k < 8; ++k) {
 		const float angle = static_cast<float>(k) * c_QuarterPI;
-		const Vector out(std::cos(angle), std::sin(angle));
+		const Vector out(DetMath::Cos(angle), DetMath::Sin(angle));
 		if (Solid(m_Pos.m_X + out.m_X * reach, m_Pos.m_Y + out.m_Y * reach, PassesRungs())) {
 			away -= out;
 		}
@@ -2797,7 +2798,7 @@ void AHuman::Unpin() {
 			for (int step = 0; step < 16 && !placed; ++step) {
 				// (Up and to the sides before down: the ways out of a wedge are rarely through the floor.)
 				float angle = c_HalfPI + static_cast<float>((step + 1) / 2) * (c_PI / 8.0F) * (step % 2 == 0 ? 1.0F : -1.0F);
-				Vector shift(std::cos(angle) * distance, -std::sin(angle) * distance);
+				Vector shift(DetMath::Cos(angle) * distance, -DetMath::Sin(angle) * distance);
 				if (BodyFitsShifted(shift, m_pHead)) {
 					m_Pos += shift;
 					g_SceneMan.WrapPosition(m_Pos);
@@ -4309,7 +4310,7 @@ int AHuman::MoveAlongRoute() {
 					mover.digSweepUp = !mover.digSweepUp;
 				}
 				// (The aim is relative to the facing: up positive, the way's angle off level.)
-				float angle = std::atan2(-way.m_Y, std::abs(way.m_X));
+				float angle = DetMath::Atan2(-way.m_Y, std::abs(way.m_X));
 				SetAimAngle(std::clamp(angle + mover.digSweep, -GetAimRange(), GetAimRange()));
 				ctrl.SetState(WEAPON_FIRE, true);
 				// On into the cut once its first part is clear at the chest.

@@ -1,4 +1,5 @@
 #include "GameActivity.h"
+#include "DetMath.h"
 #include "ModStudioPreview.h"
 
 #include "CameraMan.h"
@@ -2391,7 +2392,7 @@ void GameActivity::DrawGUI(BITMAP* pTargetBitmap, const Vector& targetPos, int w
 			float radsperdot = 2 * 3.14159265359 / dots;
 
 			for (int i = 0; i < dots; i++) {
-				Vector dotPos = Vector(actorPos.m_X + sin(i * radsperdot) * radius, actorPos.m_Y + cos(i * radsperdot) * radius);
+				Vector dotPos = Vector(actorPos.m_X + DetMath::Sin(i * radsperdot) * radius, actorPos.m_Y + DetMath::Cos(i * radsperdot) * radius);
 				Vector dotDrawPos = dotPos - targetPos;
 
 				if (!targetPos.IsZero()) {

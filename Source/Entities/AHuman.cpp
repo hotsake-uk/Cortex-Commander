@@ -1,4 +1,5 @@
 #include "AHuman.h"
+#include "DetMath.h"
 #include "MagicEffects.h"
 #include "TerrainCollapse.h"
 #include "ConsoleMan.h"
@@ -3122,7 +3123,7 @@ void AHuman::PreControllerUpdate() {
 			float revertScalar = std::min(static_cast<float>(m_SharpAimRevertTimer.GetElapsedSimTimeMS()) / static_cast<float>(m_SharpAimDelay), 1.0F);
 			aimScalar = (aimScalar > revertScalar) ? aimScalar : 1.0F - revertScalar;
 
-			affectingBodyAngle *= std::abs(std::sin(rot)) * rot * (1.0F - aimScalar);
+			affectingBodyAngle *= std::abs(DetMath::Sin(rot)) * rot * (1.0F - aimScalar);
 		}
 		m_pFGArm->SetRotAngle(affectingBodyAngle + adjustedAimAngle);
 
@@ -3150,7 +3151,7 @@ void AHuman::PreControllerUpdate() {
 	// BG Arm rotating, climbing, throw animations, supporting fg weapon
 	if (m_pBGArm) {
 		float affectingBodyAngle = m_Status < INACTIVE ? m_BGArmFlailScalar : 1.0F;
-		m_pBGArm->SetRotAngle(std::abs(std::sin(rot)) * rot * affectingBodyAngle + adjustedAimAngle);
+		m_pBGArm->SetRotAngle(std::abs(DetMath::Sin(rot)) * rot * affectingBodyAngle + adjustedAimAngle);
 
 		if (m_Mantling) {
 			// The back hand on the lip, pulling.
@@ -3220,9 +3221,9 @@ void AHuman::PreControllerUpdate() {
 				if (legToSwingWith) {
 					float armMovementRateToUse = m_ArmSwingRate;
 					if (HeldDevice* heldDevice = arm->GetHeldDevice()) {
-						armMovementRateToUse = m_DeviceArmSwayRate * (1.0F - m_SharpAimProgress) * std::sin(std::abs(heldDevice->GetStanceOffset().GetAbsRadAngle()));
+						armMovementRateToUse = m_DeviceArmSwayRate * (1.0F - m_SharpAimProgress) * DetMath::Sin(std::abs(heldDevice->GetStanceOffset().GetAbsRadAngle()));
 					}
-					float angleToSwingTo = std::sin(legToSwingWith->GetRotAngle() + (c_HalfPI * GetFlipFactor()));
+					float angleToSwingTo = DetMath::Sin(legToSwingWith->GetRotAngle() + (c_HalfPI * GetFlipFactor()));
 					arm->SetHandIdleRotation(angleToSwingTo * armMovementRateToUse);
 				}
 			}
@@ -3460,7 +3461,7 @@ void AHuman::Update() {
 		} else if (m_RopeHold.active) {
 			// Hanging from a rope: the body swings on its hands, rocking on a loose spring towards the line of the rope and lagging behind
 			// the swing, rather than standing upright. (Body up is (-sin, -cos) of the angle, so the rope's way up gives the angle.)
-			float rotTarget = std::atan2(-m_RopeHold.up.m_X, -m_RopeHold.up.m_Y);
+			float rotTarget = DetMath::Atan2(-m_RopeHold.up.m_X, -m_RopeHold.up.m_Y);
 			float rotDiff = NormalizeAngleBetweenNegativePIAndPI(rot - rotTarget);
 			m_AngularVel = m_AngularVel * 0.97F - rotDiff * 0.12F;
 		} else {
@@ -3477,7 +3478,7 @@ void AHuman::Update() {
 			// Leaning: into a mantle (over the ledge, most at mid-pull), and into the jet's push in flight, as a person leans the way they go.
 			// (Positive rotation leans a right-facing body back, so a lean towards +x is negative.)
 			if (m_Mantling) {
-				rotTarget += -GetMantleDir() * 0.45F * std::sin(GetMantleProgress() * c_PI);
+				rotTarget += -GetMantleDir() * 0.45F * DetMath::Sin(GetMantleProgress() * c_PI);
 			} else if (m_pJetpack && m_pJetpack->IsEmitting()) {
 				float stick = std::clamp(m_Controller.GetAnalogMove().m_X, -1.0F, 1.0F);
 				rotTarget += -stick * 0.3F;
@@ -3523,12 +3524,12 @@ void AHuman::Update() {
 		// tipped on over by its own weight towards whichever side it leans to, rather than freezing there as an obstacle. Only while it rests
 		// on something; in the air it tumbles freely.
 		float wrapped = NormalizeAngleBetweenNegativePIAndPI(rot);
-		float lean = std::sin(wrapped);
+		float lean = DetMath::Sin(wrapped);
 		float rotTarget = lean > 0.05F ? c_HalfPI : (lean < -0.05F ? -c_HalfPI : (m_AngularVel != 0.0F ? std::copysign(c_HalfPI, m_AngularVel) : (m_HFlipped ? c_HalfPI : -c_HalfPI)));
 		float rotDiff = rotTarget - wrapped;
 		if (std::abs(rotDiff) > c_DeadLyingTolerance && !g_SceneMan.OverAltitude(m_Pos, static_cast<int>(m_SpriteRadius) + 4, 3)) {
 			// Strongest balanced on end, where nothing else would tip it.
-			float push = (rotDiff > 0.0F ? 1.0F : -1.0F) * (4.0F + 6.0F * std::abs(std::cos(wrapped)));
+			float push = (rotDiff > 0.0F ? 1.0F : -1.0F) * (4.0F + 6.0F * std::abs(DetMath::Cos(wrapped)));
 			m_AngularVel += push * g_TimerMan.GetDeltaTimeSecs();
 		}
 	}
@@ -4070,7 +4071,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	const bool landing = floorY >= 0.0F;
 	const float halfWidth = std::max(6.0F, (GetMoveBodyWidth() > 0.0F ? GetMoveBodyWidth() : static_cast<float>(GetSpriteWidth())) * 0.5F);
 	// The jet's reach sideways: its push at full lean, lit most of the time; and up, against gravity.
-	const float sideAccel = std::max(20.0F, fullAccel * std::sin(maxLean) * 0.7F);
+	const float sideAccel = std::max(20.0F, fullAccel * DetMath::Sin(maxLean) * 0.7F);
 	const float upBrake = std::max(30.0F, (fullAccel - g) * 0.6F);
 	const float fuelTotal = std::max(m_pJetpack->GetJetTimeTotal(), 1.0F);
 	const float negThrottle = m_pJetpack->GetNegativeThrottleMultiplier();
@@ -4222,7 +4223,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 				float factor = std::max(0.05F, negThrottle + (fuel / fuelTotal) * (posThrottle - negThrottle));
 				float push = fullAccel * factor / factorNow;
 				float angle = lean * maxLean;
-				accel += Vector(std::sin(angle) * push, -std::cos(angle) * push);
+				accel += Vector(DetMath::Sin(angle) * push, -DetMath::Cos(angle) * push);
 				fuel -= step * 1000.0F;
 			}
 			vel += accel * step;
@@ -4321,7 +4322,7 @@ Vector AHuman::PilotFlight(const Vector& target, float floorY) {
 	// The stick: its X leans the nozzle (against a Y of -1, the nozzle's tilt is the stick's angle off straight up, up to the jet's range).
 	// In the world's terms, whichever way the body faces: measured (the flight gym's CCCP_FLIGHT_STICK), +0.3 pushed a soldier right at
 	// 8 m/s a second facing either way. Mirrored with the facing, as it was, every unit facing left leant the wrong way.
-	float stickX = std::tan(lean * maxLean);
+	float stickX = DetMath::Tan(lean * maxLean);
 	return Vector(stickX, jet ? 1.0F : 0.0F);
 }
 

@@ -1,4 +1,5 @@
 #include "SLTerrain.h"
+#include "DetMath.h"
 #include "MOPixel.h"
 
 #include "Atom.h"
@@ -227,7 +228,7 @@ void MOPixel::Update() {
 				unsigned int seed = static_cast<unsigned int>(GetUniqueID()) * 2654435761u;
 				float own = static_cast<float>((seed >> 8) & 0xFFFF) / 65535.0F;
 				float other = static_cast<float>((seed >> 16) & 0xFFFF) / 65535.0F;
-				float waver = std::sin(static_cast<float>(update) * (0.5F + own * 0.9F) + other * 40.0F);
+				float waver = DetMath::Sin(static_cast<float>(update) * (0.5F + own * 0.9F) + other * 40.0F);
 				reach *= std::max(0.25F, 1.0F + randomness * ((own * 2.0F - 1.0F) * 0.8F + waver * 0.25F));
 				brightness *= std::max(0.1F, 1.0F + randomness * ((other * 2.0F - 1.0F) * 0.6F + waver * 0.3F));
 			}

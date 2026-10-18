@@ -1,4 +1,5 @@
 #include "AMech.h"
+#include "DetMath.h"
 #include "MechLeg.h"
 #include "ADoor.h"
 #include "AEJetpack.h"
@@ -398,7 +399,7 @@ void AMech::UpdateGait(float deltaTime) {
 		foot.Progress += deltaTime / std::max(m_StepTime, 0.05F);
 		float s = std::min(foot.Progress, 1.0F);
 		float lift = m_StepLift >= 0.0F ? m_StepLift : reach / 6.0F;
-		foot.Pos = foot.From + (foot.To - foot.From) * s + Vector(0.0F, -lift * std::sin(s * c_PI));
+		foot.Pos = foot.From + (foot.To - foot.From) * s + Vector(0.0F, -lift * DetMath::Sin(s * c_PI));
 		if (foot.Progress >= 1.0F) {
 			Footfall(swinging);
 			swinging = -1;
@@ -545,7 +546,7 @@ bool AMech::StartStep(int foot, float targetX) {
 	// The slope it will stand on, from the ground either side.
 	float left = GroundUnder(targetX - 6.0F, lookFrom, up + down + 2.0F);
 	float right = GroundUnder(targetX + 6.0F, lookFrom, up + down + 2.0F);
-	step.Angle = (left >= 0.0F && right >= 0.0F) ? std::clamp(-std::atan2(right - left, 12.0F), -0.5F, 0.5F) : 0.0F;
+	step.Angle = (left >= 0.0F && right >= 0.0F) ? std::clamp(-DetMath::Atan2(right - left, 12.0F), -0.5F, 0.5F) : 0.0F;
 	return true;
 }
 
@@ -628,7 +629,7 @@ void AMech::CarryHull(float deltaTime) {
 	float bob = 0.0F;
 	for (const Foot& foot: m_Feet) {
 		if (foot.Swinging) {
-			bob = m_BodyBob * std::sin(std::min(foot.Progress, 1.0F) * c_PI);
+			bob = m_BodyBob * DetMath::Sin(std::min(foot.Progress, 1.0F) * c_PI);
 		}
 	}
 	float hipY = ankleY - stand - bob;

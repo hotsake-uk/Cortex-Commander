@@ -3,6 +3,7 @@
 // T has them hold where they are or follow again; X calls them back to you. Let go of the unit and they hold where they stand.
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -90,7 +91,7 @@ namespace SandboxDetail {
 		Actor* AimedAt(const Actor* leader) {
 			const bool wraps = g_SceneMan.SceneWrapsX();
 			const float angle = leader->GetAimAngle(true);
-			const Vector along(std::cos(angle), -std::sin(angle));
+			const Vector along(DetMath::Cos(angle), -DetMath::Sin(angle));
 			const Vector eye = leader->GetEyePos();
 			Actor* best = nullptr;
 			float bestAlong = 0.0F;

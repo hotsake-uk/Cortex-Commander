@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Serializable.h"
+#include "DetMath.h"
 #include "Singleton.h"
 #include "LightingSettings.h"
 
@@ -563,7 +564,7 @@ namespace RTE {
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
-		float AIMoveCaution() const { return std::pow(2.0F, (0.5F - m_AIRecklessness) * 2.0F); }
+		float AIMoveCaution() const { return DetMath::Pow(2.0F, (0.5F - m_AIRecklessness) * 2.0F); }
 
 		/// Whether AI units stand still and upright before a jetpack climb or jump (on, as designed), or take off mid-stride.
 		bool AISteadiesBeforeJet() const { return m_AISteadyBeforeJet; }

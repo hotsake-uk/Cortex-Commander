@@ -2,6 +2,7 @@
 // dies you lose, and your orders only reach your units within its command range. Those further out carry on with what they were last told.
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -143,7 +144,7 @@ namespace SandboxDetail {
 		for (int i = 0; i < c_Dashes; i += 2) {
 			const float a = 6.2832F * static_cast<float>(i) / c_Dashes;
 			const float b = 6.2832F * static_cast<float>(i + 1) / c_Dashes;
-			drawList->AddLine(ImVec2(at.x + std::cos(a) * radius, at.y + std::sin(a) * radius), ImVec2(at.x + std::cos(b) * radius, at.y + std::sin(b) * radius), IM_COL32(255, 120, 210, 70), 1.5F);
+			drawList->AddLine(ImVec2(at.x + DetMath::Cos(a) * radius, at.y + DetMath::Sin(a) * radius), ImVec2(at.x + DetMath::Cos(b) * radius, at.y + DetMath::Sin(b) * radius), IM_COL32(255, 120, 210, 70), 1.5F);
 		}
 		// Over its head: a diamond, and "Brain".
 		const Vector head = FromCamera(OverHeadPos(brain) - Vector(0.0F, 18.0F));

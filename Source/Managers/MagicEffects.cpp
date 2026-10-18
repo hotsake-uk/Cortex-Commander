@@ -1,4 +1,5 @@
 #include "MagicEffects.h"
+#include "DetMath.h"
 #include "ADoor.h"
 #include "Actor.h"
 #include "AirPressure.h"
@@ -69,7 +70,7 @@ void MagicEffects::ApplyPush(const Vector& origin, const Vector& direction, floa
 	spread = std::clamp(spread, 0.0F, 360.0F);
 	bool allRound = spread >= 360.0F || direction.IsZero();
 	Vector aim = allRound ? Vector() : direction.GetNormalized();
-	float cosHalfSpread = std::cos(spread * 0.5F * c_PI / 180.0F);
+	float cosHalfSpread = DetMath::Cos(spread * 0.5F * c_PI / 180.0F);
 	float strength = power * std::max(s_Tuning.PushStrength, 0.0F);
 
 	if (s_Tuning.AirGust > 0.0F) {

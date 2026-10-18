@@ -1,4 +1,5 @@
 #include "AEJetpack.h"
+#include "DetMath.h"
 
 #include "Actor.h"
 #include "Atom.h"
@@ -175,7 +176,7 @@ void AEJetpack::Update() {
 	unsigned int seed = static_cast<unsigned int>(GetUniqueID()) * 2654435761u;
 	float phase = static_cast<float>((seed >> 8) & 0xFFFF) / 65535.0F * 40.0F;
 	float update = static_cast<float>(g_TimerMan.GetSimUpdateCount());
-	float flicker = 0.9F + 0.06F * std::sin(update * 1.7F + phase) + 0.04F * std::sin(update * 4.3F + phase * 0.7F);
+	float flicker = 0.9F + 0.06F * DetMath::Sin(update * 1.7F + phase) + 0.04F * DetMath::Sin(update * 4.3F + phase * 0.7F);
 	// A little way down the flame from the nozzle, where most of it is.
 	Vector lightPos = m_Pos + RotateOffset(m_EmissionOffset) + GetEmitVector() * 6.0F;
 	float reach = 55.0F * lighting.JetpackLightReach * (0.8F + 0.2F * throttle);
