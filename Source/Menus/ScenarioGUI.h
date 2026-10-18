@@ -71,6 +71,7 @@ namespace RTE {
 
 		std::map<Activity*, std::vector<Scene*>> m_ScenarioActivities; //!< The map of Activities and the Scenes compatible with each, neither of which are owned here.
 		const Activity* m_SelectedActivity; //!< The currently selected Activity. Not owned.
+		bool m_OpenSetupWhenSelected = false; //!< Opened from the Studio Scenarios screen: the setup of the scenario picked there opens at once.
 		std::string m_ActivityToSelect; //!< The preset name of the Activity to select the next time this menu is opened, in place of the one selected before. Empty for none.
 
 		std::vector<Scene*>* m_ActivityScenes; //!< Pointer to the current set of Scenes being displayed. Not owned, and neither are the Scenes.

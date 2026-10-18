@@ -11,6 +11,7 @@
 
 #include "Scene.h"
 #include "MapBrowser.h"
+#include "StudioScenarios.h"
 #include "Campaign.h"
 
 #include "GameVersion.h"
@@ -111,6 +112,7 @@ void MainMenuGUI::CreateMainScreen() {
 	m_MainMenuButtons[MenuButton::MetaGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToMetaGame"));
 	m_MainMenuButtons[MenuButton::ScenarioButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSkirmish"));
 	m_MainMenuButtons[MenuButton::SandboxButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToSandbox"));
+	m_MainMenuButtons[MenuButton::StudioScenariosButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToStudioScenarios"));
 	m_MainMenuButtons[MenuButton::BattleCommandButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToBattleCommand"));
 	m_MainMenuButtons[MenuButton::QuickBattleButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonMainToQuickBattle"));
 	m_MainMenuButtons[MenuButton::SaveOrLoadGameButton] = dynamic_cast<GUIButton*>(m_MainMenuScreenGUIControlManager->GetControl("ButtonSaveOrLoadGame"));
@@ -257,6 +259,9 @@ void MainMenuGUI::SetActiveMenuScreen(MenuScreen screenToShow, bool playButtonPr
 		}
 		if (m_ActiveMenuScreen == MenuScreen::CampaignScreen) {
 			Campaign::Close();
+		}
+		if (m_ActiveMenuScreen == MenuScreen::StudioScenariosScreen) {
+			StudioScenarios::Close();
 		}
 		HideAllScreens();
 		m_ActiveMenuScreen = screenToShow;
@@ -476,6 +481,18 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 			m_MenuScreenChange = false;
 			HandleMapBrowserChoice();
 			break;
+		case MenuScreen::StudioScenariosScreen:
+			m_MenuScreenChange = false;
+			if (!StudioScenarios::TakePlay().empty()) {
+				// to the scenario menu, which selects it (and its own map) and opens its setup
+				SetActiveMenuScreen(MenuScreen::MainScreen, false);
+				m_UpdateResult = MainMenuUpdateResult::ScenarioStarted;
+				g_GUISound.ButtonPressSound()->Play();
+			} else if (StudioScenarios::TakeBack() || !StudioScenarios::IsOpen()) {
+				SetActiveMenuScreen(MenuScreen::MainScreen, false);
+				g_GUISound.BackButtonPressSound()->Play();
+			}
+			break;
 		case MenuScreen::CampaignScreen:
 			m_MenuScreenChange = false;
 			if (Campaign::TakeBattleStart()) {
@@ -513,7 +530,7 @@ MainMenuGUI::MainMenuUpdateResult MainMenuGUI::Update() {
 
 void MainMenuGUI::HandleBackNavigation(bool backButtonPressed) {
 	// (The map browser and the campaign have Esc for their own Back.)
-	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen || m_ActiveMenuScreen == MenuScreen::CampaignScreen) {
+	if (m_ActiveMenuScreen == MenuScreen::MapBrowserScreen || m_ActiveMenuScreen == MenuScreen::CampaignScreen || m_ActiveMenuScreen == MenuScreen::StudioScenariosScreen) {
 		return;
 	}
 	if ((!m_ActiveDialogBox || m_ActiveDialogBox == m_MainMenuScreens[MenuScreen::QuitScreen]) && (backButtonPressed || g_UInputMan.KeyPressed(SDLK_ESCAPE))) {
@@ -587,6 +604,10 @@ void MainMenuGUI::HandleMainScreenInputEvents(const GUIControl* guiEventControl)
 		m_UpdateResult = MainMenuUpdateResult::ScenarioStarted;
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::SandboxButton]) {
 		SetActiveMenuScreen(MenuScreen::SandboxScreen);
+	} else if (guiEventControl == m_MainMenuButtons[MenuButton::StudioScenariosButton]) {
+		// Every scenario with its map and mod, drawn with ImGui like the map browser; the one picked goes to the scenario setup.
+		SetActiveMenuScreen(MenuScreen::StudioScenariosScreen);
+		StudioScenarios::Open();
 	} else if (guiEventControl == m_MainMenuButtons[MenuButton::BattleCommandButton]) {
 		// The map browser, for a map to play Battle Command on (and a battle saved on it), then in.
 		OpenMapBrowser(true);
@@ -763,7 +784,7 @@ void MainMenuGUI::Draw() {
 		m_ActiveDialogBox->Draw(m_ActiveGUIControlManager->GetScreen());
 	}
 	// (The map browser and the campaign draw their own pointer, over their window.)
-	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen && m_ActiveMenuScreen != MenuScreen::CampaignScreen) {
+	if (m_ActiveMenuScreen != MenuScreen::MapBrowserScreen && m_ActiveMenuScreen != MenuScreen::CampaignScreen && m_ActiveMenuScreen != MenuScreen::StudioScenariosScreen) {
 		m_ActiveGUIControlManager->DrawMouse();
 	}
 }
