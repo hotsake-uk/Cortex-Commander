@@ -56,6 +56,7 @@ namespace RTE {
 		std::array<GUISlider*, c_RowCount> m_RowSliders; //!< Each row's slider, for a number setting.
 		std::array<GUICheckbox*, c_RowCount> m_RowCheckboxes; //!< Each row's checkbox, for a setting that's on or off.
 		std::array<GUILabel*, c_RowCount> m_RowValueLabels; //!< Each row's value, for a number setting.
+		std::array<GUIButton*, c_RowCount> m_RowResetButtons; //!< Each row's button putting its setting back to its default, shown only when it's been changed.
 
 #pragma region Lighting Settings Handling
 		/// Shows a page of settings.
@@ -92,6 +93,15 @@ namespace RTE {
 
 		/// Puts every setting back to its default: the settings the game starts with.
 		void ResetToDefaults();
+
+		/// Gets whether a setting is at its default, as the player has it.
+		/// @param option The setting.
+		/// @return Whether it's at its default.
+		bool IsAtDefault(const LightingOption& option) const;
+
+		/// Puts one setting back to its default, both now and as the player's own, and marks the quality preset as custom.
+		/// @param option The setting.
+		void ResetSetting(const LightingOption& option);
 #pragma endregion
 
 		// Disallow the use of some implicit methods.

@@ -34,6 +34,7 @@ SettingsLightingGUI::SettingsLightingGUI(GUIControlManager* parentControlManager
 		m_RowSliders[row] = dynamic_cast<GUISlider*>(m_GUIControlManager->GetControl("SliderLightingRow" + rowNumber));
 		m_RowCheckboxes[row] = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxLightingRow" + rowNumber));
 		m_RowValueLabels[row] = dynamic_cast<GUILabel*>(m_GUIControlManager->GetControl("LabelLightingRowValue" + rowNumber));
+		m_RowResetButtons[row] = dynamic_cast<GUIButton*>(m_GUIControlManager->GetControl("ButtonLightingRowReset" + rowNumber));
 	}
 	ShowPage(0);
 }
@@ -71,6 +72,9 @@ void SettingsLightingGUI::UpdateRows() {
 		m_RowSliders[row]->SetVisible(option && !option->BoolField);
 		m_RowCheckboxes[row]->SetVisible(option && option->BoolField);
 		m_RowValueLabels[row]->SetVisible(option && !option->BoolField);
+		if (m_RowResetButtons[row]) {
+			m_RowResetButtons[row]->SetVisible(option && !IsAtDefault(*option));
+		}
 		if (!option) {
 			continue;
 		}
@@ -182,6 +186,44 @@ void SettingsLightingGUI::ResetToDefaults() {
 	UpdateRows();
 }
 
+bool SettingsLightingGUI::IsAtDefault(const LightingOption& option) const {
+	static const LightingSettings defaults;
+	const LightingSettings settings = g_PostProcessMan.GetLightingSettingsToSave();
+	if (option.ColorField) {
+		return glm::all(glm::lessThan(glm::abs(settings.*option.ColorField - defaults.*option.ColorField), glm::vec3(0.0005F)));
+	}
+	if (option.IntField == &LightingSettings::WeatherType) {
+		int defaultWeather = Weather::FindSlot(defaults.WeatherName);
+		return settings.WeatherType == (defaultWeather >= 0 ? defaultWeather : defaults.WeatherType);
+	}
+	float value = LightingOptions::GetValue(option, settings);
+	float defaultValue = LightingOptions::GetValue(option, defaults);
+	// Within a slider step, so a setting dragged back to its default by hand counts.
+	float step = option.HasRange() && !option.IntField ? (option.Max - option.Min) / static_cast<float>(c_SliderSteps) : 0.0F;
+	return std::abs(value - defaultValue) <= std::max(step * 0.5F, 0.0005F);
+}
+
+void SettingsLightingGUI::ResetSetting(const LightingOption& option) {
+	static const LightingSettings defaults;
+	LightingSettings& settings = g_PostProcessMan.GetLightingSettings();
+	LightingSettings& playerAtmosphere = g_PostProcessMan.GetPlayerAtmosphere();
+	int defaultWeather = Weather::FindSlot(defaults.WeatherName);
+	for (LightingSettings* changing: {&settings, &playerAtmosphere}) {
+		LightingOptions::CopyValue(option, *changing, defaults);
+		changing->GraphicsQuality = LightingSettings::QualityCustom;
+		if (option.IntField == &LightingSettings::WeatherType) {
+			if (defaultWeather >= 0) {
+				changing->WeatherType = defaultWeather;
+			}
+			changing->WeatherName.clear();
+		}
+	}
+	if (option.IntField == &LightingSettings::WeatherType || option.FloatField == &LightingSettings::WeatherIntensity || option.BoolField == &LightingSettings::OverrideMapWeather || option.BoolField == &LightingSettings::CustomWeather) {
+		g_PostProcessMan.SetOverrideMapWeather(settings.OverrideMapWeather);
+	}
+	UpdateRows();
+}
+
 void SettingsLightingGUI::HandleInputEvents(GUIEvent& guiEvent) {
 	if (guiEvent.GetType() == GUIEvent::Command) {
 		if (guiEvent.GetControl() == m_PreviousPageButton) {
@@ -193,6 +235,14 @@ void SettingsLightingGUI::HandleInputEvents(GUIEvent& guiEvent) {
 		} else if (guiEvent.GetControl() == m_ResetButton) {
 			g_GUISound.ButtonPressSound()->Play();
 			ResetToDefaults();
+		} else {
+			for (int row = 0; row < c_RowCount; ++row) {
+				if (m_RowOptions[row] && guiEvent.GetControl() == m_RowResetButtons[row]) {
+					g_GUISound.ButtonPressSound()->Play();
+					ResetSetting(*m_RowOptions[row]);
+					break;
+				}
+			}
 		}
 	} else if (guiEvent.GetType() == GUIEvent::Notification) {
 		if (guiEvent.GetControl() == m_PageComboBox) {
@@ -214,12 +264,13 @@ void SettingsLightingGUI::HandleInputEvents(GUIEvent& guiEvent) {
 					UpdateRows();
 				}
 				m_RowValueLabels[row]->SetText(GetValueText(*option, LightingOptions::GetValue(*option, g_PostProcessMan.GetLightingSettingsToSave())));
+				if (m_RowResetButtons[row]) {
+					m_RowResetButtons[row]->SetVisible(!IsAtDefault(*option));
+				}
 				break;
 			} else if (guiEvent.GetControl() == m_RowCheckboxes[row] && guiEvent.GetMsg() == GUICheckbox::Changed) {
 				ChangeSetting(*option, m_RowCheckboxes[row]->GetCheck() ? 1.0F : 0.0F);
-				if (option->BoolField == &LightingSettings::CustomWeather) {
-					UpdateRows();
-				}
+				UpdateRows();
 				break;
 			}
 		}
