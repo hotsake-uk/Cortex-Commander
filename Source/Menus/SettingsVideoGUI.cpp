@@ -2,6 +2,7 @@
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "ActivityMan.h"
+#include "PostProcessMan.h"
 
 #include "GUIInputWrapper.h"
 #include "GUI.h"
@@ -56,6 +57,18 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 
 	m_UseMultiDisplaysCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxUseMultiDisplays"));
 	m_UseMultiDisplaysCheckbox->SetCheck(g_WindowMan.GetUseMultiDisplays());
+
+	// Custom GUI layouts may not have these, so they're optional.
+	m_LightingCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxLighting"));
+	m_BloomCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxBloom"));
+	m_DistortionCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxDistortion"));
+	m_GraphicsQualityComboBox = dynamic_cast<GUIComboBox*>(m_GUIControlManager->GetControl("ComboGraphicsQuality"));
+	if (m_GraphicsQualityComboBox) {
+		for (const char* name: {"Potato (classic)", "Low", "Medium", "High", "Ultra", "Custom"}) {
+			m_GraphicsQualityComboBox->AddItem(name);
+		}
+	}
+	UpdateVisualEffectControls();
 	int numDisplays = 0;
 	SDL_free(SDL_GetDisplays(&numDisplays));
 	m_UseMultiDisplaysCheckbox->SetVisible(m_UseMultiDisplaysCheckbox->GetVisible() && numDisplays > 1);
@@ -159,6 +172,22 @@ bool SettingsVideoGUI::IsSupportedResolution(int width, int height) const {
 		return true;
 	}
 	return false;
+}
+
+void SettingsVideoGUI::UpdateVisualEffectControls() {
+	const LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
+	if (m_LightingCheckbox) {
+		m_LightingCheckbox->SetCheck(lightingSettings.Enabled);
+	}
+	if (m_BloomCheckbox) {
+		m_BloomCheckbox->SetCheck(lightingSettings.BloomEnabled);
+	}
+	if (m_DistortionCheckbox) {
+		m_DistortionCheckbox->SetCheck(lightingSettings.DistortionEnabled);
+	}
+	if (m_GraphicsQualityComboBox) {
+		m_GraphicsQualityComboBox->SetSelectedIndex(lightingSettings.GraphicsQuality);
+	}
 }
 
 void SettingsVideoGUI::PopulateResolutionsComboBox() {
@@ -395,9 +424,41 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			}
 		}
 
+		if (m_GraphicsQualityComboBox && guiEvent.GetControl() == m_GraphicsQualityComboBox && guiEvent.GetMsg() == GUIComboBox::Closed) {
+			int quality = m_GraphicsQualityComboBox->GetSelectedIndex();
+			if (quality >= 0 && quality != LightingSettings::QualityCustom) {
+				g_PostProcessMan.GetLightingSettings().ApplyQualityPreset(quality);
+				UpdateVisualEffectControls();
+			}
+		}
+
+		if (guiEvent.GetMsg() == GUICheckbox::Changed && (guiEvent.GetControl() == m_LightingCheckbox || guiEvent.GetControl() == m_BloomCheckbox || guiEvent.GetControl() == m_DistortionCheckbox)) {
+			// Picking individual effects no longer matches a preset.
+			g_PostProcessMan.GetLightingSettings().GraphicsQuality = LightingSettings::QualityCustom;
+			if (m_GraphicsQualityComboBox) {
+				m_GraphicsQualityComboBox->SetSelectedIndex(LightingSettings::QualityCustom);
+			}
+		}
+
 		if (guiEvent.GetMsg() == GUICheckbox::Changed) {
 			if (guiEvent.GetControl() == m_EnableVSyncCheckbox) {
 				g_WindowMan.SetVSyncEnabled(m_EnableVSyncCheckbox->GetCheck());
+			} else if (m_LightingCheckbox && guiEvent.GetControl() == m_LightingCheckbox) {
+				g_PostProcessMan.GetLightingSettings().Enabled = m_LightingCheckbox->GetCheck();
+			} else if (m_BloomCheckbox && guiEvent.GetControl() == m_BloomCheckbox) {
+				g_PostProcessMan.GetLightingSettings().BloomEnabled = m_BloomCheckbox->GetCheck();
+			} else if (m_DistortionCheckbox && guiEvent.GetControl() == m_DistortionCheckbox) {
+				// Extra effects: heat haze, shockwaves, scorch marks, stains and the visual particles.
+				LightingSettings& lightingSettings = g_PostProcessMan.GetLightingSettings();
+				bool enabled = m_DistortionCheckbox->GetCheck();
+				lightingSettings.DistortionEnabled = enabled;
+				lightingSettings.ScorchMarks = enabled;
+				lightingSettings.Stains = enabled;
+				lightingSettings.LivingWorld = enabled;
+				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
+				lightingSettings.EffectsSparks = enabled ? std::max(lightingSettings.EffectsSparks, 1.0F) : 0.0F;
+				lightingSettings.EffectsDust = enabled ? std::max(lightingSettings.EffectsDust, 1.0F) : 0.0F;
+				lightingSettings.EffectsDebris = enabled ? std::max(lightingSettings.EffectsDebris, 1.0F) : 0.0F;
 			} else if (guiEvent.GetControl() == m_UseMultiDisplaysCheckbox) {
 				g_WindowMan.SetUseMultiDisplays(m_UseMultiDisplaysCheckbox->GetCheck());
 				UpdateCustomResolutionLimits();

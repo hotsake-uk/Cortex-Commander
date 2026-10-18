@@ -116,6 +116,23 @@ int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) 
 	MatchProperty("Fullscreen", { reader >> g_WindowMan.m_Fullscreen; });
 	MatchProperty("UseMultiDisplays", { reader >> g_WindowMan.m_UseMultiDisplays; });
 	MatchProperty("TwoPlayerSplitscreenVertSplit", { reader >> g_FrameMan.m_TwoPlayerVSplit; });
+	MatchProperty("GraphicsQuality", {
+		// The preset first; the single effects saved after it are the player's own picks and win.
+		LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		int quality = std::clamp(std::stoi(reader.ReadPropValue()), 0, static_cast<int>(LightingSettings::QualityCustom));
+		lighting.ApplyQualityPreset(quality);
+		lighting.ApplyShadowPreset(quality);
+	});
+	MatchProperty("LightingEnabled", { g_PostProcessMan.GetLightingSettings().Enabled = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("BloomEnabled", { g_PostProcessMan.GetLightingSettings().BloomEnabled = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("ScorchMarks", { g_PostProcessMan.GetLightingSettings().ScorchMarks = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("Embers", { g_PostProcessMan.GetLightingSettings().Embers = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsSparks", { g_PostProcessMan.GetLightingSettings().EffectsSparks = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDust", { g_PostProcessMan.GetLightingSettings().EffectsDust = std::stof(reader.ReadPropValue()); });
+	MatchProperty("EffectsDebris", { g_PostProcessMan.GetLightingSettings().EffectsDebris = std::stof(reader.ReadPropValue()); });
 	MatchProperty("MasterVolume", { g_AudioMan.SetMasterVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
 	MatchProperty("MuteMaster", { reader >> g_AudioMan.m_MuteMaster; });
 	MatchProperty("MusicVolume", { g_AudioMan.SetMusicVolume(std::stof(reader.ReadPropValue()) / 100.0F); });
@@ -223,6 +240,21 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("EnableVSync", g_WindowMan.m_EnableVSync);
 	writer.NewPropertyWithValue("UseMultiDisplays", g_WindowMan.m_UseMultiDisplays);
 	writer.NewPropertyWithValue("TwoPlayerSplitscreenVertSplit", g_FrameMan.m_TwoPlayerVSplit);
+	{
+		// Lighting and effects (Video settings). Drawing only: none of these change what happens in a game.
+		const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+		writer.NewPropertyWithValue("GraphicsQuality", lighting.GraphicsQuality);
+		writer.NewPropertyWithValue("LightingEnabled", lighting.Enabled);
+		writer.NewPropertyWithValue("BloomEnabled", lighting.BloomEnabled);
+		writer.NewPropertyWithValue("DistortionEnabled", lighting.DistortionEnabled);
+		writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
+		writer.NewPropertyWithValue("Stains", lighting.Stains);
+		writer.NewPropertyWithValue("LivingWorld", lighting.LivingWorld);
+		writer.NewPropertyWithValue("Embers", lighting.Embers);
+		writer.NewPropertyWithValue("EffectsSparks", lighting.EffectsSparks);
+		writer.NewPropertyWithValue("EffectsDust", lighting.EffectsDust);
+		writer.NewPropertyWithValue("EffectsDebris", lighting.EffectsDebris);
+	}
 
 	writer.NewLine(false, 2);
 	writer.NewDivider(false);
