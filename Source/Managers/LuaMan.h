@@ -79,6 +79,23 @@ namespace RTE {
 		/// Gets the random number generator used for this lua state.
 		/// @return The random number generator used for this lua state.
 		const RandomGenerator& GetRandomGenerator() const { return m_RandomGenerator; }
+
+		/// Gets the random number generator used for this lua state while it is running AI.
+		/// @return The random number generator used for this lua state while it is running AI.
+		const RandomGenerator& GetAIRandomGenerator() const { return m_AIRandomGenerator; }
+
+		/// Seeds this lua state's random number generators from the simulation's, as is done when it's made and when an Activity starts.
+		void SeedRandomGenerators();
+
+		/// Sets whether what is being run on this lua state is AI. While it is, this lua state and the global random functions called from this thread use a random number generator that is only for AI.
+		/// The AI can be left to do as it pleases this way, without it affecting the random numbers that the rest of the simulation gets.
+		/// @param runningAI Whether AI is what is being run on this lua state, by this thread.
+		void SetRunningAI(bool runningAI);
+
+		/// Sets whether what is being run on this lua state is the threaded update of its scripts, which goes on at the same time as that of the other lua states.
+		/// While it is, the global random functions called from this thread use this lua state's random number generator, since the lua states can't all be using the simulation's one at once.
+		/// @param runningThreadedUpdate Whether the threaded update of its scripts is what is being run on this lua state, by this thread.
+		void SetRunningThreadedUpdate(bool runningThreadedUpdate);
 #pragma endregion
 
 #pragma region Script Responsibility Handling
@@ -295,6 +312,12 @@ namespace RTE {
 
 		// For determinism, every Lua state has it's own random number generator.
 		RandomGenerator m_RandomGenerator; //!< The random number generator used for this lua state.
+		RandomGenerator m_AIRandomGenerator; //!< The random number generator used for this lua state while it is running AI.
+		bool m_RunningAI = false; //!< Whether what is being run on this lua state is AI.
+
+		/// Gets the random number generator to use for what is currently being run on this lua state.
+		/// @return The random number generator for AI if that is what's being run, otherwise the regular one.
+		RandomGenerator& GetActiveRandomGenerator() { return m_RunningAI ? m_AIRandomGenerator : m_RandomGenerator; }
 	};
 
 	typedef std::vector<LuaStateWrapper> LuaStatesArray;
@@ -455,6 +478,10 @@ namespace RTE {
 #pragma region Concrete Methods
 		/// Updates the state of this LuaMan.
 		void Update();
+
+		/// Puts the parts of the Lua states that the simulation's random numbers and its handing out of objects to states depend on back as they were, so each Activity plays out the same however much was played before it.
+		/// Done when an Activity starts, right after the simulation's random number generator is reseeded.
+		void ResetForActivityStart();
 
 		/// Asynchronously enforces a GC run to occur.
 		void StartAsyncGarbageCollection();

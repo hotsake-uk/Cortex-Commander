@@ -33,7 +33,28 @@ using namespace RTE;
 
 AbstractClassInfo(MovableObject, SceneObject);
 
-std::atomic<long> MovableObject::m_UniqueIDCounter = 1;
+std::array<std::atomic<long>, 1 + MovableObject::c_MaxUniqueIDThreadedStates> MovableObject::m_UniqueIDCounters{};
+
+long MovableObject::GetNextUniqueID() {
+	// The thread running a threaded Lua state counts in that state's range, and anything else (the main thread) in the main one.
+	if (const LuaStateWrapper* luaState = g_LuaMan.GetThreadLuaStateOverride(); luaState && luaState != &g_LuaMan.GetMasterScriptState()) {
+		long stateNumber = static_cast<long>(luaState - g_LuaMan.GetThreadedScriptStates().data());
+		long count = ++m_UniqueIDCounters[1 + stateNumber];
+		RTEAssert(count < (1L << c_UniqueIDThreadedCountBits), "Ran out of unique IDs to give to MOs made by a threaded Lua state!");
+		return c_UniqueIDThreadedStart + (stateNumber << c_UniqueIDThreadedCountBits) + count;
+	}
+	long count = ++m_UniqueIDCounters[0];
+	RTEAssert(count < c_UniqueIDThreadedStart, "Ran out of unique IDs to give to MOs!");
+	return count;
+}
+
+long long MovableObject::GetUniqueIDCounterHash() {
+	long long hash = 0;
+	for (size_t i = 0; i < m_UniqueIDCounters.size(); ++i) {
+		hash = hash * 1000003 + m_UniqueIDCounters[i].load();
+	}
+	return hash;
+}
 std::string MovableObject::ms_EmptyString = "";
 
 MovableObject::MovableObject() {

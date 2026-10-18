@@ -726,6 +726,13 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 	return 0;
 }
 
+void MovableMan::SortAddedMOs() {
+	auto uniqueIDOrder = [](const MovableObject* lhs, const MovableObject* rhs) { return lhs->GetUniqueID() < rhs->GetUniqueID(); };
+	std::sort(m_AddedActors.begin(), m_AddedActors.end(), uniqueIDOrder);
+	std::sort(m_AddedItems.begin(), m_AddedItems.end(), uniqueIDOrder);
+	std::sort(m_AddedParticles.begin(), m_AddedParticles.end(), uniqueIDOrder);
+}
+
 void MovableMan::HashState(StateHasher& hasher) const {
 	auto hashMovableObject = [&hasher](const MovableObject* movableObject) {
 		hasher.Add(movableObject->GetUniqueID());
@@ -1743,6 +1750,7 @@ void MovableMan::Update() {
 			                                                     RTEAssert(start + 1 == end, "Threaded script state being updated across multiple threads!");
 			                                                     LuaStateWrapper& luaState = luaStates[start];
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
+			                                                     luaState.SetRunningThreadedUpdate(true);
 
 			                                                     for (MovableObject* mo: luaState.GetRegisteredMOs()) {
 				                                                     if (mo && ValidMO(mo->GetRootParent())) {
@@ -1754,10 +1762,13 @@ void MovableMan::Update() {
 				                                                     }
 			                                                     }
 
+			                                                     luaState.SetRunningThreadedUpdate(false);
 			                                                     g_LuaMan.SetThreadLuaStateOverride(nullptr);
 		                                                     },
 		                                                     luaStates.size()) // One block per state, even with more states than threads.
 		    .wait();
+
+		SortAddedMOs();
 	}
 
 	{
@@ -2322,11 +2333,13 @@ void MovableMan::UpdateControllers() {
 		}
 
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
+		g_LuaMan.GetMasterScriptState().SetRunningAI(true);
 		for (Actor* actor: m_Actors) {
 			if (actor->GetLuaState() == &g_LuaMan.GetMasterScriptState() && actor->GetController()->ShouldUpdateAIThisFrame()) {
 				actor->RunScriptedFunctionInAppropriateScripts("ThreadedUpdateAI", false, true, {}, {}, {});
 			}
 		}
+		g_LuaMan.GetMasterScriptState().SetRunningAI(false);
 		g_LuaMan.SetThreadLuaStateOverride(nullptr);
 
 		LuaStatesArray& luaStates = g_LuaMan.GetThreadedScriptStates();
@@ -2335,20 +2348,31 @@ void MovableMan::UpdateControllers() {
 			                                                     RTEAssert(start + 1 == end, "Threaded script state being updated across multiple threads!");
 			                                                     LuaStateWrapper& luaState = luaStates[start];
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
+			                                                     luaState.SetRunningAI(true);
 			                                                     SceneMan::TreesPassable treesPassable;
 			                                                     for (Actor* actor: m_Actors) {
 				                                                     if (actor->GetLuaState() == &luaState && actor->GetController()->ShouldUpdateAIThisFrame()) {
 					                                                     actor->RunScriptedFunctionInAppropriateScripts("ThreadedUpdateAI", false, true, {}, {}, {});
 				                                                     }
 			                                                     }
+			                                                     luaState.SetRunningAI(false);
 			                                                     g_LuaMan.SetThreadLuaStateOverride(nullptr);
 		                                                     },
 		                                                     luaStates.size()) // One block per state, even with more states than threads.
 		    .wait();
 
+		SortAddedMOs();
+
 		for (Actor* actor: m_Actors) {
 			if (actor->GetController()->ShouldUpdateAIThisFrame()) {
+				LuaStateWrapper* luaState = actor->GetLuaState();
+				if (luaState) {
+					luaState->SetRunningAI(true);
+				}
 				actor->RunScriptedFunctionInAppropriateScripts("UpdateAI", false, true, {}, {}, {});
+				if (luaState) {
+					luaState->SetRunningAI(false);
+				}
 			}
 		}
 	}

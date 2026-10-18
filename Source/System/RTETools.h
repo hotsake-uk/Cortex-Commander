@@ -95,6 +95,11 @@ namespace RTE {
 	/// on thread timing, which undid the seeded determinism. The functions below all go through this.
 	RandomGenerator& ThisThreadsRandomGenerator();
 
+	/// Sets a random number generator for the global random functions to use when called from this thread, ahead of the ones ThisThreadsRandomGenerator would otherwise pick.
+	/// The Lua states set their own while their threaded updates and AI run, so which worker thread happens to run which state doesn't change the numbers anything gets.
+	/// @param randomGenerator The random number generator to use, or nullptr to go back to the usual one. Ownership is NOT transferred!
+	void SetThreadRandomGenerator(RandomGenerator* randomGenerator);
+
 	// TODO: Maybe remove these passthrough functions and force the user to manually specify if they want the simulation thread random,
 	// Or, in future, a render-thread random, as right now determinism isn't viable because framerate affects sim updates per draw
 	template <typename floatType = float>

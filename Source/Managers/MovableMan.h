@@ -316,6 +316,10 @@ namespace RTE {
 		/// @param hasher The StateHasher to add the state to.
 		void HashState(StateHasher& hasher) const;
 
+		/// Sorts the MOs waiting to be added by unique ID. Scripts on different Lua states add MOs at the same time in their threaded updates, in whatever order the threads happen to get there,
+		/// and unique IDs say which thread an MO was made on and how many that thread had made before it, so this puts them in the same order every time.
+		void SortAddedMOs();
+
 		/// Gets the global setting for how much splash MOPixels should be created
 		/// an MO penetrates the terrain deeply.
 		/// @return A float with the global splash amount setting, form 1.0 to 0.0.

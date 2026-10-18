@@ -115,7 +115,7 @@ void DeterminismChecker::CheckpointSimState(std::string_view label, bool checkSc
 	Checkpoint(std::format("{} - MovableObjects", label), movableObjectsHasher.GetHash());
 
 	// Unique IDs are handed out from a counter that is never reset, and are used as seeds and sort keys, so the count has to match too.
-	Checkpoint(std::format("{} - Unique ID counter", label), MovableObject::GetUniqueIDCounter());
+	Checkpoint(std::format("{} - Unique ID counter", label), MovableObject::GetUniqueIDCounterHash());
 
 	if (const Activity* activity = g_ActivityMan.GetActivity()) {
 		StateHasher activityHasher;
