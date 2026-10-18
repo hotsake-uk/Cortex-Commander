@@ -17,18 +17,31 @@ concurrency:
 
 jobs:
   build:
-    name: Cortex Studio (${{ matrix.name }})
+    # Both release editions (Tools/CortexStudio/src-tauri/src/edition.rs): Cortex Studio for Commander, and Cortex Studio CE for
+    # Community Edition modders, with its own name and app id from tauri.community.conf.json.
+    name: ${{ matrix.edition.app }} (${{ matrix.platform.name }})
     strategy:
       fail-fast: false
       matrix:
-        include:
+        platform:
           - name: Windows
             os: windows-latest
           - name: macOS
             os: macos-latest
           - name: Linux
             os: ubuntu-22.04
-    runs-on: ${{ matrix.os }}
+        edition:
+          - id: commander
+            app: Cortex Studio
+            artefact: CortexStudio
+            config: ""
+          - id: community
+            app: Cortex Studio CE
+            artefact: CortexStudioCE
+            config: --config src-tauri/tauri.community.conf.json
+    runs-on: ${{ matrix.platform.os }}
+    env:
+      CORTEX_STUDIO_EDITION: ${{ matrix.edition.id }}
     steps:
       - uses: actions/checkout@v4
 
@@ -43,6 +56,7 @@ jobs:
       - uses: Swatinem/rust-cache@v2
         with:
           workspaces: Tools/CortexStudio/src-tauri
+          key: ${{ matrix.edition.id }}
 
       - uses: actions/setup-node@v4
         with:
@@ -50,17 +64,18 @@ jobs:
 
       - name: Build the app and its installers
         working-directory: Tools/CortexStudio
-        run: npx --yes @tauri-apps/cli@2 build
+        run: npx --yes @tauri-apps/cli@2 build ${{ matrix.edition.config }}
 
       - name: Smoke test the run path (macOS and Linux)
         if: runner.os != 'Windows'
         working-directory: Tools/CortexStudio
         # Starts the app with no window on a tiny game folder, the way dev.sh does, and asks it for /api/info and the page.
-        run: sh smoke.sh src-tauri/target/release/cortex-studio
+        # The CE edition's program is cortex-studio-ce (mainBinaryName in tauri.community.conf.json).
+        run: sh smoke.sh src-tauri/target/release/${{ matrix.edition.id == 'community' && 'cortex-studio-ce' || 'cortex-studio' }}
 
       - uses: actions/upload-artifact@v4
         with:
-          name: CortexStudio-${{ matrix.name }}
+          name: ${{ matrix.edition.artefact }}-${{ matrix.platform.name }}
           path: |
             Tools/CortexStudio/src-tauri/target/release/bundle/msi/*.msi
             Tools/CortexStudio/src-tauri/target/release/bundle/nsis/*.exe

@@ -10,6 +10,7 @@
 
 mod backup;
 mod community;
+mod edition;
 mod launcher;
 mod server;
 mod watcher;
@@ -113,10 +114,14 @@ fn game_dir_above(start: &Path) -> Option<PathBuf> {
 }
 
 fn pick_game_dir() -> Option<PathBuf> {
-	// No game yet: Studio can download Community Edition (the page does it, with its progress, in the folder it opens on), or you pick one.
+	// No game yet: Studio can download Community Edition (the page does it, with its progress, in the folder it opens on), or you pick
+	// one. The Commander edition only asks for the folder.
+	if edition::edition() == "commander" {
+		return pick_game_folder();
+	}
 	let get = "Download Community Edition";
 	let answer = rfd::MessageDialog::new()
-		.set_title("Cortex Studio")
+		.set_title(edition::app_name())
 		.set_description("Studio needs a Cortex Command game folder to make mods for. Download Community Edition 6.2.2 (a few hundred MB, into Documents/Cortex Studio), or pick the folder of a game you already have.")
 		.set_buttons(rfd::MessageButtons::YesNoCancelCustom(get.into(), "Pick a folder".into(), "Quit".into()))
 		.show();
@@ -132,13 +137,17 @@ fn pick_game_dir() -> Option<PathBuf> {
 		std::fs::create_dir_all(&dir).ok()?;
 		return Some(dir);
 	}
+	pick_game_folder()
+}
+
+fn pick_game_folder() -> Option<PathBuf> {
 	loop {
 		let picked = rfd::FileDialog::new().set_title("Pick the Cortex Command game folder (the one with Data inside)").pick_folder()?;
 		if is_game_dir(&picked) {
 			return Some(picked);
 		}
 		rfd::MessageDialog::new()
-			.set_title("Cortex Studio")
+			.set_title(edition::app_name())
 			.set_description("That folder has no Data/Base.rte, so it isn't the game folder.")
 			.set_level(rfd::MessageLevel::Warning)
 			.show();
@@ -230,7 +239,7 @@ fn main() {
 			std::process::exit(1);
 		}
 	};
-	println!("Cortex Studio is running for {}", game_dir.display());
+	println!("{} is running for {}", edition::app_name(), game_dir.display());
 	println!("Open: {url}");
 	if watch {
 		println!("Watching Data and Mods: scripts and INI files you save in any editor reload in a game started from Studio.");
@@ -280,7 +289,7 @@ fn main() {
 				// A window is made on the main thread, whichever thread (the server's) asked.
 				let _ = on_main.run_on_main_thread(move || {
 					let _ = tauri::WebviewWindowBuilder::new(&handle, format!("popout-{n}"), tauri::WebviewUrl::External(url))
-						.title("Cortex Studio")
+						.title(edition::app_name())
 						.inner_size(1100.0, 800.0)
 						.min_inner_size(500.0, 400.0)
 						.zoom_hotkeys_enabled(false)
@@ -295,7 +304,7 @@ fn main() {
 				});
 			}));
 			tauri::WebviewWindowBuilder::new(app, "main", tauri::WebviewUrl::External(external.clone()))
-				.title("Cortex Studio")
+				.title(edition::app_name())
 				.inner_size(1500.0, 950.0)
 				.min_inner_size(900.0, 600.0)
 				// Ctrl (Cmd on macOS) + and - zoom and 0 resets, as in a browser, but handled by the page (js/zoom.js), which tells Studio's server, so the

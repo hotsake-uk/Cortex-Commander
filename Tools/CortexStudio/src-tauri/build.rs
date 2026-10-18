@@ -19,6 +19,8 @@ fn build_page() {
 	let built = page.join("dist").join("ModStudio.html");
 	println!("cargo:rerun-if-changed={}", built.display());
 	println!("cargo:rerun-if-env-changed=CORTEX_STUDIO_SKIP_PAGE_BUILD");
+	// the edition (src/edition.rs) is read with option_env!, so a change to it rebuilds
+	println!("cargo:rerun-if-env-changed=CORTEX_STUDIO_EDITION");
 	let started = SystemTime::now() - Duration::from_secs(60);
 	if std::env::var_os("CORTEX_STUDIO_SKIP_PAGE_BUILD").is_some() && page.join("dist").join("ModStudio.html").is_file() {
 		return;

@@ -108,7 +108,8 @@ pub fn config_dir() -> Option<PathBuf> {
 	} else {
 		std::env::var_os("XDG_CONFIG_HOME").map(PathBuf::from).or_else(|| std::env::var_os("HOME").map(|h| PathBuf::from(h).join(".config")))
 	};
-	base.map(|b| b.join("CortexStudio"))
+	// The CE edition keeps its own settings, so it can sit beside the Commander one
+	base.map(|b| b.join(if crate::edition::community() { "CortexStudioCE" } else { "CortexStudio" }))
 }
 
 fn launcher_dir() -> Option<PathBuf> {
