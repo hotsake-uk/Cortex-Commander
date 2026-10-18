@@ -1,4 +1,5 @@
 #include "MovableMan.h"
+#include "DeterminismChecker.h"
 #include "Colony.h"
 
 #include <optional>
@@ -35,6 +36,9 @@
 #include "tracy/Tracy.hpp"
 
 #include <execution>
+#include <cstring>
+#include <format>
+#include <ostream>
 
 using namespace RTE;
 
@@ -90,6 +94,7 @@ MovableMan::~MovableMan() {
 }
 
 void MovableMan::Clear() {
+	m_SimUpdateFrameNumber = 0;
 	m_Actors.clear();
 	m_PublishedThreats.reset();
 	m_PublishedLifts.reset();
@@ -723,6 +728,65 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 	}
 
 	return 0;
+}
+
+void MovableMan::SortAddedMOs() {
+	auto uniqueIDOrder = [](const MovableObject* lhs, const MovableObject* rhs) { return lhs->GetUniqueID() < rhs->GetUniqueID(); };
+	std::sort(m_AddedActors.begin(), m_AddedActors.end(), uniqueIDOrder);
+	std::sort(m_AddedItems.begin(), m_AddedItems.end(), uniqueIDOrder);
+	std::sort(m_AddedParticles.begin(), m_AddedParticles.end(), uniqueIDOrder);
+}
+
+void MovableMan::HashState(StateHasher& hasher) const {
+	auto hashMovableObject = [&hasher](const MovableObject* movableObject) {
+		hasher.Add(movableObject->GetUniqueID());
+		hasher.Add(movableObject->GetPos());
+		hasher.Add(movableObject->GetVel());
+		hasher.Add(movableObject->GetRotAngle());
+		hasher.Add(movableObject->GetAngularVel());
+		hasher.Add(movableObject->IsHFlipped());
+	};
+
+	for (const std::deque<Actor*>* actors: {&m_Actors, &m_AddedActors}) {
+		for (const Actor* actor: *actors) {
+			hashMovableObject(actor);
+			hasher.Add(actor->GetTeam());
+			hasher.Add(actor->GetStatus());
+			hasher.Add(actor->GetHealth());
+		}
+	}
+	for (const std::deque<MovableObject*>* movableObjects: {&m_Items, &m_AddedItems, &m_Particles, &m_AddedParticles}) {
+		for (const MovableObject* movableObject: *movableObjects) {
+			hashMovableObject(movableObject);
+		}
+	}
+}
+
+void MovableMan::DumpState(std::ostream& stream) const {
+	// The exact bits of each float, so a difference in the last place still shows.
+	auto bits = [](float value) {
+		uint32_t result;
+		std::memcpy(&result, &value, sizeof(result));
+		return std::format("{:08x}", result);
+	};
+	auto dumpMovableObject = [&](const MovableObject* movableObject, std::string_view list) {
+		stream << list << ' ' << movableObject->GetUniqueID() << " \"" << movableObject->GetPresetName() << "\" pos " << bits(movableObject->GetPos().m_X) << ' ' << bits(movableObject->GetPos().m_Y)
+		       << " vel " << bits(movableObject->GetVel().m_X) << ' ' << bits(movableObject->GetVel().m_Y) << " rot " << bits(movableObject->GetRotAngle()) << " angvel " << bits(movableObject->GetAngularVel())
+		       << " flip " << movableObject->IsHFlipped();
+	};
+	for (const std::deque<Actor*>* actors: {&m_Actors, &m_AddedActors}) {
+		for (const Actor* actor: *actors) {
+			dumpMovableObject(actor, actors == &m_Actors ? "actor" : "addedactor");
+			stream << " team " << actor->GetTeam() << " status " << static_cast<int>(actor->GetStatus()) << " health " << bits(actor->GetHealth()) << '\n';
+		}
+	}
+	for (const std::deque<MovableObject*>* movableObjects: {&m_Items, &m_AddedItems, &m_Particles, &m_AddedParticles}) {
+		std::string_view list = movableObjects == &m_Items ? "item" : movableObjects == &m_AddedItems ? "addeditem" : movableObjects == &m_Particles ? "particle" : "addedparticle";
+		for (const MovableObject* movableObject: *movableObjects) {
+			dumpMovableObject(movableObject, list);
+			stream << '\n';
+		}
+	}
 }
 
 bool MovableMan::AddMO(MovableObject* movableObjectToAdd) {
@@ -1607,6 +1671,9 @@ void MovableMan::Update() {
 
 	// Finish our Seeing rays from last frame before anything here moves actors or changes m_Actors (the workers index it by position and read actor state).
 	m_ActorsSeeFuture.wait();
+
+	DeterminismCheckSimState("MOs travelled");
+
 	// Nothing else runs now, and the AI threads read the ladders below.
 	AHuman::RefreshLadderNodes();
 	// Nor any script: the units' values as they stand, for the AI scripts on other threads to read this update (GetPublishedNumberValue) while
@@ -1679,6 +1746,8 @@ void MovableMan::Update() {
 	// Updates AI/user input
 	UpdateControllers();
 
+	DeterminismCheckSimState("Controllers updated");
+
 	// Will use some common iterators
 	std::deque<Actor*>::iterator aIt;
 	std::deque<Actor*>::iterator amidIt;
@@ -1712,6 +1781,7 @@ void MovableMan::Update() {
 			                                                     RTEAssert(start + 1 == end, "Threaded script state being updated across multiple threads!");
 			                                                     LuaStateWrapper& luaState = luaStates[start];
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
+			                                                     luaState.SetRunningThreadedUpdate(true);
 
 			                                                     for (MovableObject* mo: luaState.GetRegisteredMOs()) {
 				                                                     if (mo && ValidMO(mo->GetRootParent())) {
@@ -1723,10 +1793,13 @@ void MovableMan::Update() {
 				                                                     }
 			                                                     }
 
+			                                                     luaState.SetRunningThreadedUpdate(false);
 			                                                     g_LuaMan.SetThreadLuaStateOverride(nullptr);
 		                                                     },
 		                                                     luaStates.size()) // One block per state, even with more states than threads.
 		    .wait();
+
+		SortAddedMOs();
 	}
 
 	{
@@ -1764,6 +1837,8 @@ void MovableMan::Update() {
 		}
 	}
 	g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+
+	DeterminismCheckSimState("Threaded scripts updated");
 
 	{
 		{
@@ -1933,6 +2008,8 @@ void MovableMan::Update() {
 			}
 		}
 	} // namespace RTE
+
+	DeterminismCheckSimState("MOs updated");
 
 	//////////////////////////////////////////////////////////////////////
 	// TRANSFER ALL MOs ADDED THIS FRAME
@@ -2163,6 +2240,8 @@ void MovableMan::Update() {
 
 	RebuildDoorList();
 
+	DeterminismCheckSimState("MOs added and removed");
+
 	// Run seeing rays for all actors
 	m_ActorsSeeFuture = g_ThreadMan.GetPriorityThreadPool().parallelize_loop(m_Actors.size(),
 	                                                                         [&](int start, int end) {
@@ -2187,6 +2266,12 @@ void MovableMan::Update() {
 		PerformanceMan::LogScope logScope("Worker thread: MOID drawing");
 		UpdateDrawMOIDs();
 	});
+
+	// TEMP determinism experiment: finish the background work now instead of letting it overlap whatever runs next.
+	if (DeterminismChecker::IsActive() && std::getenv("CCCP_SYNC_SEE")) {
+		m_ActorsSeeFuture.wait();
+		m_DrawMOIDsTask.wait();
+	}
 
 	// The objects used to be drawn in software into the MO color layer here every drawn update. The GPU renderer draws them from their own Draw(camera),
 	// and the only thing that still looks at that layer is the world dump, which draws it when one is taken (FrameMan::DrawWorldDump). In a 500 unit battle this cost 7 to 8 ms an update.
@@ -2285,11 +2370,13 @@ void MovableMan::UpdateControllers() {
 		}
 
 		g_LuaMan.SetThreadLuaStateOverride(&g_LuaMan.GetMasterScriptState());
+		g_LuaMan.GetMasterScriptState().SetRunningAI(true);
 		for (Actor* actor: m_Actors) {
 			if (actor->GetLuaState() == &g_LuaMan.GetMasterScriptState() && actor->GetController()->ShouldUpdateAIThisFrame()) {
 				actor->RunScriptedFunctionInAppropriateScripts("ThreadedUpdateAI", false, true, {}, {}, {});
 			}
 		}
+		g_LuaMan.GetMasterScriptState().SetRunningAI(false);
 		g_LuaMan.SetThreadLuaStateOverride(nullptr);
 
 		LuaStatesArray& luaStates = g_LuaMan.GetThreadedScriptStates();
@@ -2298,20 +2385,31 @@ void MovableMan::UpdateControllers() {
 			                                                     RTEAssert(start + 1 == end, "Threaded script state being updated across multiple threads!");
 			                                                     LuaStateWrapper& luaState = luaStates[start];
 			                                                     g_LuaMan.SetThreadLuaStateOverride(&luaState);
+			                                                     luaState.SetRunningAI(true);
 			                                                     SceneMan::TreesPassable treesPassable;
 			                                                     for (Actor* actor: m_Actors) {
 				                                                     if (actor->GetLuaState() == &luaState && actor->GetController()->ShouldUpdateAIThisFrame()) {
 					                                                     actor->RunScriptedFunctionInAppropriateScripts("ThreadedUpdateAI", false, true, {}, {}, {});
 				                                                     }
 			                                                     }
+			                                                     luaState.SetRunningAI(false);
 			                                                     g_LuaMan.SetThreadLuaStateOverride(nullptr);
 		                                                     },
 		                                                     luaStates.size()) // One block per state, even with more states than threads.
 		    .wait();
 
+		SortAddedMOs();
+
 		for (Actor* actor: m_Actors) {
 			if (actor->GetController()->ShouldUpdateAIThisFrame()) {
+				LuaStateWrapper* luaState = actor->GetLuaState();
+				if (luaState) {
+					luaState->SetRunningAI(true);
+				}
 				actor->RunScriptedFunctionInAppropriateScripts("UpdateAI", false, true, {}, {}, {});
+				if (luaState) {
+					luaState->SetRunningAI(false);
+				}
 			}
 		}
 	}

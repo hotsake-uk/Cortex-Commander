@@ -1,4 +1,5 @@
 #include "FluidSim.h"
+#include "DetMath.h"
 #include "Constants.h"
 #include "ConsoleMan.h"
 #include "EffectsParticles.h"
@@ -507,7 +508,7 @@ namespace {
 			// How far looks and shots go into it: set, or stock, clear water's for any liquid but oil (murky) and lava (molten rock).
 			s_SightDepth[id] = std::max(0, behaviour.SightDepth >= 0 ? behaviour.SightDepth : (kind == Liquid::Lava ? 0 : (kind == Liquid::Oil ? 6 : 200)));
 			s_ShotDepth[id] = std::max(0, behaviour.ShotDepth >= 0 ? behaviour.ShotDepth : (kind == Liquid::Lava ? 10 : (kind == Liquid::Oil ? 30 : 60)));
-			s_ShotDrag[id] = s_ShotDepth[id] > 0 ? std::pow(0.5F, 1.0F / static_cast<float>(s_ShotDepth[id])) : 1.0F;
+			s_ShotDrag[id] = s_ShotDepth[id] > 0 ? DetMath::Pow(0.5F, 1.0F / static_cast<float>(s_ShotDepth[id])) : 1.0F;
 			s_DryChance[id] = s_DriesTo[id] != 0 ? std::clamp(behaviour.DryChance >= 0.0F ? behaviour.DryChance : 0.1F, 0.0F, 1.0F) : 0.0F;
 			// How it is drawn: water, lava and acid by their own looks, oil plain (its dark brown is shared with too many sprites to shimmer), a
 			// liquid of a mod's own as water; and lava glows.
@@ -1250,8 +1251,8 @@ void FluidSim::Froth(const Vector& position, float width, int count, int colorIn
 		int burst = static_cast<int>(visualRandom() * static_cast<float>(bursts)) % bursts;
 		float angle = visualRandom() * 6.2831853F;
 		float radius = burstReach[burst] * std::sqrt(visualRandom());
-		float x = position.m_X + burstX[burst] + std::cos(angle) * radius;
-		float y = position.m_Y + std::sin(angle) * radius * 0.45F - 1.0F;
+		float x = position.m_X + burstX[burst] + DetMath::Cos(angle) * radius;
+		float y = position.m_Y + DetMath::Sin(angle) * radius * 0.45F - 1.0F;
 		EffectsParticles::Emit("Froth", Vector(x, y), Vector(), 0.6F, 1, rgb);
 		// Pixel-sized specks in front of the puffs: a pale one or two hopping off the surface at each, now and then.
 		if (specks > 0.0F && visualRandom() < std::min(0.6F * specks, 1.0F)) {

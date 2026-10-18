@@ -1,4 +1,5 @@
 #include "SandboxInternal.h"
+#include "DetMath.h"
 #include "ActorWater.h"
 #include "MenuMan.h"
 #include "Notices.h"
@@ -1701,14 +1702,14 @@ void Sandbox::DrawGUI() {
 				Vector along = end - s_ShapeStart;
 				float length = along.GetMagnitude();
 				float half = std::max(static_cast<float>(s_LineWidth) * 0.5F, 0.75F);
-				float heading = length > 0.0F ? std::atan2(along.m_Y, along.m_X) : 0.0F;
+				float heading = length > 0.0F ? DetMath::Atan2(along.m_Y, along.m_X) : 0.0F;
 				constexpr int c_CapPoints = 16;
 				ImVec2 points[c_CapPoints * 2];
 				for (int i = 0; i < c_CapPoints; ++i) {
 					// Round the far end from one side to the other, then back round the near end.
 					float turn = heading - c_HalfPI + c_PI * static_cast<float>(i) / static_cast<float>(c_CapPoints - 1);
-					points[i] = ToScreen(end + Vector(std::cos(turn), std::sin(turn)) * half);
-					points[c_CapPoints + i] = ToScreen(s_ShapeStart - Vector(std::cos(turn), std::sin(turn)) * half);
+					points[i] = ToScreen(end + Vector(DetMath::Cos(turn), DetMath::Sin(turn)) * half);
+					points[c_CapPoints + i] = ToScreen(s_ShapeStart - Vector(DetMath::Cos(turn), DetMath::Sin(turn)) * half);
 				}
 				drawList->AddPolyline(points, c_CapPoints * 2, outline, ImDrawFlags_Closed, 1.5F);
 				int degrees = (static_cast<int>(std::lround(-heading * 180.0F / c_PI)) + 360) % 360;
@@ -1719,7 +1720,7 @@ void Sandbox::DrawGUI() {
 				ImVec2 points[c_Points];
 				for (int i = 0; i < c_Points; ++i) {
 					float turn = static_cast<float>(i) / static_cast<float>(c_Points) * 6.2831853F;
-					points[i] = ToScreen(Vector(middleX + std::cos(turn) * (right - left) * 0.5F, (top + bottom) * 0.5F + std::sin(turn) * (bottom - top) * 0.5F));
+					points[i] = ToScreen(Vector(middleX + DetMath::Cos(turn) * (right - left) * 0.5F, (top + bottom) * 0.5F + DetMath::Sin(turn) * (bottom - top) * 0.5F));
 				}
 				drawList->AddPolyline(points, c_Points, outline, ImDrawFlags_Closed, 1.5F);
 			} else if (s_FillShape == FillShape::Triangle) {
@@ -1793,7 +1794,7 @@ void Sandbox::DrawGUI() {
 		float riskPixels = std::max(1.0F, g_SettingsMan.DirectOrders().RiskDragPixels);
 		float dragLength = std::sqrt((now.x - s_DragStart.x) * (now.x - s_DragStart.x) + (now.y - s_DragStart.y) * (now.y - s_DragStart.y));
 		// (On a curve: slow at first and steep at the end, so a long drag is about 70% and full risk, a suicide mission, takes the whole of it.)
-		float risk = std::pow(std::clamp(dragLength / riskPixels, 0.0F, 1.0F), 1.6F);
+		float risk = DetMath::Pow(std::clamp(dragLength / riskPixels, 0.0F, 1.0F), 1.6F);
 		const bool suicide = risk >= g_SettingsMan.DirectOrders().StraightFlightRisk;
 		bool riskDragging = riskDrag && std::abs(now.x - s_DragStart.x) + std::abs(now.y - s_DragStart.y) > 8.0F;
 		if (riskDragging) {

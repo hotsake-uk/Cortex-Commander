@@ -150,7 +150,7 @@ function Create(self)
 	
 	self.cooldownTimer = Timer();
 	if self:NumberValueExists("cooldownTimer") then
-		self.cooldownTimer.ElapsedRealTimeMS = self:GetNumberValue("cooldownTimer");
+		self.cooldownTimer.ElapsedSimTimeMS = self:GetNumberValue("cooldownTimer");
 		self:RemoveNumberValue("cooldownTimer");
 	end
 
@@ -158,7 +158,7 @@ function Create(self)
 	
 	self.orderTimer = Timer();
 	if self:NumberValueExists("orderTimer") then
-		self.cooldownTimer.ElapsedRealTimeMS = self:GetNumberValue("orderTimer");
+		self.cooldownTimer.ElapsedSimTimeMS = self:GetNumberValue("orderTimer");
 		self:RemoveNumberValue("orderTimer");
 	end
 
@@ -343,8 +343,8 @@ end
 function OnSave(self)
 	self.saveLoadHandler:SaveMOLocally(self, "savedConsoleMO", self.console);
 	self:SetNumberValue("isStayingOpen", self.isStayingOpen and 1 or 0);
-	self:SetNumberValue("cooldownTimer", self.cooldownTimer.ElapsedRealTimeMS);
-	self:SetNumberValue("orderTimer", self.orderTimer.ElapsedRealTimeMS);
+	self:SetNumberValue("cooldownTimer", self.cooldownTimer.ElapsedSimTimeMS);
+	self:SetNumberValue("orderTimer", self.orderTimer.ElapsedSimTimeMS);
 	self:SetNumberValue("orderDelivering", self.orderDelivering and 1 or 0);
 	self:SetNumberValue("currentTeam", self.currentTeam);
 end

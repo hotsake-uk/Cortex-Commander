@@ -3,6 +3,7 @@
 // casts of a spell from a scroll. What each item gives is its PowerupInfo (HeldDevice.h), from its INI; the effects run here.
 
 #include "Actor.h"
+#include "DetMath.h"
 #include "ACrab.h"
 #include "AEJetpack.h"
 #include "AHuman.h"
@@ -224,7 +225,7 @@ void Actor::UpdatePowerups() {
 		}
 		static const unsigned char s_ShieldColor = static_cast<unsigned char>(Color(120, 190, 255).GetIndex());
 		static const unsigned char s_ShieldEdgeColor = static_cast<unsigned char>(Color(200, 230, 255).GetIndex());
-		const float flicker = 0.85F + 0.15F * std::sin(static_cast<float>(now) * 0.02F);
+		const float flicker = 0.85F + 0.15F * DetMath::Sin(static_cast<float>(now) * 0.02F);
 		g_PrimitiveMan.DrawCirclePrimitive(m_Pos, static_cast<int>(radius), s_ShieldEdgeColor);
 		g_PrimitiveMan.DrawCirclePrimitive(m_Pos, static_cast<int>(radius) - 1, s_ShieldColor);
 		g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(120.0F, 190.0F, 255.0F), radius * 1.4F, 0.6F * flicker, LightSource::Objects);

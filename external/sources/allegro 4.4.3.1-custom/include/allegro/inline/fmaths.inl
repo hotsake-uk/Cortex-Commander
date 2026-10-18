@@ -117,8 +117,12 @@ AL_INLINE(fixed, fixsub, (fixed x, fixed y),
  * CVS tree might be worth looking at.
  *
  * PS. Don't move the #ifs inside the AL_INLINE; BCC doesn't like it.
+ *
+ * Cortex Command: the two versions round differently (the double one to the nearest, the integer one down), and MSVC builds count as ALLEGRO_I386 even
+ * for x64, so Windows and Linux got different results from the same numbers, such as a pixel's difference in rotated terrain debris. Every platform with
+ * a 64-bit integer type now uses the integer version, so the simulation gives the same results everywhere.
  */
-#if (defined ALLEGRO_I386) || (!defined LONG_LONG)
+#if (!defined LONG_LONG)
    AL_INLINE(fixed, fixmul, (fixed x, fixed y),
    {
       return ftofix(fixtof(x) * fixtof(y));

@@ -1,4 +1,5 @@
 #include "TerrainFire.h"
+#include "DetMath.h"
 #include "GasGrid.h"
 #include "Constants.h"
 #include "ConsoleMan.h"
@@ -677,7 +678,7 @@ void TerrainFire::Update() {
 			int every = std::max(static_cast<int>((count >= 6 ? 5.0F : 9.0F) / softSmoke), 1);
 			if ((smokeUpdate + position.x * 7 + position.y * 13) % every == 0) {
 				float wind = static_cast<float>(smokeUpdate) * 0.09F + static_cast<float>(position.x) * 0.37F;
-				EffectsParticles::Emit("Smoke", Vector(static_cast<float>(position.x) + std::sin(wind) * 5.0F, static_cast<float>(position.y) - 5.0F), Vector(std::cos(wind) * 1.6F, -1.6F), 0.35F, 1, 0);
+				EffectsParticles::Emit("Smoke", Vector(static_cast<float>(position.x) + DetMath::Sin(wind) * 5.0F, static_cast<float>(position.y) - 5.0F), Vector(DetMath::Cos(wind) * 1.6F, -1.6F), 0.35F, 1, 0);
 			}
 		}
 		// Light (render only, so it may flicker with its own random numbers).

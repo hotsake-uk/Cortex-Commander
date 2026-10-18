@@ -1,4 +1,5 @@
 #include "ACShip.h"
+#include "DetMath.h"
 #include "AirRoute.h"
 
 #include "ADoor.h"
@@ -1125,7 +1126,7 @@ void ACShip::SteerTo(const Vector& target, bool stop, float clearanceScale) {
 	// slow it by: the gravity times the tangent of their tilt, with a margin), or on through it to a route's next point. Slower across while
 	// it has a rise to climb over.
 	const float gravity = std::max(g_SceneMan.GetGlobalAcc().GetMagnitude(), 1.0F);
-	const float brakeAcross = std::max(gravity * std::tan(m_MaxEngineAngle * c_PI / 180.0F) * 0.6F, 0.5F);
+	const float brakeAcross = std::max(gravity * DetMath::Tan(m_MaxEngineAngle * c_PI / 180.0F) * 0.6F, 0.5F);
 	const float across = std::abs(toAim.m_X) / c_PPM;
 	float wantX = stop ? std::min({m_FlightSpeed, std::sqrt(2.0F * brakeAcross * across), across * 1.2F}) : std::min(m_FlightSpeed, across * 1.2F + m_FlightSpeed * 0.5F);
 	if (const float climb = m_Pos.m_Y - floor; climb > radius * 0.5F) {
@@ -1793,7 +1794,7 @@ long ACShip::FindGunTarget(const Turret* turret) const {
 		if (distance >= bestDistance || toTarget.m_X * flip <= 0.0F) {
 			continue;
 		}
-		float angle = std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X));
+		float angle = DetMath::Atan2(-toTarget.m_Y, std::abs(toTarget.m_X));
 		if (std::abs(Wrapped(angle - rotationFacing)) > m_GunAimRange) {
 			continue;
 		}
@@ -1843,7 +1844,7 @@ void ACShip::UpdateGuns() {
 			}
 			if (Vector analogAim = m_Controller.GetAnalogAim(); analogAim.MagnitudeIsGreaterThan(0.1F)) {
 				// (Across the ship, the gun stays at the end of its swing on that side, up or down.)
-				gun.AimAngle = std::atan2(-analogAim.m_Y, std::max(analogAim.m_X * flip, 0.0F));
+				gun.AimAngle = DetMath::Atan2(-analogAim.m_Y, std::max(analogAim.m_X * flip, 0.0F));
 			}
 			fire = m_Controller.IsState(WEAPON_FIRE);
 			gun.TargetID = 0;
@@ -1864,7 +1865,7 @@ void ACShip::UpdateGuns() {
 			float suppressRadius = 0.0F;
 			if (target && !target->IsDead()) {
 				Vector toTarget = g_SceneMan.ShortestDistance(turret->GetPos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
-				float wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * flip, 0.0F));
+				float wanted = DetMath::Atan2(-toTarget.m_Y, std::max(toTarget.m_X * flip, 0.0F));
 				gun.AimAngle += std::clamp(Wrapped(wanted - gun.AimAngle), -m_GunTurnSpeed * deltaTime, m_GunTurnSpeed * deltaTime);
 				fire = std::abs(Wrapped(wanted - gun.AimAngle)) < 0.1F;
 			} else if (GetSuppressZone(suppressCentre, suppressRadius)) {
@@ -1876,7 +1877,7 @@ void ACShip::UpdateGuns() {
 					gun.SuppressPoint = suppressCentre + Vector(RandomNum(-1.0F, 1.0F) * suppressRadius, RandomNum(-0.5F, 0.5F) * suppressRadius);
 				}
 				Vector toPoint = g_SceneMan.ShortestDistance(turret->GetPos(), gun.SuppressPoint);
-				float angle = std::atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
+				float angle = DetMath::Atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
 				if (toPoint.m_X * flip > 0.0F && toPoint.MagnitudeIsLessThan(m_GunRange) && std::abs(Wrapped(angle - rotationFacing)) <= m_GunAimRange) {
 					gun.AimAngle += std::clamp(Wrapped(angle - gun.AimAngle), -m_GunTurnSpeed * deltaTime, m_GunTurnSpeed * deltaTime);
 					fire = std::abs(Wrapped(angle - gun.AimAngle)) < 0.1F;
@@ -1899,7 +1900,7 @@ void ACShip::UpdateGuns() {
 			} else if (!gun.SuppressPoint.IsZero()) {
 				reach = std::min(reach, g_SceneMan.ShortestDistance(turret->GetPos(), gun.SuppressPoint).GetMagnitude());
 			}
-			const Vector ray(std::cos(gun.AimAngle) * flip * reach, -std::sin(gun.AimAngle) * reach);
+			const Vector ray(DetMath::Cos(gun.AimAngle) * flip * reach, -DetMath::Sin(gun.AimAngle) * reach);
 			fire = !FriendInLineOfFire(this, m_Team, turret->GetPos(), ray);
 		}
 		for (HeldDevice* device: turret->GetMountedDevices()) {

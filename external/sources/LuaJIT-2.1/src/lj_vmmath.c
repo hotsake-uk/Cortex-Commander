@@ -12,6 +12,7 @@
 #include "lj_obj.h"
 #include "lj_ir.h"
 #include "lj_vm.h"
+#include "lj_detmath.h"
 
 /* -- Wrapper functions --------------------------------------------------- */
 
@@ -55,7 +56,7 @@ double lj_vm_foldarith(double x, double y, int op)
   case IR_MUL - IR_ADD: return x*y; break;
   case IR_DIV - IR_ADD: return x/y; break;
   case IR_MOD - IR_ADD: return x-lj_vm_floormul(x, y); break;
-  case IR_POW - IR_ADD: return pow(x, y); break;
+  case IR_POW - IR_ADD: return rte_detmath_pow(x, y); break;
   case IR_NEG - IR_ADD: return -x; break;
   case IR_ABS - IR_ADD: return fabs(x); break;
 #if LJ_HASJIT
@@ -86,12 +87,6 @@ int32_t LJ_FASTCALL lj_vm_modi(int32_t a, int32_t b)
 
 #if LJ_HASJIT
 
-#ifdef LUAJIT_NO_LOG2
-double lj_vm_log2(double a)
-{
-  return log(a) * 1.4426950408889634074;
-}
-#endif
 
 /* Computes fpm(x) for extended math functions. */
 double lj_vm_foldfpm(double x, int fpm)
@@ -101,7 +96,7 @@ double lj_vm_foldfpm(double x, int fpm)
   case IRFPM_CEIL: return lj_vm_ceil(x);
   case IRFPM_TRUNC: return lj_vm_trunc(x);
   case IRFPM_SQRT: return sqrt(x);
-  case IRFPM_LOG: return log(x);
+  case IRFPM_LOG: return rte_detmath_log(x);
   case IRFPM_LOG2: return lj_vm_log2(x);
   default: lj_assertX(0, "bad fpm %d", fpm);
   }

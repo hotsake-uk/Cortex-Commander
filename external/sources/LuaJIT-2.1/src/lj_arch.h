@@ -600,6 +600,18 @@
 #define LJ_GC64			0
 #endif
 
+/*
+** Hash tables, functions, userdata and threads by an ID that's kept in them
+** instead of by their address, so that a table with them for keys gets
+** iterated in the same order every run. The ID goes in padding they only
+** have with 64 bit GC references, and the JIT backend has to hash it too.
+*/
+#if LJ_GC64 && (LJ_TARGET_X64 || LJ_TARGET_ARM64)
+#define LJ_HASHID		1
+#else
+#define LJ_HASHID		0
+#endif
+
 /* 2-slot frame info. */
 #if LJ_GC64
 #define LJ_FR2			1
@@ -685,7 +697,8 @@
 #endif
 
 /* Various workarounds for embedded operating systems or weak C runtimes. */
-#if defined(__ANDROID__) || defined(__symbian__) || LJ_TARGET_XBOX360 || LJ_TARGET_WINDOWS
+/* Cortex Command: not for Windows, as log2 is the engine's own everywhere (see lj_detmath.h), and math.log with a base has to work it out the same way on every platform. */
+#if defined(__ANDROID__) || defined(__symbian__) || LJ_TARGET_XBOX360
 #define LUAJIT_NO_LOG2
 #endif
 #if LJ_TARGET_CONSOLE || (LJ_TARGET_IOS && __IPHONE_OS_VERSION_MIN_REQUIRED >= __IPHONE_8_0)

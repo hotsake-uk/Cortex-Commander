@@ -1,0 +1,224 @@
+#include "DeterminismChecker.h"
+
+#include "ActivityMan.h"
+#include "ConsoleMan.h"
+#include "LuaMan.h"
+#include "MovableMan.h"
+#include "SceneMan.h"
+#include "TimerMan.h"
+
+#include "ActorFire.h"
+#include "AirPressure.h"
+#include "FluidSim.h"
+#include "GasGrid.h"
+#include "RopeSim.h"
+#include "SmokeGrid.h"
+#include "SoftBodySim.h"
+#include "TerrainCandle.h"
+#include "TerrainCollapse.h"
+#include "TerrainFire.h"
+#include "TerrainGrazing.h"
+#include "ThreatMemory.h"
+
+#include "Activity.h"
+#include "Scene.h"
+#include "SLTerrain.h"
+#include "MovableObject.h"
+
+#include "RTEError.h"
+#include "RTETools.h"
+#include "System.h"
+
+#include "allegro.h"
+
+#include <cstdlib>
+
+#include <format>
+#include <iostream>
+
+using namespace RTE;
+
+DeterminismChecker::Mode DeterminismChecker::s_Mode = Mode::Inactive;
+bool DeterminismChecker::s_Diverged = false;
+std::string DeterminismChecker::s_TraceFilePath;
+std::fstream DeterminismChecker::s_TraceFile;
+std::thread::id DeterminismChecker::s_MainThreadID;
+
+void DeterminismChecker::StartRecording(const std::string& traceFilePath) {
+	OpenTraceFile(traceFilePath, std::ios::out | std::ios::trunc);
+	s_Mode = Mode::Recording;
+}
+
+void DeterminismChecker::StartVerifying(const std::string& traceFilePath) {
+	OpenTraceFile(traceFilePath, std::ios::in);
+	s_Mode = Mode::Verifying;
+}
+
+void DeterminismChecker::OpenTraceFile(const std::string& traceFilePath, std::ios::openmode openMode) {
+	s_TraceFilePath = traceFilePath;
+	s_TraceFile.open(traceFilePath, openMode);
+	if (!s_TraceFile.is_open()) {
+		// This happens before there are any managers around to report through, and carrying on without checking anything would look just like a run that passed.
+		RTEError::ShowMessageBox("Failed to open the determinism trace file \"" + traceFilePath + "\"!");
+		std::exit(EXIT_FAILURE);
+	}
+	s_MainThreadID = std::this_thread::get_id();
+}
+
+void DeterminismChecker::Stop() {
+	if (!IsActive()) {
+		return;
+	}
+
+	if (g_SceneMan.GetScene()) {
+		CheckpointSimState("End of run", true);
+	}
+
+	std::string remainingCheckpoint;
+	if (s_Mode == Mode::Verifying && !s_Diverged && std::getline(s_TraceFile, remainingCheckpoint)) {
+		ReportDivergence(remainingCheckpoint, "Nothing, this run ended before the recorded one did.");
+	}
+
+	s_TraceFile.close();
+	s_Mode = Mode::Inactive;
+}
+
+void DeterminismChecker::SubmitCheckpoint(std::string_view label, uint64_t hash) {
+	RTEAssert(std::this_thread::get_id() == s_MainThreadID, "Determinism checkpoints can only be made from the main thread, as there's no telling which order they would get made in otherwise!");
+
+	std::string checkpoint = std::format("{} {:016x} {}", g_TimerMan.GetSimUpdateCount(), hash, label);
+
+	if (s_Mode == Mode::Recording) {
+		s_TraceFile << checkpoint << "\n";
+	} else if (!s_Diverged) {
+		std::string expectedCheckpoint;
+		if (!std::getline(s_TraceFile, expectedCheckpoint)) {
+			ReportDivergence("Nothing, the recorded run ended before this one did.", checkpoint);
+		} else if (checkpoint != expectedCheckpoint) {
+			ReportDivergence(expectedCheckpoint, checkpoint);
+		}
+	}
+}
+
+void DeterminismChecker::CheckpointSimState(std::string_view label) {
+	CheckpointSimState(label, g_TimerMan.GetSimUpdateCount() % GetSceneCheckInterval() == 0);
+}
+
+void DeterminismChecker::CheckpointSimState(std::string_view label, bool checkSceneLayers) {
+	Checkpoint(std::format("{} - RNG", label), g_RandomGenerator.PeekNext());
+
+	Checkpoint(std::format("{} - Master Lua state RNG", label), g_LuaMan.GetMasterScriptState().GetRandomGenerator().PeekNext());
+	const LuaStatesArray& luaStates = g_LuaMan.GetThreadedScriptStates();
+	for (size_t i = 0; i < luaStates.size(); ++i) {
+		Checkpoint(std::format("{} - Lua state {} RNG", label, i), luaStates[i].GetRandomGenerator().PeekNext());
+	}
+
+	StateHasher movableObjectsHasher;
+	g_MovableMan.HashState(movableObjectsHasher);
+	Checkpoint(std::format("{} - MovableObjects", label), movableObjectsHasher.GetHash());
+
+	// For finding which object two platforms' runs differ on: CCCP_DUMP_MOS_AT names a sim update to write every object's state out at, at each checkpoint, next to the trace.
+	if (const char* dumpAt = std::getenv("CCCP_DUMP_MOS_AT"); dumpAt && g_TimerMan.GetSimUpdateCount() == std::atoll(dumpAt)) {
+		std::ofstream dump(s_TraceFilePath + ".mos", std::ios::app);
+		dump << "== " << label << '\n';
+		g_MovableMan.DumpState(dump);
+	}
+
+	// Unique IDs are handed out from a counter that is never reset, and are used as seeds and sort keys, so the count has to match too.
+	Checkpoint(std::format("{} - Unique ID counter", label), MovableObject::GetUniqueIDCounterHash());
+
+	if (const Activity* activity = g_ActivityMan.GetActivity()) {
+		StateHasher activityHasher;
+		activityHasher.Add(activity->GetActivityState());
+		for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+			activityHasher.Add(activity->GetTeamFunds(team));
+		}
+		Checkpoint(std::format("{} - Activity", label), activityHasher.GetHash());
+	}
+
+	if (checkSceneLayers) {
+		CheckpointSceneLayers(label);
+	}
+}
+
+void DeterminismChecker::CheckpointWorldSystems(std::string_view label) {
+	auto checkpointSystem = [label](std::string_view systemName, void (*hashState)(StateHasher&)) {
+		StateHasher hasher;
+		hashState(hasher);
+		Checkpoint(std::format("{} - {}", label, systemName), hasher.GetHash());
+	};
+	checkpointSystem("Gas", &GasGrid::HashState);
+	checkpointSystem("Air pressure", &AirPressure::HashState);
+	checkpointSystem("Smoke", &SmokeGrid::HashState);
+	checkpointSystem("Burning units", &ActorFire::HashState);
+	checkpointSystem("Threat memory", &ThreatMemory::HashState);
+
+	if (g_TimerMan.GetSimUpdateCount() % GetSceneCheckInterval() == 0) {
+		// These only gather their state up as text for saving, which is too slow to do every update. Liquids and falling ground live in the terrain, which the scene layers check covers.
+		Checkpoint(std::format("{} - Liquids", label), FluidSim::GetSaveState());
+		Checkpoint(std::format("{} - Terrain fire", label), TerrainFire::GetSaveState());
+		Checkpoint(std::format("{} - Candles", label), TerrainCandle::GetSaveState());
+		Checkpoint(std::format("{} - Ropes", label), RopeSim::GetSaveState());
+		Checkpoint(std::format("{} - Soft bodies", label), SoftBodySim::GetSaveState());
+		Checkpoint(std::format("{} - Grazing", label), TerrainGrazing::GetSaveState());
+		Checkpoint(std::format("{} - Falling ground hold zones", label), TerrainCollapse::GetHoldZonesSaveState());
+	}
+}
+
+int DeterminismChecker::GetSceneCheckInterval() {
+	// CCCP_SCENE_CHECK_INTERVAL checks the scene more often, to narrow down when two runs' terrain first differs. Both runs need the same value.
+	static const int interval = [] {
+		const char* value = std::getenv("CCCP_SCENE_CHECK_INTERVAL");
+		return value && std::atoi(value) > 0 ? std::atoi(value) : c_SceneCheckInterval;
+	}();
+	return interval;
+}
+
+void DeterminismChecker::CheckpointSceneLayers(std::string_view label) {
+	Scene* scene = g_SceneMan.GetScene();
+	if (!scene) {
+		return;
+	}
+
+	auto hashBitmap = [](BITMAP* bitmap) {
+		StateHasher hasher;
+		size_t bytesPerLine = static_cast<size_t>(bitmap->w) * (bitmap_color_depth(bitmap) / 8);
+		for (int y = 0; y < bitmap->h; ++y) {
+			hasher.AddBytes(bitmap->line[y], bytesPerLine);
+		}
+		return hasher.GetHash();
+	};
+
+	BITMAP* materialBitmap = scene->GetTerrain()->GetMaterialBitmap();
+	Checkpoint(std::format("{} - Terrain material", label), hashBitmap(materialBitmap));
+
+	// For finding where two platforms' terrain differs: CCCP_DUMP_TERRAIN_AT names a sim update to write the raw material layer out at, next to the trace, as width, height and then one byte per pixel.
+	if (const char* dumpAt = std::getenv("CCCP_DUMP_TERRAIN_AT"); dumpAt && g_TimerMan.GetSimUpdateCount() == std::atoll(dumpAt) && label == "MOs travelled") {
+		std::ofstream dump(s_TraceFilePath + ".terrain", std::ios::binary);
+		int32_t size[2] = {materialBitmap->w, materialBitmap->h};
+		dump.write(reinterpret_cast<const char*>(size), sizeof(size));
+		size_t bytesPerLine = static_cast<size_t>(materialBitmap->w) * (bitmap_color_depth(materialBitmap) / 8);
+		for (int y = 0; y < materialBitmap->h; ++y) {
+			dump.write(reinterpret_cast<const char*>(materialBitmap->line[y]), bytesPerLine);
+		}
+	}
+
+	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
+		if (const SceneLayer* unseenLayer = scene->GetUnseenLayer(team)) {
+			Checkpoint(std::format("{} - Team {} unseen layer", label, team + 1), hashBitmap(unseenLayer->GetBitmap()));
+		}
+	}
+}
+
+void DeterminismChecker::ReportDivergence(const std::string& expectedCheckpoint, const std::string& actualCheckpoint) {
+	s_Diverged = true;
+
+	// Checkpoints are written out as the sim update they were made in, the hash of the checked values, and the label.
+	std::string report = "Determinism break! This run diverged from the one recorded in \"" + s_TraceFilePath + "\".\nExpected: " + expectedCheckpoint + "\nGot:      " + actualCheckpoint;
+
+	g_ConsoleMan.PrintString("ERROR: " + report);
+	// The console can't be seen from the outside, so also report it in a way that whatever launched this run can pick up.
+	std::cerr << report << std::endl;
+
+	System::SetQuit();
+}

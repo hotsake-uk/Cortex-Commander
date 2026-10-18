@@ -12,6 +12,7 @@
 #include "BS_thread_pool.hpp"
 
 #include <mutex>
+#include <iosfwd>
 #include <shared_mutex>
 #include <map>
 #include <future>
@@ -36,6 +37,7 @@ namespace RTE {
 	class SceneObject;
 	class Box;
 	class LuabindObjectWrapper;
+	class StateHasher;
 
 	/// A struct to keep all data about a an alarming event for the AI Actors.
 	struct AlarmEvent {
@@ -311,6 +313,18 @@ namespace RTE {
 		/// @return The number of particles.
 		long GetParticleCount() const { return m_Particles.size(); }
 
+		/// Adds the state of all the MovableObjects currently held to a hash, for checking whether two runs of the simulation match.
+		/// @param hasher The StateHasher to add the state to.
+		void HashState(StateHasher& hasher) const;
+
+		/// Writes out every MovableObject's checked state as text, one per line, to compare two platforms' runs object by object.
+		/// @param stream The stream to write to.
+		void DumpState(std::ostream& stream) const;
+
+		/// Sorts the MOs waiting to be added by unique ID. Scripts on different Lua states add MOs at the same time in their threaded updates, in whatever order the threads happen to get there,
+		/// and unique IDs say which thread an MO was made on and how many that thread had made before it, so this puts them in the same order every time.
+		void SortAddedMOs();
+
 		/// Gets the global setting for how much splash MOPixels should be created
 		/// an MO penetrates the terrain deeply.
 		/// @return A float with the global splash amount setting, form 1.0 to 0.0.
@@ -577,6 +591,9 @@ namespace RTE {
 		/// Returns the current sim update frame number
 		/// @return Current sim update frame number.
 		unsigned int GetSimUpdateFrameNumber() const { return m_SimUpdateFrameNumber; }
+
+		/// Starts the count of sim updates GetSimUpdateFrameNumber gives over, as is done when an Activity starts, so what's scheduled by it plays out the same however much was played before.
+		void ResetSimUpdateFrameNumber() { m_SimUpdateFrameNumber = 0; }
 
 		/// Gets where every team's units stood when last published (see PublishThreats), for a route search to keep its searcher clear of its
 		/// enemies. The field is never changed once published: hold the pointer for as long as it's read, on any thread.

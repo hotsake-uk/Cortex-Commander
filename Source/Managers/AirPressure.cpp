@@ -1,4 +1,6 @@
 #include "AirPressure.h"
+#include "DetMath.h"
+#include "DeterminismChecker.h"
 #include "ADoor.h"
 #include "Actor.h"
 #include "Atom.h"
@@ -328,7 +330,7 @@ void AirPressure::BlowSmoke(long long update) {
 		}
 		const Vector& position = particle->GetPos();
 		bool sheltered = IsSheltered(position, wind);
-		float swirl = std::sin(position.m_X * 0.03F + position.m_Y * 0.05F + time);
+		float swirl = DetMath::Sin(position.m_X * 0.03F + position.m_Y * 0.05F + time);
 		Vector velocity = particle->GetVel();
 		if (sheltered) {
 			// Behind a wall or a ridge: the air turns over, back against the wind and up and down.
@@ -556,7 +558,7 @@ void AirPressure::Update() {
 		int originY = cell / s_GridWidth;
 		int reach = static_cast<int>(gust.Length) / c_Cell + 1;
 		float strength = gust.Strength * GetOverall();
-		float cosSpread = std::cos(gust.Spread);
+		float cosSpread = DetMath::Cos(gust.Spread);
 		for (int dy = -reach; dy <= reach; ++dy) {
 			for (int dx = -reach; dx <= reach; ++dx) {
 				int x = originX + dx;
@@ -630,4 +632,16 @@ void AirPressure::Update() {
 		ThrowLiquid(update);
 	}
 	FollowWaves();
+}
+
+void AirPressure::HashState(StateHasher& hasher) {
+	hasher.Add(s_GridWidth);
+	hasher.Add(s_GridHeight);
+	hasher.Add(s_Left);
+	hasher.Add(s_Right);
+	hasher.Add(s_Top);
+	hasher.Add(s_Bottom);
+	hasher.AddBytes(s_Pressure.data(), s_Pressure.size() * sizeof(float));
+	hasher.AddBytes(s_FlowX.data(), s_FlowX.size() * sizeof(float));
+	hasher.AddBytes(s_FlowY.data(), s_FlowY.size() * sizeof(float));
 }

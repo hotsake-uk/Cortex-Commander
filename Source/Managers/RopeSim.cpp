@@ -1,4 +1,5 @@
 #include "RopeSim.h"
+#include "DetMath.h"
 #include "ActorFire.h"
 #include "AirPressure.h"
 #include "Camera.h"
@@ -684,7 +685,7 @@ namespace {
 					// Carried along at the wind's speed, and turning over in it a little.
 					float speedX = velocity.x / std::max(seconds, 1e-4F);
 					accel.x += (wind - speedX) * type.WindCatch * s_Reaction;
-					accel.y += std::sin(node.Pos.x * 0.03F + node.Pos.y * 0.05F + time) * std::abs(wind) * 0.15F * type.WindCatch * s_Reaction;
+					accel.y += DetMath::Sin(node.Pos.x * 0.03F + node.Pos.y * 0.05F + time) * std::abs(wind) * 0.15F * type.WindCatch * s_Reaction;
 				}
 			}
 			if (s_Hot[material]) {
@@ -1084,7 +1085,7 @@ namespace {
 			}
 			if (lights < 64 && i % 3 == 0) {
 				++lights;
-				float flicker = 0.8F + 0.2F * std::sin(static_cast<float>(update) * 0.7F + static_cast<float>(i));
+				float flicker = 0.8F + 0.2F * DetMath::Sin(static_cast<float>(update) * 0.7F + static_cast<float>(i));
 				g_PostProcessMan.RegisterLight(ToVector(node.Pos), glm::vec3(255.0F, 140.0F, 50.0F), 30.0F, 0.35F * flicker, LightSource::Fire);
 			}
 			if (node.Burn >= type.BurnSeconds) {
@@ -1580,7 +1581,7 @@ void RopeSim::Draw(const Camera& camera) {
 					lastX = x;
 					lastY = y;
 					const Node& near = t < 0.5F ? a : b;
-					float flicker = 0.5F + 0.5F * std::sin(time * 0.6F + s * 0.9F);
+					float flicker = 0.5F + 0.5F * DetMath::Sin(time * 0.6F + s * 0.9F);
 					switch (type.Style) {
 						case Look::Twisted: {
 							// The strands twist along it: each pixel's shade follows the twist, the second row half a twist on.
@@ -1644,7 +1645,7 @@ void RopeSim::Draw(const Camera& camera) {
 					// A flickering tongue a few pixels high over the burning point.
 					int x = static_cast<int>(std::floor(node.Pos.x + shift));
 					int y = static_cast<int>(std::floor(node.Pos.y));
-					int height = 1 + static_cast<int>((std::sin(time * 0.9F + static_cast<float>(i) * 1.7F) * 0.5F + 0.5F) * 3.0F);
+					int height = 1 + static_cast<int>((DetMath::Sin(time * 0.9F + static_cast<float>(i) * 1.7F) * 0.5F + 0.5F) * 3.0F);
 					for (int up = 1; up <= height; ++up) {
 						put(x, y - up, up == height ? glm::vec3(255.0F, 120.0F, 40.0F) : glm::vec3(255.0F, 220.0F, 110.0F));
 					}

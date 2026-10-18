@@ -106,7 +106,8 @@ void WindowMan::Destroy() {
 
 void WindowMan::Initialize() {
 	const char* background = std::getenv("CCCP_BACKGROUND");
-	m_Background = background && background[0] != '0';
+	// Headless runs show nothing, so their window is a hidden background one.
+	m_Background = (background && background[0] != '0') || System::IsInHeadlessMode();
 	if (m_Background) {
 		m_Fullscreen = false;
 	}

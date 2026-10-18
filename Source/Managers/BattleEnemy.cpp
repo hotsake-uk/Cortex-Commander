@@ -4,6 +4,7 @@
 // are marked where they'll land, and said, a few seconds before they come in, so you can scatter.
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -303,7 +304,7 @@ namespace SandboxDetail {
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 		const float scale = ScenePixelsPerWindowPixel();
 		const long long now = g_TimerMan.GetSimUpdateCount();
-		const float pulse = 0.6F + 0.4F * std::sin(static_cast<float>(ImGui::GetTime()) * 8.0F);
+		const float pulse = 0.6F + 0.4F * DetMath::Sin(static_cast<float>(ImGui::GetTime()) * 8.0F);
 		for (const Strike& strike: s_Strikes) {
 			const Vector onScreen = FromCamera(strike.At);
 			const ImVec2 at(ViewOrigin().x + onScreen.m_X / scale, ViewOrigin().y + onScreen.m_Y / scale);

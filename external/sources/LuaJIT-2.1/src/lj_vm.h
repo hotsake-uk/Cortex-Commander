@@ -75,11 +75,9 @@ LJ_ASMF double lj_vm_floor_sf(double);
 LJ_ASMF double lj_vm_ceil_sf(double);
 #endif
 #endif
-#ifdef LUAJIT_NO_LOG2
-LJ_ASMF LJ_CONSTF double lj_vm_log2(double);
-#else
-#define lj_vm_log2	log2
-#endif
+/* Cortex Command: the engine's deterministic log2 (see lj_detmath.h). */
+#include "lj_detmath.h"
+#define lj_vm_log2	rte_detmath_log2
 #if !(defined(_LJ_DISPATCH_H) && LJ_TARGET_MIPS)
 LJ_ASMF int32_t LJ_FASTCALL lj_vm_modi(int32_t, int32_t);
 #endif

@@ -1,4 +1,5 @@
 #include "Actor.h"
+#include "DetMath.h"
 #include "ModStudioPreview.h"
 #include <sstream>
 #include "ThreatMemory.h"
@@ -2645,7 +2646,7 @@ void Actor::UpdateHeadlamp() {
 		Vector eyePos = GetEyePos();
 		float aimAngle = GetAimAngle(true);
 		// CC angles are counter-clockwise with Y up; screen space is Y down.
-		Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
+		Vector direction(DetMath::Cos(aimAngle), -DetMath::Sin(aimAngle));
 		// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
 		glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
 		if (m_HeadlampHasColor) {
@@ -2672,10 +2673,10 @@ void Actor::UpdateOutlineGlow() {
 	float brightness = std::min(lighting.UnitOutlineGlow, 2.0F);
 	if (m_Highlighted && m_HighlightTeamColor) {
 		color = sideColors[std::clamp(m_Team, -1, 3) + 1];
-		brightness *= 0.6F + 0.4F * std::sin(PostProcessMan::GetEffectTime() * 5.0F);
+		brightness *= 0.6F + 0.4F * DetMath::Sin(PostProcessMan::GetEffectTime() * 5.0F);
 	} else if (m_Highlighted) {
 		color = glm::vec3(0.9F, 0.55F, 0.72F);
-		brightness *= 0.7F + 0.3F * std::sin(PostProcessMan::GetEffectTime() * 6.0F);
+		brightness *= 0.7F + 0.3F * DetMath::Sin(PostProcessMan::GetEffectTime() * 6.0F);
 	} else if (lighting.UnitOutline && lighting.UnitOutlineOpacity > 0.0F) {
 		color = lighting.UnitOutlineTeamColor ? sideColors[std::clamp(m_Team, -1, 3) + 1] : glm::clamp(lighting.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F));
 	} else {
@@ -2707,7 +2708,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	const Vector eyes = GetEyePos();
 	// The aim and the facing, as directions on screen (angles are counter-clockwise with Y up).
 	const float aimAngle = GetAimAngle(true);
-	const Vector aimDirection(std::cos(aimAngle), -std::sin(aimAngle));
+	const Vector aimDirection(DetMath::Cos(aimAngle), -DetMath::Sin(aimAngle));
 	const Vector facing(m_HFlipped ? -1.0F : 1.0F, 0.0F);
 	const float halfField = std::clamp(fovDegrees, 10.0F, 360.0F) * 0.5F;
 	// Sharp aim: a narrow look down the aim (a fifth of the field, 4 degrees at least) that reaches half as far again, as down a scope.
@@ -2718,7 +2719,7 @@ std::vector<ActorSighting>& Actor::ScanForEnemies(float fovDegrees, float range,
 	const float narrowReach = sharp ? reach * 1.5F : reach;
 	auto degreesBetween = [](const Vector& a, const Vector& b) {
 		float cosine = std::clamp((a.m_X * b.m_X + a.m_Y * b.m_Y) / std::max(a.GetMagnitude() * b.GetMagnitude(), 0.0001F), -1.0F, 1.0F);
-		return std::acos(cosine) * 180.0F / c_PI;
+		return DetMath::Acos(cosine) * 180.0F / c_PI;
 	};
 
 	struct Candidate {
@@ -3460,7 +3461,7 @@ void Actor::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whichScr
 		draw_sprite(pTargetBitmap, m_apSelectArrow[m_Team], cpuPos.m_X, EaseOut(drawPos.m_Y + m_HUDStack - 60, drawPos.m_Y + m_HUDStack - 20, m_NewControlTmr.GetElapsedSimTimeMS() / (float)ARROWTIME));
 	} else if (m_SandboxSelected) {
 		// Selected in the sandbox: the same arrow, bobbing over the head for as long as it's selected, with a glow so it shows against anything.
-		float bob = std::sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.006F) * 3.0F;
+		float bob = DetMath::Sin(static_cast<float>(g_TimerMan.GetSimTimeMS()) * 0.006F) * 3.0F;
 		int arrowY = drawPos.GetFloorIntY() + m_HUDStack - 20 + static_cast<int>(bob);
 		int team = std::clamp(m_Team, 0, std::max(0, static_cast<int>(m_apSelectArrow.size()) - 1));
 		if (team >= 0 && !m_apSelectArrow.empty()) {

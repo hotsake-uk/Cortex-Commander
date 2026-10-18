@@ -5,6 +5,7 @@
 // game, with the units each has made.
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 #include "Notices.h"
 
 namespace SandboxDetail {
@@ -95,7 +96,7 @@ namespace SandboxDetail {
 			const float radius = static_cast<float>(std::clamp(point.Settings.Radius, 10, 400));
 			for (int i = 0; i < 16; ++i) {
 				const float angle = static_cast<float>(i) * c_TwoPI / 16.0F;
-				zone.emplace_back(point.Pos.m_X + std::cos(angle) * radius, point.Pos.m_Y + std::sin(angle) * radius);
+				zone.emplace_back(point.Pos.m_X + DetMath::Cos(angle) * radius, point.Pos.m_Y + DetMath::Sin(angle) * radius);
 			}
 			return zone;
 		}
@@ -248,7 +249,7 @@ namespace SandboxDetail {
 			float bestDistance = c_PickPixels;
 			for (const SpawnPoint& point: s_Points) {
 				const ImVec2 onScreen = ToScreen(point.Pos);
-				const float distance = std::hypot(onScreen.x - at.x, onScreen.y - at.y);
+				const float distance = DetMath::Hypot(onScreen.x - at.x, onScreen.y - at.y);
 				if (distance <= bestDistance) {
 					best = point.ID;
 					bestDistance = distance;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include "Serializable.h"
+#include "DetMath.h"
 #include "Singleton.h"
 #include "LightingSettings.h"
 
@@ -177,8 +178,9 @@ namespace RTE {
 		void SetAIUpdateInterval(int newAIUpdateInterval) { m_AIUpdateInterval = newAIUpdateInterval; }
 
 		/// Gets how many threaded Lua states we'll use. -1 represents no override, which defaults to the maximum number of concurrent hardware threads.
+		/// There is always an override while determinism is being checked, because scripted objects get spread out over the Lua states, so how many there are can't be left up to the machine.
 		/// @return How many threaded Lua states we'll use.
-		int GetNumberOfLuaStatesOverride() const { return m_NumberOfLuaStatesOverride; }
+		int GetNumberOfLuaStatesOverride() const;
 
 		/// Gets whether pathing requests will be forced to immediately complete for the next frame, or if they can take multiple frames to calculate.
 		/// @return Whether pathing requests will be forced to immediately complete for the next frame
@@ -562,7 +564,7 @@ namespace RTE {
 		int AISpawnDiggerType() const { return m_AISpawnDiggerType; }
 
 		/// The recklessness as a multiplier on the AI's movement caution: 2 at the careful end, 1 as designed, 0.5 at the reckless end.
-		float AIMoveCaution() const { return std::pow(2.0F, (0.5F - m_AIRecklessness) * 2.0F); }
+		float AIMoveCaution() const { return DetMath::Pow(2.0F, (0.5F - m_AIRecklessness) * 2.0F); }
 
 		/// Whether AI units stand still and upright before a jetpack climb or jump (on, as designed), or take off mid-stride.
 		bool AISteadiesBeforeJet() const { return m_AISteadyBeforeJet; }

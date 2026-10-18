@@ -1954,7 +1954,7 @@ function RefineryAssault:MonitorStage9()
 		self.stage9FinalTimer = Timer();
 		
 		-- ideally this would be SimMS but...
-	elseif self.stage9FinalTimer and self.stage9FinalTimer:IsPastRealMS(21000) then
+	elseif self.stage9FinalTimer and self.stage9FinalTimer:IsPastSimMS(21000) then
 	
 		self.Stage = 10;
 		MovableMan:SendGlobalMessage("Refinery_S10SpawnBoss", self.aiTeam);

@@ -646,7 +646,8 @@ bool RTEError::DumpAbortScreen() {
 }
 
 bool RTEError::DumpAbortSave() {
-	if (std::this_thread::get_id() != s_MainThreadID) {
+	// Headless runs are automated, so they shouldn't get to overwrite an abort save from an actual play session.
+	if (std::this_thread::get_id() != s_MainThreadID || System::IsInHeadlessMode()) {
 		return false;
 	}
 	bool success = false;

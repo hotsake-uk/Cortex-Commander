@@ -31,7 +31,7 @@ function Create(self)
 	
 	self.cooldownTimer = Timer();
 	if self:NumberValueExists("cooldownTimer") then
-		self.cooldownTimer.ElapsedRealTimeMS = self:GetNumberValue("cooldownTimer");
+		self.cooldownTimer.ElapsedSimTimeMS = self:GetNumberValue("cooldownTimer");
 		self:RemoveNumberValue("cooldownTimer");
 	end
 	
@@ -150,7 +150,7 @@ function SyncedUpdate(self)
 end
 
 function OnSave(self)
-	self:SetNumberValue("cooldownTimer", self.cooldownTimer.ElapsedRealTimeMS);
+	self:SetNumberValue("cooldownTimer", self.cooldownTimer.ElapsedSimTimeMS);
 	self:SetNumberValue("itemsDispensed", self.itemsDispensed);
 	self:SetNumberValue("Deactivated", self.Deactivated and 1 or 0);
 end

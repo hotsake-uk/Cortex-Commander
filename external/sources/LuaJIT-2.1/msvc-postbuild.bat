@@ -28,7 +28,10 @@ cd %~dp0\src\
 
 %LJCOMPILE% luajit.c
 @if errorlevel 1 goto :BAD
-%LJLINK% /out:luajit.exe luajit.obj %LJLIBNAME%
+@rem Cortex Command: the library calls the engine's deterministic maths, which this test link gets stand-ins for.
+%LJCOMPILE% host\detmath_stub.c
+@if errorlevel 1 goto :BAD
+%LJLINK% /out:luajit.exe luajit.obj detmath_stub.obj %LJLIBNAME%
 @if errorlevel 1 goto :BAD
 if exist luajit.exe.manifest^
   %LJMT% -manifest luajit.exe.manifest -outputresource:luajit.exe

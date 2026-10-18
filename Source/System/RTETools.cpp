@@ -1,4 +1,5 @@
 #include "RTETools.h"
+#include "DetMath.h"
 
 #include "Vector.h"
 #include "Matrix.h"
@@ -11,11 +12,18 @@
 namespace RTE {
 
 	RandomGenerator g_RandomGenerator;
+	RandomGenerator g_DrawRandomGenerator;
 
 	namespace {
 		std::atomic<std::thread::id> s_SimThread{}; //!< The thread SeedRNG was last called on.
 		std::atomic<uint32_t> s_OtherThreadGenerators{0}; //!< How many other threads have made their own generator, to seed each one differently.
+		uint32_t s_SeedOffset = 0; //!< Added to the simulation's seed, set by the -seed launch argument.
+		thread_local RandomGenerator* s_ThreadRandomGenerator = nullptr; //!< The generator set for this thread with SetThreadRandomGenerator, if any.
 	} // namespace
+
+	void SetThreadRandomGenerator(RandomGenerator* randomGenerator) {
+		s_ThreadRandomGenerator = randomGenerator;
+	}
 
 	void SeedRNG() {
 		// Use a constant seed for determinism.
@@ -35,11 +43,19 @@ namespace RTE {
 			return static_cast<uint32_t>(seedResult);
 		}();
 
-		g_RandomGenerator.Seed(constSeed);
+		g_RandomGenerator.Seed(constSeed + s_SeedOffset);
+		g_DrawRandomGenerator.Seed(constSeed);
 		s_SimThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
 	}
 
+	void SetRNGSeedOffset(uint32_t seedOffset) {
+		s_SeedOffset = seedOffset;
+	}
+
 	RandomGenerator& ThisThreadsRandomGenerator() {
+		if (s_ThreadRandomGenerator) {
+			return *s_ThreadRandomGenerator;
+		}
 		if (std::this_thread::get_id() == s_SimThread.load(std::memory_order_relaxed)) {
 			return g_RandomGenerator;
 		}
@@ -79,7 +95,7 @@ namespace RTE {
 			return end;
 		}
 		float t = 1 - progressScalar;
-		return (end - start) * (std::sin(-t * c_HalfPI) + 1) + start;
+		return (end - start) * (DetMath::Sin(-t * c_HalfPI) + 1) + start;
 	}
 
 	float EaseOut(float start, float end, float progressScalar) {
@@ -88,11 +104,11 @@ namespace RTE {
 		} else if (progressScalar >= 1.0F) {
 			return end;
 		}
-		return (end - start) * -std::sin(-progressScalar * c_HalfPI) + start;
+		return (end - start) * -DetMath::Sin(-progressScalar * c_HalfPI) + start;
 	}
 
 	float EaseInOut(float start, float end, float progressScalar) {
-		return start * (2 * std::pow(progressScalar, 3) - 3 * std::pow(progressScalar, 2) + 1) + end * (3 * std::pow(progressScalar, 2) - 2 * std::pow(progressScalar, 3));
+		return start * (2 * DetMath::Pow(progressScalar, 3) - 3 * DetMath::Pow(progressScalar, 2) + 1) + end * (3 * DetMath::Pow(progressScalar, 2) - 2 * DetMath::Pow(progressScalar, 3));
 	}
 
 	bool Clamp(float& value, float upperLimit, float lowerLimit) {
@@ -181,7 +197,7 @@ namespace RTE {
 			floatStream << std::fixed << std::setprecision(precision) << input;
 			return floatStream.str();
 		} else {
-			float precisionMagnitude = std::pow(10.0F, static_cast<float>(precision));
+			float precisionMagnitude = DetMath::Pow(10.0F, static_cast<float>(precision));
 			RTEAssert(precisionMagnitude < std::numeric_limits<float>::max(), "Precision set greater than able to display (exponent too high)!");
 			RTEAssert(precisionMagnitude > 0, "Negative precision will yield divide by zero error!");
 			RTEAssert(input < (std::numeric_limits<float>::max() / precisionMagnitude), "Value will exceed numeric limits with precision " + std::to_string(precision));

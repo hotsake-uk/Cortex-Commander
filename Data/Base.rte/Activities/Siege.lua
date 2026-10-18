@@ -311,7 +311,7 @@ function Siege:UpdateActivity()
 		end
 	end
 
-	if self.WinTimer:IsPastRealMS(3000) then
+	if self.WinTimer:IsPastSimMS(3000) then
 		-- Check win conditions
 		self.WinTimer:Reset();
 

@@ -1,6 +1,7 @@
 // Changing the world: painting and building, effects, incoming fire, lightning, spawning units, items and structures, and the stroke queue that applies every tool use.
 
 #include "SandboxInternal.h"
+#include "DetMath.h"
 #include "ModernHUD.h"
 #include "GasGrid.h"
 #include "TerrainTrees.h"
@@ -129,7 +130,7 @@ namespace SandboxDetail {
 		g_PostProcessMan.RegisterShimmer(position, radius * 0.6F, 1.0F);
 		for (int i = 0; i < 14; ++i) {
 			float angle = 6.2832F * (static_cast<float>(i) + Random01()) / 14.0F;
-			Vector ray(std::cos(angle), std::sin(angle));
+			Vector ray(DetMath::Cos(angle), DetMath::Sin(angle));
 			switch (shape) {
 				case ForceShape::Out:
 					EffectsParticles::Emit("Dust", position + ray * (radius * 0.15F), ray * (speed * 0.3F), 0.4F, 3, 0);
@@ -1644,10 +1645,10 @@ namespace SandboxDetail {
 			const EffectLayer& layer = effect.Layers[i];
 			const Vector where = at + Vector(layer.OffsetX, layer.OffsetY);
 			const float angle = (layer.Angle + layer.Spin * phase) * 0.0174533F;
-			const Vector direction(std::sin(angle), -std::cos(angle));
+			const Vector direction(DetMath::Sin(angle), -DetMath::Cos(angle));
 			float brightness = layer.Intensity * (1.0F - layer.Flicker * Random01());
 			if (layer.Pulse > 0.0F) {
-				brightness *= 0.5F + 0.5F * std::sin(phase * layer.Pulse * 6.2832F);
+				brightness *= 0.5F + 0.5F * DetMath::Sin(phase * layer.Pulse * 6.2832F);
 			}
 			const glm::vec3 colour(layer.Colour[0] * 255.0F, layer.Colour[1] * 255.0F, layer.Colour[2] * 255.0F);
 			const unsigned int rgb = layer.OwnColour ? ((static_cast<unsigned int>(std::clamp(layer.Colour[0], 0.0F, 1.0F) * 255.0F) << 16) | (static_cast<unsigned int>(std::clamp(layer.Colour[1], 0.0F, 1.0F) * 255.0F) << 8) | static_cast<unsigned int>(std::clamp(layer.Colour[2], 0.0F, 1.0F) * 255.0F)) : 0U;
@@ -2102,7 +2103,7 @@ namespace SandboxDetail {
 			}
 			switch (effect.Kind) {
 				case EffectKind::NuclearGlow:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(80.0F, 255.0F, 60.0F), 320.0F, 2.2F + 0.7F * std::sin(phase * 1.7F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(80.0F, 255.0F, 60.0F), 320.0F, 2.2F + 0.7F * DetMath::Sin(phase * 1.7F), LightSource::Sandbox);
 					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 255.0F, 130.0F), 70.0F, 3.0F, LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at, 90.0F, 0.7F);
 					if (every(5)) {
@@ -2121,7 +2122,7 @@ namespace SandboxDetail {
 					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -90.0F), glm::vec3(195.0F, 215.0F, 255.0F), 560.0F, 0.12F + effect.Flash * 7.0F, LightSource::Sandbox);
 					break;
 				case EffectKind::RedAlarm: {
-					Vector direction(std::cos(phase * 4.0F), std::sin(phase * 4.0F));
+					Vector direction(DetMath::Cos(phase * 4.0F), DetMath::Sin(phase * 4.0F));
 					g_PostProcessMan.RegisterConeLight(at, direction, 26.0F, glm::vec3(255.0F, 28.0F, 18.0F), 280.0F, 3.2F, LightSource::Sandbox);
 					g_PostProcessMan.RegisterConeLight(at, direction * -1.0F, 26.0F, glm::vec3(255.0F, 28.0F, 18.0F), 280.0F, 3.2F, LightSource::Sandbox);
 					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 40.0F, 25.0F), 26.0F, 1.5F, LightSource::Sandbox);
@@ -2136,15 +2137,15 @@ namespace SandboxDetail {
 					break;
 				}
 				case EffectKind::BlueBeacon:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(40.0F, 120.0F, 255.0F), 220.0F, 0.2F + 3.0F * std::pow(std::max(std::sin(phase * 2.6F), 0.0F), 4.0F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(40.0F, 120.0F, 255.0F), 220.0F, 0.2F + 3.0F * DetMath::Pow(std::max(DetMath::Sin(phase * 2.6F), 0.0F), 4.0F), LightSource::Sandbox);
 					break;
 				case EffectKind::Floodlight:
 					g_PostProcessMan.RegisterConeLight(at, Vector(0.0F, 1.0F), 36.0F, glm::vec3(255.0F, 244.0F, 222.0F), 460.0F, 3.2F, LightSource::Sandbox);
 					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 244.0F, 222.0F), 22.0F, 1.6F, LightSource::Sandbox);
 					break;
 				case EffectKind::Searchlight: {
-					float angle = 1.5708F + 0.95F * std::sin(phase * 0.8F);
-					g_PostProcessMan.RegisterConeLight(at, Vector(std::cos(angle), std::sin(angle)), 8.0F, glm::vec3(225.0F, 238.0F, 255.0F), 640.0F, 4.5F, LightSource::Sandbox);
+					float angle = 1.5708F + 0.95F * DetMath::Sin(phase * 0.8F);
+					g_PostProcessMan.RegisterConeLight(at, Vector(DetMath::Cos(angle), DetMath::Sin(angle)), 8.0F, glm::vec3(225.0F, 238.0F, 255.0F), 640.0F, 4.5F, LightSource::Sandbox);
 					g_PostProcessMan.RegisterLight(at, glm::vec3(225.0F, 238.0F, 255.0F), 20.0F, 1.5F, LightSource::Sandbox);
 					break;
 				}
@@ -2156,12 +2157,12 @@ namespace SandboxDetail {
 				case EffectKind::Disco:
 					for (int beam = 0; beam < 3; ++beam) {
 						float angle = phase * (1.3F + 0.4F * static_cast<float>(beam)) * (beam == 1 ? -1.0F : 1.0F) + static_cast<float>(beam) * 2.1F;
-						g_PostProcessMan.RegisterConeLight(at, Vector(std::cos(angle), std::sin(angle)), 14.0F, Hue(phase * 0.25F + static_cast<float>(beam) / 3.0F), 320.0F, 3.4F, LightSource::Sandbox);
+						g_PostProcessMan.RegisterConeLight(at, Vector(DetMath::Cos(angle), DetMath::Sin(angle)), 14.0F, Hue(phase * 0.25F + static_cast<float>(beam) / 3.0F), 320.0F, 3.4F, LightSource::Sandbox);
 					}
 					g_PostProcessMan.RegisterLight(at, Hue(phase * 0.5F), 30.0F, 1.6F, LightSource::Sandbox);
 					break;
 				case EffectKind::Campfire: {
-					float flicker = 0.6F * std::sin(phase * 11.0F) + 0.4F * std::sin(phase * 23.0F + 1.3F);
+					float flicker = 0.6F * DetMath::Sin(phase * 11.0F) + 0.4F * DetMath::Sin(phase * 23.0F + 1.3F);
 					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 150.0F, 60.0F), 160.0F + 10.0F * flicker, 1.7F + 0.45F * flicker, LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -14.0F), 24.0F, 0.5F);
 					if (every(3)) {
@@ -2176,10 +2177,10 @@ namespace SandboxDetail {
 					break;
 				}
 				case EffectKind::Candle:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 180.0F, 95.0F), 62.0F, 1.0F + 0.2F * std::sin(phase * 9.0F) + 0.1F * std::sin(phase * 31.0F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 180.0F, 95.0F), 62.0F, 1.0F + 0.2F * DetMath::Sin(phase * 9.0F) + 0.1F * DetMath::Sin(phase * 31.0F), LightSource::Sandbox);
 					break;
 				case EffectKind::LavaGlow:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 85.0F, 18.0F), 240.0F, 1.7F + 0.35F * std::sin(phase * 0.9F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(255.0F, 85.0F, 18.0F), 240.0F, 1.7F + 0.35F * DetMath::Sin(phase * 0.9F), LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at + Vector(0.0F, -20.0F), 60.0F, 0.6F);
 					if (every(8)) {
 						EffectsParticles::Emit("Embers", at + Vector((Random01() - 0.5F) * 120.0F, 0.0F), Vector(0.0F, -1.0F), 1.0F, 1, 0);
@@ -2194,19 +2195,19 @@ namespace SandboxDetail {
 				case EffectKind::Fireflies:
 					for (int fly = 0; fly < 7; ++fly) {
 						float own = static_cast<float>(fly) * 1.618F + effect.Seed * 6.0F;
-						Vector where = at + Vector(std::sin(phase * (0.5F + 0.13F * static_cast<float>(fly)) + own) * 60.0F, std::cos(phase * (0.37F + 0.09F * static_cast<float>(fly)) + own * 2.0F) * 34.0F);
-						float glow = std::pow(std::max(std::sin(phase * 2.3F + own * 3.0F), 0.0F), 2.0F);
+						Vector where = at + Vector(DetMath::Sin(phase * (0.5F + 0.13F * static_cast<float>(fly)) + own) * 60.0F, DetMath::Cos(phase * (0.37F + 0.09F * static_cast<float>(fly)) + own * 2.0F) * 34.0F);
+						float glow = DetMath::Pow(std::max(DetMath::Sin(phase * 2.3F + own * 3.0F), 0.0F), 2.0F);
 						if (glow > 0.05F) {
 							g_PostProcessMan.RegisterLight(where, glm::vec3(190.0F, 255.0F, 90.0F), 18.0F, 1.6F * glow, LightSource::Sandbox);
 						}
 					}
 					break;
 				case EffectKind::Portal:
-					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 60.0F, 255.0F), 200.0F, 1.8F + 0.8F * std::sin(phase * 3.1F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at, glm::vec3(170.0F, 60.0F, 255.0F), 200.0F, 1.8F + 0.8F * DetMath::Sin(phase * 3.1F), LightSource::Sandbox);
 					g_PostProcessMan.RegisterShimmer(at, 46.0F, 1.2F);
 					if (every(2)) {
 						float angle = Random01() * 6.2832F;
-						EffectsParticles::Emit("Sparks", at + Vector(std::cos(angle), std::sin(angle)) * 30.0F, Vector(-std::cos(angle) * 3.0F, -std::sin(angle) * 3.0F), 0.2F, 1, 0xC070FF);
+						EffectsParticles::Emit("Sparks", at + Vector(DetMath::Cos(angle), DetMath::Sin(angle)) * 30.0F, Vector(-DetMath::Cos(angle) * 3.0F, -DetMath::Sin(angle) * 3.0F), 0.2F, 1, 0xC070FF);
 					}
 					break;
 				case EffectKind::SparkFountain:
@@ -2224,7 +2225,7 @@ namespace SandboxDetail {
 					}
 					break;
 				case EffectKind::SmokePlume:
-					EffectsParticles::Emit("Smoke", at + Vector(std::sin(phase * 5.0F) * 12.0F, -std::fmod(phase * 16.0F, 30.0F)), Vector(std::cos(phase * 5.0F) * 3.0F, -2.5F), 0.4F, 1, 0);
+					EffectsParticles::Emit("Smoke", at + Vector(DetMath::Sin(phase * 5.0F) * 12.0F, -std::fmod(phase * 16.0F, 30.0F)), Vector(DetMath::Cos(phase * 5.0F) * 3.0F, -2.5F), 0.4F, 1, 0);
 					break;
 				case EffectKind::ToxicVent:
 					g_PostProcessMan.RegisterLight(at, glm::vec3(120.0F, 255.0F, 70.0F), 90.0F, 0.9F, LightSource::Sandbox);
@@ -2236,10 +2237,10 @@ namespace SandboxDetail {
 					EffectsParticles::Emit("Mist", at + Vector((Random01() - 0.5F) * 8.0F, 0.0F), Vector((Random01() - 0.5F) * 2.0F, -3.5F), 0.8F, 1, 0);
 					break;
 				case EffectKind::DustDevil:
-					EffectsParticles::Emit("Dust", at + Vector(std::sin(phase * 6.0F) * 14.0F, -std::fmod(phase * 20.0F, 40.0F)), Vector(std::cos(phase * 6.0F) * 4.0F, -3.0F), 0.4F, 1, 0);
+					EffectsParticles::Emit("Dust", at + Vector(DetMath::Sin(phase * 6.0F) * 14.0F, -std::fmod(phase * 20.0F, 40.0F)), Vector(DetMath::Cos(phase * 6.0F) * 4.0F, -3.0F), 0.4F, 1, 0);
 					break;
 				case EffectKind::FireJet:
-					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -20.0F), glm::vec3(255.0F, 140.0F, 50.0F), 130.0F, 1.8F + 0.4F * std::sin(phase * 17.0F), LightSource::Sandbox);
+					g_PostProcessMan.RegisterLight(at + Vector(0.0F, -20.0F), glm::vec3(255.0F, 140.0F, 50.0F), 130.0F, 1.8F + 0.4F * DetMath::Sin(phase * 17.0F), LightSource::Sandbox);
 					if (every(2)) {
 						if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
 							flame->SetPos(at);
@@ -2324,7 +2325,7 @@ namespace SandboxDetail {
 				object->SetVel(velocity);
 				if (incoming.ClassName == "ACDropShip") {
 					// A dropship comes down level but out of control, rocking as it goes.
-					object->SetRotAngle(0.35F * std::sin(static_cast<float>(incoming.Life) * 0.21F) + (direction.m_X > 0.0F ? -0.25F : 0.25F));
+					object->SetRotAngle(0.35F * DetMath::Sin(static_cast<float>(incoming.Life) * 0.21F) + (direction.m_X > 0.0F ? -0.25F : 0.25F));
 				} else {
 					object->SetRotAngle(incoming.ClassName == "ACRocket" ? direction.GetAbsRadAngle() + 1.5708F : direction.GetAbsRadAngle());
 				}
@@ -2869,7 +2870,7 @@ namespace SandboxDetail {
 		if (eightWays) {
 			// The nearest of the 8 ways (0 across, 2 down, 4 back, 6 up, the odd ones slanted); a way the lock rules out gives way to the
 			// nearer slant beside it.
-			float angle = std::atan2(along.m_Y, along.m_X);
+			float angle = DetMath::Atan2(along.m_Y, along.m_X);
 			float steps = angle / (c_PI / 4.0F);
 			int way = (static_cast<int>(std::lround(steps)) % 8 + 8) % 8;
 			bool upDown = way == 2 || way == 6;
@@ -2880,13 +2881,13 @@ namespace SandboxDetail {
 			float length = along.GetMagnitude();
 			if (way % 2 == 0) {
 				float wayAngle = static_cast<float>(way) * (c_PI / 4.0F);
-				along = Vector(std::round(std::cos(wayAngle)), std::round(std::sin(wayAngle))) * length;
+				along = Vector(std::round(DetMath::Cos(wayAngle)), std::round(DetMath::Sin(wayAngle))) * length;
 			} else {
 				// Slanted: as far across as down, the pointer's own distance along it.
 				float wayAngle = static_cast<float>(way) * (c_PI / 4.0F);
-				float reach = (along.m_X * std::cos(wayAngle) + along.m_Y * std::sin(wayAngle)) * 0.70710678F;
+				float reach = (along.m_X * DetMath::Cos(wayAngle) + along.m_Y * DetMath::Sin(wayAngle)) * 0.70710678F;
 				reach = std::max(reach, 0.0F);
-				along = Vector(std::cos(wayAngle) >= 0.0F ? reach : -reach, std::sin(wayAngle) >= 0.0F ? reach : -reach);
+				along = Vector(DetMath::Cos(wayAngle) >= 0.0F ? reach : -reach, DetMath::Sin(wayAngle) >= 0.0F ? reach : -reach);
 			}
 		}
 		if (along.MagnitudeIsGreaterThan(c_MaxLineDrag)) {
@@ -4121,7 +4122,7 @@ namespace SandboxDetail {
 				int extra = stroke.Kind == Tool::Demolition ? 2 : (stroke.Kind == Tool::BunkerBuster ? 5 : 9);
 				for (int i = 0; i < extra; ++i) {
 					float angle = 6.2832F * static_cast<float>(i) / static_cast<float>(extra);
-					Detonate(i % 2 == 0 ? "Standard Bomb" : "Frag Grenade", at + Vector(std::cos(angle), std::sin(angle)) * (static_cast<float>(crater) * 0.6F));
+					Detonate(i % 2 == 0 ? "Standard Bomb" : "Frag Grenade", at + Vector(DetMath::Cos(angle), DetMath::Sin(angle)) * (static_cast<float>(crater) * 0.6F));
 				}
 				break;
 			}

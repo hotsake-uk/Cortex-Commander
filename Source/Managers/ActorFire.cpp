@@ -1,5 +1,7 @@
 #include "EffectsParticles.h"
+#include "DetMath.h"
 #include "ActorFire.h"
+#include "DeterminismChecker.h"
 #include "Activity.h"
 #include "ADoor.h"
 #include "AVehicle.h"
@@ -203,7 +205,7 @@ void ActorFire::Update() {
 	// A unit wreathed in fire (CR-7) glows with it, lighting the dark round it, and licks of flame and embers come off it.
 	for (Actor* source: g_MovableMan.m_Actors) {
 		if (const float aura = source->GetFireAuraRadius(); aura > 0.0F && !source->IsDead()) {
-			const float flicker = 0.85F + 0.15F * std::sin(static_cast<float>(g_TimerMan.GetSimUpdateCount()) * 0.37F);
+			const float flicker = 0.85F + 0.15F * DetMath::Sin(static_cast<float>(g_TimerMan.GetSimUpdateCount()) * 0.37F);
 			g_PostProcessMan.RegisterLight(source->GetPos(), glm::vec3(255.0F, 120.0F, 40.0F), aura * 2.5F, 0.9F * flicker, LightSource::Fire);
 			source->AddHeat(g_TimerMan.GetDeltaTimeSecs() * 2.0F);
 			if (g_TimerMan.GetSimUpdateCount() % 4 == 0) {
@@ -344,7 +346,7 @@ void ActorFire::Update() {
 		// And soft smoke winding up off it (visual only).
 		if (g_PostProcessMan.GetLightingSettings().SoftSmoke > 0.0F) {
 			float wind = static_cast<float>(g_TimerMan.GetSimUpdateCount()) * 0.3F;
-			EffectsParticles::Emit("Smoke", position + Vector(std::sin(wind) * 4.0F, -radius * 0.6F), Vector(std::cos(wind) * 1.5F, -1.8F), 0.35F, 1, 0);
+			EffectsParticles::Emit("Smoke", position + Vector(DetMath::Sin(wind) * 4.0F, -radius * 0.6F), Vector(DetMath::Cos(wind) * 1.5F, -1.8F), 0.35F, 1, 0);
 		}
 		// Running burning units set the grass alight, and anyone they bump into.
 		if (Random01() < 0.3F) {
@@ -384,4 +386,13 @@ void ActorFire::Clear() {
 	s_IgniteQueue.clear();
 	s_DouseQueue.clear();
 	s_AreaQueue.clear();
+}
+
+void ActorFire::HashState(StateHasher& hasher) {
+	hasher.Add(s_Random);
+	for (const Burner& burner: s_Burners) {
+		hasher.Add(burner.ID);
+		hasher.Add(burner.TicksLeft);
+		hasher.Add(burner.PanicTicks);
+	}
 }

@@ -1,4 +1,5 @@
 #include "SmokeGrid.h"
+#include "DeterminismChecker.h"
 #include "GasGrid.h"
 #include "Constants.h"
 #include "Atom.h"
@@ -120,4 +121,10 @@ bool SmokeGrid::BlocksSight(const Vector& from, const Vector& to) {
 		}
 	}
 	return false;
+}
+
+void SmokeGrid::HashState(StateHasher& hasher) {
+	hasher.Add(s_Width);
+	hasher.Add(s_Height);
+	hasher.AddBytes(s_Density.data(), s_Density.size() * sizeof(float));
 }

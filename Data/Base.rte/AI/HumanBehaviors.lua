@@ -2955,7 +2955,7 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 		if Owner.FirearmIsReady then
 			AI.deviceState = AHuman.AIMING;
 			AI.Ctrl.AnalogAim = Vector(1,0):RadRotate(aim+aimError+RangeRand(-0.02, 0.02)*AI.aimSkill);
-			if ShootTimer:IsPastRealMS(aimTime) then
+			if ShootTimer:IsPastSimMS(aimTime) then
 				-- Fire at a place, not a target (AC-8): not the whole magazine sprayed at it. A third is kept for whoever comes out, and
 				-- an automatic fires 300 ms bursts with 400 ms between.
 				if Weapon.RoundInMagCapacity > 0 and Weapon.RoundInMagCount <= Weapon.RoundInMagCapacity * 0.34 then
@@ -2990,7 +2990,7 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 		if _abrt then return true end
 
-		if AI.UnseenTarget and CheckTargetTimer:IsPastRealMS(400*AI.aimSkill) then
+		if AI.UnseenTarget and CheckTargetTimer:IsPastSimMS(400*AI.aimSkill) then
 			if MovableMan:ValidMO(AI.UnseenTarget) and (AI.UnseenTarget.ClassName == "AHuman" or AI.UnseenTarget.ClassName == "ACrab" or AI.UnseenTarget.ClassName == "AMech") then
 				CheckTargetTimer:Reset();
 				if AI.UnseenTarget:GetController() and AI.UnseenTarget:GetController():IsState(Controller.WEAPON_FIRE) then

@@ -1,4 +1,5 @@
 #include "ThreatMemory.h"
+#include "DeterminismChecker.h"
 #include "ACShip.h"
 #include "ACraft.h"
 #include "AVehicle.h"
@@ -256,5 +257,18 @@ void ThreatMemory::Clear() {
 	}
 	for (std::map<long, Memory>& memories: s_Memories) {
 		memories.clear();
+	}
+}
+
+void ThreatMemory::HashState(StateHasher& hasher) {
+	for (const std::map<long, Memory>& teamMemories: s_Memories) {
+		hasher.Add(teamMemories.size());
+		for (const auto& [enemyID, memory]: teamMemories) {
+			hasher.Add(enemyID);
+			hasher.Add(memory.Pos);
+			hasher.Add(memory.SeenUpdate);
+			hasher.Add(memory.SharedUpdate);
+			hasher.Add(memory.PlayerControlled);
+		}
 	}
 }

@@ -82,7 +82,7 @@ function Prospecting:UpdateActivity()
 			for team = Activity.TEAM_1, Activity.MAXTEAMCOUNT - 1 do
 				if self:TeamActive(team) then
 					-- Time to do a scan step?
-					if self.ScanTimer[team]:IsPastRealMS(SceneMan:GetUnseenResolution(team).X * 2) then
+					if self.ScanTimer[team]:IsPastSimMS(SceneMan:GetUnseenResolution(team).X * 2) then
 						-- Scan the column, find the end where the ray is blocked
 						SceneMan:CastSeeRay(team, Vector(self.ScanPosX[team], 0), Vector(0, SceneMan.Scene.Height), self.ScanEndPos, 50, SceneMan:GetUnseenResolution(team).Y / 2);
 						-- Adjust up a bit so one sees more of the sky than blackness
@@ -114,7 +114,7 @@ function Prospecting:UpdateActivity()
 
 		-- After scan, pause for a second before moving on to gameplay
 		elseif self.CurrentScanStage == self.ScanStage.POSTSCAN then
-			if self.ScanTimer[Activity.TEAM_1]:IsPastRealMS(2500) and self.ScanTimer[Activity.TEAM_2]:IsPastRealMS(2500) then
+			if self.ScanTimer[Activity.TEAM_1]:IsPastSimMS(2500) and self.ScanTimer[Activity.TEAM_2]:IsPastSimMS(2500) then
 				for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
 					if self:PlayerActive(player) and self:PlayerHuman(player) then
 						FrameMan:ClearScreenText(self:ScreenOfPlayer(player));

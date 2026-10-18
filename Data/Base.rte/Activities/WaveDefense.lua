@@ -43,7 +43,7 @@ function WaveDefense:StartActivity(isNewGame)
 	local spawnIntervalMultiplier = self:GetScenarioSettingOr("SpawnInterval", 1);
 
 	self.PrepareForNextWaveTimer = Timer();
-	self.PrepareForNextWaveTimer:SetRealTimeLimitMS(self:GetScenarioSettingOr("BuildTime", 30) * 1000);
+	self.PrepareForNextWaveTimer:SetSimTimeLimitMS(self:GetScenarioSettingOr("BuildTime", 30) * 1000);
 	self.prepareForNextWave = false;
 
 	self.Fog = self:GetFogOfWarEnabled();
@@ -86,14 +86,14 @@ function WaveDefense:OnSave()
 	self:SaveNumber("wave", self.wave);
 	self:SaveNumber("wavesDefeated", self.wavesDefeated);
 
-	self:SaveNumber("StartTimer", self.StartTimer.ElapsedRealTimeMS);
-	self:SaveNumber("NextWaveTimer", self.NextWaveTimer.ElapsedRealTimeMS);
-	self:SaveNumber("PrepareForNextWaveTimer", self.PrepareForNextWaveTimer.ElapsedRealTimeMS);
+	self:SaveNumber("StartTimer", self.StartTimer.ElapsedSimTimeMS);
+	self:SaveNumber("NextWaveTimer", self.NextWaveTimer.ElapsedSimTimeMS);
+	self:SaveNumber("PrepareForNextWaveTimer", self.PrepareForNextWaveTimer.ElapsedSimTimeMS);
 	self:SaveNumber("prepareForNextWave", self.prepareForNextWave and 1 or 0);
 
-	self:SaveNumber("AI_SpawnTimer", self.AI.SpawnTimer.ElapsedRealTimeMS);
-	self:SaveNumber("AI_BombTimer", self.AI.BombTimer.ElapsedRealTimeMS);
-	self:SaveNumber("AI_HuntTimer", self.AI.HuntTimer.ElapsedRealTimeMS);
+	self:SaveNumber("AI_SpawnTimer", self.AI.SpawnTimer.ElapsedSimTimeMS);
+	self:SaveNumber("AI_BombTimer", self.AI.BombTimer.ElapsedSimTimeMS);
+	self:SaveNumber("AI_HuntTimer", self.AI.HuntTimer.ElapsedSimTimeMS);
 
 	self:SaveNumber("AI_playerValue", self.AI.playerValue or 0);
 	self:SaveNumber("AI_lastWaveValue", self.AI.lastWaveValue or 0);
@@ -130,14 +130,14 @@ function WaveDefense:ResumeLoadedGame()
 	self.wave = self:LoadNumber("wave");
 	self.wavesDefeated = self:LoadNumber("wavesDefeated");
 
-	self.StartTimer.ElapsedRealTimeMS = self:LoadNumber("StartTimer");
-	self.NextWaveTimer.ElapsedRealTimeMS = self:LoadNumber("NextWaveTimer");
-	self.PrepareForNextWaveTimer.ElapsedRealTimeMS = self:LoadNumber("PrepareForNextWaveTimer");
+	self.StartTimer.ElapsedSimTimeMS = self:LoadNumber("StartTimer");
+	self.NextWaveTimer.ElapsedSimTimeMS = self:LoadNumber("NextWaveTimer");
+	self.PrepareForNextWaveTimer.ElapsedSimTimeMS = self:LoadNumber("PrepareForNextWaveTimer");
 	self.prepareForNextWave = self:LoadNumber("prepareForNextWave") == 1;
 
-	self.AI.SpawnTimer.ElapsedRealTimeMS = self:LoadNumber("AI_SpawnTimer");
-	self.AI.BombTimer.ElapsedRealTimeMS = self:LoadNumber("AI_BombTimer");
-	self.AI.HuntTimer.ElapsedRealTimeMS = self:LoadNumber("AI_HuntTimer");
+	self.AI.SpawnTimer.ElapsedSimTimeMS = self:LoadNumber("AI_SpawnTimer");
+	self.AI.BombTimer.ElapsedSimTimeMS = self:LoadNumber("AI_BombTimer");
+	self.AI.HuntTimer.ElapsedSimTimeMS = self:LoadNumber("AI_HuntTimer");
 
 	self.AI.playerValue = self:LoadNumber("AI_playerValue");
 	self.AI.lastWaveValue = self:LoadNumber("AI_lastWaveValue");
@@ -215,10 +215,10 @@ function WaveDefense:UpdateActivity()
 			end
 		end
 	elseif self.prepareForNextWave then
-		if self.PrepareForNextWaveTimer:IsPastRealTimeLimit() then
+		if self.PrepareForNextWaveTimer:IsPastSimTimeLimit() then
 			self.prepareForNextWave = false;
 		else
-			local time = math.floor(self.PrepareForNextWaveTimer:LeftTillRealTimeLimitMS() / 1000);
+			local time = math.floor(self.PrepareForNextWaveTimer:LeftTillSimTimeLimitMS() / 1000);
 			for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
 				if self:PlayerActive(player) and self:PlayerHuman(player) then
 					FrameMan:SetScreenText("The next wave arrive in "..time.." seconds. Press [Space] to enter edit mode.", self:ScreenOfPlayer(player), 0, 100, false);
@@ -316,7 +316,7 @@ function WaveDefense:UpdateActivity()
 		local playertally = 0;
 		for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
 			if self:PlayerActive(player) and self:PlayerHuman(player) then
-				if not self.StartTimer:IsPastRealMS(3000) then
+				if not self.StartTimer:IsPastSimMS(3000) then
 					FrameMan:SetScreenText("Survive wave "..self.wave, self:ScreenOfPlayer(player), 333, 5000, true);
 				end
 
@@ -366,7 +366,7 @@ function WaveDefense:UpdateActivity()
 
 		-- Win/Lose Conditions player vs player
 		if self.wavesDefeated >= self.wave then
-			if self.NextWaveTimer:IsPastRealMS(3000) then
+			if self.NextWaveTimer:IsPastSimMS(3000) then
 				self.wave = self.wave + 1;
 				self.triggerWaveInit = true;
 				self.prepareForNextWave = true;

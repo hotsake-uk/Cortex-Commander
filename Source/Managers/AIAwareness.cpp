@@ -4,6 +4,7 @@
 // they are only read and drawn, with ImGui at window resolution over player 1's view, as the modern HUD is.
 
 #include "AIAwareness.h"
+#include "DetMath.h"
 
 #include "Activity.h"
 #include "ActivityMan.h"
@@ -195,7 +196,7 @@ namespace {
 		for (int i = 0; i < cone.Rays; ++i) {
 			const float angle = -cone.HalfAngle + 2.0F * cone.HalfAngle * static_cast<float>(i) / static_cast<float>(cone.Rays - 1);
 			const float length = reach * cone.Hit[i];
-			points[i] = ImVec2(eye.x + std::cos(angle) * length * cone.Facing, eye.y + std::sin(angle) * length);
+			points[i] = ImVec2(eye.x + DetMath::Cos(angle) * length * cone.Facing, eye.y + DetMath::Sin(angle) * length);
 			along[i] = cone.Hit[i];
 		}
 		// The fan: brightest at the eyes, fading out with distance, so where a wall cuts a ray short it stays brighter there.
@@ -234,7 +235,7 @@ namespace {
 		const ImU32 color = StateColor(state, 255);
 		if (state == ActorAwareness::Noticing) {
 			// A "?" in a ring that fills as it notices; nearly there, it throbs.
-			const float throb = level > 0.7F ? 0.08F * std::sin(time * 14.0F) : 0.0F;
+			const float throb = level > 0.7F ? 0.08F * DetMath::Sin(time * 14.0F) : 0.0F;
 			radius *= 1.0F + throb;
 			drawList->AddCircleFilled(at, radius, IM_COL32(12, 10, 4, static_cast<int>(170 * alpha)), 24);
 			drawList->AddCircle(at, radius, IM_COL32(255, 255, 255, static_cast<int>(45 * alpha)), 24, 0.16F * u);
@@ -245,7 +246,7 @@ namespace {
 			OutlinedText(drawList, ImVec2(at.x + 0.5F, at.y), 1.05F * u, WithAlpha(color, alpha * (0.65F + 0.35F * level)), "?");
 		} else if (state == ActorAwareness::Searching) {
 			// A "?" in a ring with a gap going round: looking about. It bobs a little.
-			at.y += std::sin(time * 4.0F) * 0.12F * u;
+			at.y += DetMath::Sin(time * 4.0F) * 0.12F * u;
 			drawList->AddCircleFilled(at, radius, IM_COL32(14, 8, 2, static_cast<int>(170 * alpha)), 24);
 			const float start = time * 3.0F;
 			drawList->PathArcTo(at, radius, start, start + c_PI * 1.55F, 24);
@@ -412,7 +413,7 @@ namespace {
 		const float alpha = 0.95F;
 		if (spotted) {
 			// A glow throbbing behind the eye while you are being fought.
-			const float throb = 0.5F + 0.5F * std::sin(time * 9.0F);
+			const float throb = 0.5F + 0.5F * DetMath::Sin(time * 9.0F);
 			drawList->AddCircleFilled(at, 1.35F * u, IM_COL32(255, 60, 40, static_cast<int>(70 + 60 * throb)), 28);
 		}
 		DrawEye(drawList, at, u, hidden.Cloaked ? 0.5F : 0.15F + 0.85F * visibility, color, iris, hidden.Cloaked, alpha);
@@ -506,7 +507,7 @@ void AIAwareness::UpdateCone(Actor& actor) {
 	cone.AtMS = now;
 	for (int i = 0; i < cone.Rays; ++i) {
 		const float angle = -cone.HalfAngle + 2.0F * cone.HalfAngle * static_cast<float>(i) / static_cast<float>(cone.Rays - 1);
-		const Vector ray(std::cos(angle) * reach * cone.Facing, std::sin(angle) * reach);
+		const Vector ray(DetMath::Cos(angle) * reach * cone.Facing, DetMath::Sin(angle) * reach);
 		Vector hit;
 		// (Through grass, as the scan's own looks go.)
 		if (reach > 1.0F && g_SceneMan.CastStrengthRay(eye, ray, 0.0F, hit, 2, g_MaterialGrass)) {

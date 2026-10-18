@@ -1,6 +1,7 @@
 #pragma once
 
 namespace RTE {
+	class StateHasher;
 	class Material;
 	class MovableObject;
 	class Vector;
@@ -34,6 +35,10 @@ namespace RTE {
 
 		/// Burns, spreads and puts out fire on units. Call once per sim update, from the main thread, after the terrain fire update.
 		static void Update();
+
+		/// Adds the state of this to a hash, for checking whether two runs of the simulation match.
+		/// @param hasher The StateHasher to add the state to.
+		static void HashState(StateHasher& hasher);
 
 		/// Gets whether something is on fire.
 		static bool IsBurning(const MovableObject* object);

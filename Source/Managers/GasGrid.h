@@ -3,6 +3,7 @@
 #include <functional>
 
 namespace RTE {
+	class StateHasher;
 	class Vector;
 
 	/// Gas as a grid element (SB-6): smoke, toxic gas, methane and steam held in a coarse grid over the scene. Each spreads through open air
@@ -52,6 +53,10 @@ namespace RTE {
 
 		/// Advances the gas one simulation step. Call once per sim update, from the main thread.
 		static void Update();
+
+		/// Adds the state of this to a hash, for checking whether two runs of the simulation match.
+		/// @param hasher The StateHasher to add the state to.
+		static void HashState(StateHasher& hasher);
 
 		/// Forgets all gas, e.g. when the scene changes.
 		static void Clear();

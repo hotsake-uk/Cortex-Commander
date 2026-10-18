@@ -1,4 +1,5 @@
 #include "SceneEditor.h"
+#include "DetMath.h"
 
 #include "WindowMan.h"
 #include "PresetMan.h"
@@ -331,7 +332,7 @@ void SceneEditor::Update() {
 
 					// Make random planet coord's for this scene
 					float angle = RandomNum(0.0F, c_TwoPI);
-					Vector pos = Vector((int)(150 * cos(angle)), (int)(150 * sin(angle)));
+					Vector pos = Vector((int)(150 * DetMath::Cos(angle)), (int)(150 * DetMath::Sin(angle)));
 					pNewScene->SetLocation(pos);
 
 					// Actually load the scene's data and set it up as the current scene

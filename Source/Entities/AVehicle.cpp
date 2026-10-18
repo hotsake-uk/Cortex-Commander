@@ -1,4 +1,5 @@
 #include "AVehicle.h"
+#include "DetMath.h"
 
 #include "ACShip.h"
 #include "AEmitter.h"
@@ -1038,7 +1039,7 @@ bool AVehicle::InFiringPosition(const MovableObject* target) const {
 
 bool AVehicle::CanHitFrom(const Vector& gunAt, const Vector& aimAt) const {
 	const Vector toAim = g_SceneMan.ShortestDistance(gunAt, aimAt);
-	const float elevation = std::atan2(-toAim.m_Y, std::abs(toAim.m_X));
+	const float elevation = DetMath::Atan2(-toAim.m_Y, std::abs(toAim.m_X));
 	if (toAim.MagnitudeIsGreaterThan(m_GunRange * 0.85F) || elevation > GetAimRangeUp() || elevation < -m_AimRange) {
 		return false;
 	}
@@ -1429,8 +1430,8 @@ void AVehicle::UpdateAIDriving() {
 
 float AVehicle::GetClimbAngle() const {
 	float gravity = std::max(std::abs(g_SceneMan.GetGlobalAcc().m_Y), 0.01F);
-	float byPower = std::asin(std::clamp(m_Acceleration / gravity, 0.0F, 1.0F));
-	float byGrip = std::atan(std::max(m_Grip, 0.0F));
+	float byPower = DetMath::Asin(std::clamp(m_Acceleration / gravity, 0.0F, 1.0F));
+	float byGrip = DetMath::Atan(std::max(m_Grip, 0.0F));
 	return std::min(byPower, byGrip) * 180.0F / c_PI;
 }
 
@@ -1637,7 +1638,7 @@ long AVehicle::FindGunTargetFacing(float flip) const {
 			}
 		} else {
 			// (Up further than down, for aircraft, when it has AimRangeUp.)
-			float angle = Wrapped(std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X)) - rotationFacing);
+			float angle = Wrapped(DetMath::Atan2(-toTarget.m_Y, std::abs(toTarget.m_X)) - rotationFacing);
 			if (angle > GetAimRangeUp() || angle < -m_AimRange) {
 				continue;
 			}
@@ -1686,7 +1687,7 @@ void AVehicle::UpdateGun() {
 		}
 		if (Vector analogAim = m_Controller.GetAnalogAim(); analogAim.MagnitudeIsGreaterThan(0.1F)) {
 			// (Behind it, the gun stays at the end of its swing on that side, up or down.)
-			m_AimAngle = std::atan2(-analogAim.m_Y, std::max(analogAim.m_X * GetFlipFactor(), 0.0F));
+			m_AimAngle = DetMath::Atan2(-analogAim.m_Y, std::max(analogAim.m_X * GetFlipFactor(), 0.0F));
 		}
 		fire = m_Controller.IsState(WEAPON_FIRE);
 		// A catapult's load is changed as a unit changes what it holds, before it is wound.
@@ -1733,7 +1734,7 @@ void AVehicle::UpdateGun() {
 					Vector lead = target->GetVel() * (toTarget.GetMagnitude() / gun->GetAIFireVel());
 					toTarget += lead.CapMagnitude(toTarget.GetMagnitude() * 0.5F);
 				}
-				wanted = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * GetFlipFactor(), 0.0F));
+				wanted = DetMath::Atan2(-toTarget.m_Y, std::max(toTarget.m_X * GetFlipFactor(), 0.0F));
 				onIt = true;
 			}
 		}
@@ -1752,7 +1753,7 @@ void AVehicle::UpdateGun() {
 				if (lobs) {
 					onIt = std::abs(toPoint.m_X) >= 120.0F && LobAngleTo(toPoint, wanted);
 				} else {
-					wanted = std::atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
+					wanted = DetMath::Atan2(-toPoint.m_Y, std::abs(toPoint.m_X));
 					float off = Wrapped(wanted - rotationFacing);
 					onIt = off <= GetAimRangeUp() && off >= -m_AimRange;
 				}
@@ -1804,7 +1805,7 @@ void AVehicle::UpdateGun() {
 		} else if (!m_SuppressPoint.IsZero()) {
 			reach = std::min(reach, g_SceneMan.ShortestDistance(m_Turret->GetPos(), m_SuppressPoint).GetMagnitude());
 		}
-		const Vector ray(std::cos(m_AimAngle) * GetFlipFactor() * reach, -std::sin(m_AimAngle) * reach);
+		const Vector ray(DetMath::Cos(m_AimAngle) * GetFlipFactor() * reach, -DetMath::Sin(m_AimAngle) * reach);
 		fire = !FriendInLineOfFire(this, m_Team, m_Turret->GetPos(), ray);
 	}
 	for (HeldDevice* device: m_Turret->GetMountedDevices()) {
@@ -1899,7 +1900,7 @@ bool AVehicle::LobAngleTo(const Vector& toTarget, float& angle) const {
 	}
 	float rotationFacing = Wrapped(m_Rotation.GetRadAngle()) * GetFlipFactor();
 	for (float sign: {1.0F, -1.0F}) {
-		float lob = std::atan((v2 + sign * std::sqrt(discriminant)) / (g * x));
+		float lob = DetMath::Atan((v2 + sign * std::sqrt(discriminant)) / (g * x));
 		if (lob - rotationFacing >= m_MinLaunchAngle && lob - rotationFacing <= m_MaxLaunchAngle) {
 			angle = lob;
 			return true;
@@ -1917,7 +1918,7 @@ Vector AVehicle::GetReleasePoint() const {
 }
 
 Vector AVehicle::GetLaunchVelocity(float angle) const {
-	return Vector(std::cos(angle) * GetFlipFactor(), -std::sin(angle)) * m_LaunchSpeed;
+	return Vector(DetMath::Cos(angle) * GetFlipFactor(), -DetMath::Sin(angle)) * m_LaunchSpeed;
 }
 
 float AVehicle::GetLaunchGravity() const {
@@ -2400,7 +2401,7 @@ bool AVehicle::UpdateHull() {
 		if (rowing || std::abs(Wrapped(m_StrokePhase)) > 0.2F) {
 			m_StrokePhase = Wrapped(m_StrokePhase + c_TwoPI * deltaTime * 1000.0F / m_RowingStroke);
 		}
-		power = std::max(std::sin(m_StrokePhase), 0.0F) * 1.6F;
+		power = std::max(DetMath::Sin(m_StrokePhase), 0.0F) * 1.6F;
 		// Each blade's dip leaves froth where it goes in.
 		if (pushing && before < 0.0F && m_StrokePhase >= 0.0F && m_Oar) {
 			Vector blade = m_Oar->GetPos() + Vector(0.0F, static_cast<float>(m_Oar->GetSpriteHeight()) * 0.4F).GetRadRotatedCopy(m_Oar->GetRotAngle());
@@ -2513,7 +2514,7 @@ void AVehicle::Update() {
 	UpdateHull();
 	if (m_Oar) {
 		// Back and forth with the stroke: the blade goes from forward to back as it pulls, and forward again through the air.
-		float swing = m_RowingStroke > 0.0F ? std::cos(m_StrokePhase) * m_OarSweep : 0.0F;
+		float swing = m_RowingStroke > 0.0F ? DetMath::Cos(m_StrokePhase) * m_OarSweep : 0.0F;
 		m_Oar->SetInheritedRotAngleOffset(swing * GetFlipFactor());
 	}
 	UpdateGun();

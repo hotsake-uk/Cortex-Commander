@@ -281,8 +281,7 @@ void LuaStateWrapper::Initialize() {
 	luabind::globals(m_State)["LuaMan"] = this;
 	luabind::globals(m_State)["SettingsMan"] = &g_SettingsMan;
 
-	const uint64_t seed = RandomNum<uint64_t>(0, std::numeric_limits<uint64_t>::max());
-	m_RandomGenerator.Seed(seed);
+	SeedRandomGenerators();
 
 	luaL_dostring(m_State,
 	              "package.path = package.path .. \";Data/Base.rte/LuaIntegration/?.lua;Data/Base.rte/LuaIntegration/?/?.lua;\"\n"
@@ -441,20 +440,34 @@ void LuaStateWrapper::Destroy() {
 	lua_close(m_State);
 }
 
+void LuaStateWrapper::SeedRandomGenerators() {
+	m_RandomGenerator.Seed(RandomNum<uint64_t>(0, std::numeric_limits<uint64_t>::max()));
+	m_AIRandomGenerator.Seed(RandomNum<uint64_t>(0, std::numeric_limits<uint64_t>::max()));
+}
+
+void LuaStateWrapper::SetRunningAI(bool runningAI) {
+	m_RunningAI = runningAI;
+	SetThreadRandomGenerator(runningAI ? &m_AIRandomGenerator : nullptr);
+}
+
+void LuaStateWrapper::SetRunningThreadedUpdate(bool runningThreadedUpdate) {
+	SetThreadRandomGenerator(runningThreadedUpdate ? &m_RandomGenerator : nullptr);
+}
+
 int LuaStateWrapper::SelectRand(int minInclusive, int maxInclusive) {
-	return m_RandomGenerator.RandomNum<int>(minInclusive, maxInclusive);
+	return GetActiveRandomGenerator().RandomNum<int>(minInclusive, maxInclusive);
 }
 
 double LuaStateWrapper::RangeRand(double minInclusive, double maxInclusive) {
-	return m_RandomGenerator.RandomNum<double>(minInclusive, maxInclusive);
+	return GetActiveRandomGenerator().RandomNum<double>(minInclusive, maxInclusive);
 }
 
 double LuaStateWrapper::NormalRand() {
-	return m_RandomGenerator.RandomNormalNum<double>();
+	return GetActiveRandomGenerator().RandomNormalNum<double>();
 }
 
 double LuaStateWrapper::PosRand() {
-	return m_RandomGenerator.RandomNum<double>();
+	return GetActiveRandomGenerator().RandomNum<double>();
 }
 
 // Passthrough LuaMan Functions
@@ -490,6 +503,9 @@ void LuaMan::Initialize() {
 	} else if (g_SettingsMan.GetNumberOfLuaStatesOverride() != -1) {
 		luaStateCount = g_SettingsMan.GetNumberOfLuaStatesOverride();
 	}
+
+	// Each threaded Lua state hands out unique IDs to the MOs made on its thread from a range of its own, and there's only so many of those ranges.
+	luaStateCount = std::min(luaStateCount, MovableObject::c_MaxUniqueIDThreadedStates);
 
 	m_ScriptStates = std::vector<LuaStateWrapper>(luaStateCount);
 	for (LuaStateWrapper& luaState: m_ScriptStates) {
@@ -1454,6 +1470,14 @@ bool LuaMan::FileEOF(int fileIndex) {
 	}
 	g_ConsoleMan.PrintString("ERROR: Tried to check EOF for an invalid or closed file.");
 	return false;
+}
+
+void LuaMan::ResetForActivityStart() {
+	m_MasterScriptState.SeedRandomGenerators();
+	for (LuaStateWrapper& luaState: m_ScriptStates) {
+		luaState.SeedRandomGenerators();
+	}
+	m_LastAssignedLuaState = 0;
 }
 
 void LuaMan::Update() {

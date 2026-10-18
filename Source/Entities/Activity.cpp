@@ -1,4 +1,5 @@
 #include "Activity.h"
+#include "LuaMan.h"
 
 #include "CameraMan.h"
 #include "PresetMan.h"
@@ -297,6 +298,8 @@ int Activity::Save(Writer& writer) const {
 int Activity::Start() {
 	// Reseed the RNG for determinism
 	SeedRNG();
+	g_LuaMan.ResetForActivityStart();
+	g_MovableMan.ResetSimUpdateFrameNumber();
 
 	if (m_ActivityState != ActivityState::Editing) {
 		m_ActivityState = ActivityState::Running;

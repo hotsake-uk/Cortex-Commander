@@ -1,4 +1,5 @@
 #include "CrewSeats.h"
+#include "DetMath.h"
 
 #include "AHuman.h"
 #include "ActivityMan.h"
@@ -533,7 +534,7 @@ void CrewSeats::UpdatePassengerFire() {
 			}
 			if (Vector analogAim = controller->GetAnalogAim(); analogAim.MagnitudeIsGreaterThan(0.1F)) {
 				// (Behind it, the aim stays at the end of its swing on that side, up or down.)
-				aim = std::atan2(-analogAim.m_Y, std::max(analogAim.m_X * m_Host->GetFlipFactor(), 0.0F));
+				aim = DetMath::Atan2(-analogAim.m_Y, std::max(analogAim.m_X * m_Host->GetFlipFactor(), 0.0F));
 			}
 			unit->UpdateFiringFromSeat(aim, controller->IsState(WEAPON_FIRE), controller->IsState(WEAPON_RELOAD), false, m_Host);
 			continue;
@@ -555,7 +556,7 @@ void CrewSeats::UpdatePassengerFire() {
 		if (target) {
 			// At its middle, a little high: the chest more than the legs.
 			Vector toTarget = g_SceneMan.ShortestDistance(unit->GetEyePos(), target->GetPos() - Vector(0.0F, target->GetHeight() * 0.1F));
-			aim = std::atan2(-toTarget.m_Y, std::max(toTarget.m_X * m_Host->GetFlipFactor(), 0.0F));
+			aim = DetMath::Atan2(-toTarget.m_Y, std::max(toTarget.m_X * m_Host->GetFlipFactor(), 0.0F));
 		}
 		unit->UpdateFiringFromSeat(aim, target != nullptr, false, true, m_Host);
 	}
@@ -573,7 +574,7 @@ long CrewSeats::FindPassengerTarget(const Actor* unit) const {
 		}
 		Vector toTarget = g_SceneMan.ShortestDistance(eye, actor->GetPos());
 		// (In front, the way it faces, within the swing of their arm: they can't turn round in the seat.)
-		if (toTarget.m_X * flip <= 0.0F || toTarget.MagnitudeIsGreaterThan(bestDistance) || std::abs(std::atan2(-toTarget.m_Y, std::abs(toTarget.m_X))) > unit->GetAimRange()) {
+		if (toTarget.m_X * flip <= 0.0F || toTarget.MagnitudeIsGreaterThan(bestDistance) || std::abs(DetMath::Atan2(-toTarget.m_Y, std::abs(toTarget.m_X))) > unit->GetAimRange()) {
 			continue;
 		}
 		Vector blocked;

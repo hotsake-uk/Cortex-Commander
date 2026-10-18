@@ -15,6 +15,8 @@
 #include "MovableMan.h"
 #include "TerrainTrees.h"
 
+#include <array>
+#include <atomic>
 #include <set>
 
 struct BITMAP;
@@ -1201,7 +1203,18 @@ namespace RTE {
 
 		/// Returns the next unique id for MO's and increments unique ID counter
 		/// @return Returns the next unique id.
-		static long GetNextUniqueID() { return ++m_UniqueIDCounter; }
+		/// The threaded Lua states make MOs at the same time as each other, so a single counter would hand out IDs in whatever order the threads got there.
+		/// Instead the main thread counts up from 1 below c_UniqueIDThreadedStart, and each threaded Lua state counts up in a range of its own above it,
+		/// so each MO gets the same unique ID every time. IDs stay within 31 bits, since they're kept as a long, which is 32 bits on Windows.
+		static long GetNextUniqueID();
+
+		/// Gets a hash of how many unique IDs have been handed out on each thread, without handing out a new one. For checking whether two runs of the simulation match.
+		/// @return The sum of the unique ID counters, each weighted by its place.
+		static long long GetUniqueIDCounterHash();
+
+		static constexpr long c_UniqueIDThreadedStart = 1L << 30; //!< The unique IDs handed out on the threaded Lua states start here, and the main thread's stay below it.
+		static constexpr int c_UniqueIDThreadedCountBits = 25; //!< How many bits each threaded Lua state has to count its unique IDs with.
+		static constexpr int c_MaxUniqueIDThreadedStates = 32; //!< How many threaded Lua states there can be ranges of unique IDs for.
 
 		/// Returns this MO's unique persistent ID
 		/// @return Returns this MO's unique persistent ID
@@ -1360,7 +1373,7 @@ namespace RTE {
 		// Member variables
 		static Entity::ClassInfo m_sClass;
 		// Global counter with unique ID's
-		static std::atomic<long> m_UniqueIDCounter;
+		static std::array<std::atomic<long>, 1 + c_MaxUniqueIDThreadedStates> m_UniqueIDCounters; //!< The unique ID counters, the main thread's first and then one for each threaded Lua state.
 		// The type of MO this is, either Actor, Item, or Particle
 		int m_MOType;
 		float m_Mass; // In metric kilograms (kg).
