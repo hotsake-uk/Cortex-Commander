@@ -915,6 +915,19 @@ window.MS = window.MS || {};
 	}
 
 	MS.inspector = {
+		// whether a game started from Studio is running: it rewrites what's in it (World.ini) four times a second
+		async live() {
+			if (isLive()) {
+				return true;
+			}
+			try {
+				const response = await app().fs.api('GET', 'file', WORLD);
+				const modified = response ? Number(response.headers.get('X-Last-Modified')) || 0 : 0;
+				return modified > 0 && Date.now() - modified < 3000;
+			} catch (e) {
+				return false;
+			}
+		},
 		show() {
 			render();
 			poll();

@@ -1380,6 +1380,13 @@ fn launch(config: &Config, mode: &str, map: &str, run: &RunConfig) -> Result<Vec
 	let mut args: Vec<String> = match mode {
 		"test" => vec!["-modstudio".into(), "-test".into()],
 		"sandbox" => vec!["-modstudio".into(), "-sandbox".into()],
+		// a scenario straight away on its own map (the Mission Editor's Play in the game): its preset name comes as the map
+		"scenario" => {
+			if map.trim().is_empty() {
+				return Err("Which scenario? It has no name.".into());
+			}
+			vec!["-modstudio".into(), "-scenario".into(), map.trim().into()]
+		}
 		"editor" => vec!["-modstudio".into(), "-editor".into(), "ActorEditor".into()],
 		"sceneeditor" => vec!["-modstudio".into(), "-editor".into(), "SceneEditor".into()],
 		"areaeditor" => vec!["-modstudio".into(), "-editor".into(), "AreaEditor".into()],

@@ -92,6 +92,9 @@ int Activity::Create(const Activity& reference) {
 
 	m_ActivityState = reference.m_ActivityState;
 	m_Paused = reference.m_Paused;
+	// The map it's played on: kept by every copy, the preset the game stores included (it's a copy of the one read), so the scenario menu
+	// and a start from Mod Studio know a mission's own map.
+	m_SceneName = reference.m_SceneName;
 	m_AllowsUserSaving = reference.m_AllowsUserSaving;
 	m_Description = reference.m_Description;
 	m_PostShader = reference.m_PostShader;

@@ -97,6 +97,12 @@ bool ActivityMan::Initialize() {
 		}
 		m_ActivityNeedsRestart = true;
 		return true;
+	} else if (m_LaunchIntoScenario) {
+		if (!SetStartScenarioActivity(m_ScenarioToLaunch)) {
+			return false;
+		}
+		m_ActivityNeedsRestart = true;
+		return true;
 	} else if (IsSetToLaunchIntoActivity()) {
 		m_ActivityNeedsRestart = true;
 		return true;
@@ -688,6 +694,43 @@ void ActivityMan::SetStartTutorialActivity() {
 		gameActivity->SetStartingGold(10000);
 	}
 	g_SceneMan.SetSceneToLoad("Tutorial Bunker");
+}
+
+bool ActivityMan::SetStartScenarioActivity(const std::string& activityName) {
+	std::list<Entity*> activities;
+	g_PresetMan.GetAllOfType(activities, "Activity");
+	const GameActivity* preset = nullptr;
+	for (const Entity* entity: activities) {
+		if (const GameActivity* activity = dynamic_cast<const GameActivity*>(entity); activity && activity->GetPresetName() == activityName) {
+			preset = activity;
+			break;
+		}
+	}
+	if (!preset) {
+		g_ConsoleMan.PrintString("ERROR: There's no scenario called " + activityName + " (is its mod on?), so it can't be started.");
+		return false;
+	}
+	const std::string& sceneName = preset->GetSceneName();
+	if (sceneName.empty()) {
+		g_ConsoleMan.PrintString("ERROR: The scenario " + activityName + " doesn't name its map (SceneName), so it can't be started straight away: pick it from the scenario menu.");
+		return false;
+	}
+	GameActivity* scenario = dynamic_cast<GameActivity*>(preset->Clone());
+	if (!scenario) {
+		return false;
+	}
+	if (g_SceneMan.SetSceneToLoad(sceneName, true, true) < 0) {
+		g_ConsoleMan.PrintString("ERROR: The scenario " + activityName + " is played on " + sceneName + ", which isn't loaded (is its mod on?).");
+		delete scenario;
+		return false;
+	}
+	scenario->SetDifficulty(Activity::DifficultySetting::MediumDifficulty);
+	const int gold = scenario->GetDefaultGoldMediumDifficulty();
+	scenario->SetStartingGold(gold >= 0 ? gold : 2000);
+	scenario->ClearPlayers(false);
+	scenario->AddPlayer(Players::PlayerOne, true, Activity::Teams::TeamOne, 0);
+	SetStartActivity(scenario);
+	return true;
 }
 
 bool ActivityMan::SetStartSandboxActivity(const std::string& sceneName, const std::string& activityName) {

@@ -941,9 +941,17 @@ window.MS = window.MS || {};
 				...partButtons,
 				part !== 'logic' ? el('button', { className: 'tb', textContent: 'Fit the map', onclick: () => view.fit() }) : null,
 				scriptPath ? el('button', { className: 'tb', textContent: 'Open the script', onclick: () => MS.ide.openFile(scriptPath, 1) }) : null,
-				el('button', { className: 'tb primary', textContent: '▶ Play in the game', title: 'Starts it in a game running from Studio', onclick: () => {
-					MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(scenario.cls) + ', ' + JSON.stringify(scenario.name) + ')');
-					a.status('Told the game to start ' + scenario.name + '. It only works in a game started from Studio.');
+				el('button', { className: 'tb primary', textContent: '▶ Play in the game', title: 'Starts it on its map: in the game running from Studio, or in a game started now', onclick: async () => {
+					if (!scene) {
+						a.toast('Pick the map it\'s played on first (Scene, above).', 'bad');
+						return;
+					}
+					if (MS.inspector && MS.inspector.live && (await MS.inspector.live())) {
+						MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(scenario.cls) + ', ' + JSON.stringify(scenario.name) + ')');
+						a.status('Told the game to start ' + scenario.name + ' on ' + scene.name + '.');
+					} else if (MS.launcher && MS.launcher.launchScenario) {
+						MS.launcher.launchScenario(scenario.name); // no game from Studio running: one is started, straight into it
+					}
 				} }));
 			// the areas list: every area of the scene, what uses it, and (for the one picked) each use, to jump to
 			const list = el('div', { className: 'me-arealist' });
