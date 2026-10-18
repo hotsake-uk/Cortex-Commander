@@ -1,6 +1,6 @@
 # Linux reference traces for the determinism test
 
-Recorded on Linux from branch `claude/project-thread-wpcivw` (commit 103be994, which hashes whole numbers as 64 bits on every platform), headless, with `releasezone2-copy.ini` as `--base-settings`. Not code: this branch is only for carrying traces between machines and is never merged.
+Recorded on Linux from branch `claude/project-thread-wpcivw` (commit 682dbc1f, with the platform-independent hash and random numbers), headless, with `releasezone2-copy.ini` as `--base-settings`. Not code: this branch is only for carrying traces between machines and is never merged.
 
 Unzip `traces/*.gz` into an empty directory and verify a build against them:
 
