@@ -64,9 +64,14 @@ namespace RTE::CampaignModel {
 			std::mt19937 Engine;
 			explicit Dice(std::uint32_t seed) :
 			    Engine(seed) {}
-			float Unit() { return std::uniform_real_distribution<float>(0.0F, 1.0F)(Engine); }
+			// (Worked out here, not by the standard library's distributions: those differ between MSVC, libstdc++ and libc++, so the same seed
+			// made a different galaxy on each, where every player of a campaign online needs the same one. The engine's own numbers are the same everywhere.)
+			float Unit() { return static_cast<float>(Engine() >> 8) * (1.0F / 16777216.0F); }
 			float Range(float from, float to) { return from + (to - from) * Unit(); }
-			int Int(int from, int to) { return std::uniform_int_distribution<int>(from, std::max(from, to))(Engine); }
+			int Int(int from, int to) {
+				const std::uint32_t span = static_cast<std::uint32_t>(std::max(from, to) - from) + 1u;
+				return from + static_cast<int>(static_cast<std::uint64_t>(Engine()) * span >> 32);
+			}
 			bool Chance(float chance) { return Unit() < chance; }
 		};
 
