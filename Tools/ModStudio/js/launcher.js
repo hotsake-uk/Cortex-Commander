@@ -599,6 +599,24 @@ window.MS = window.MS || {};
 		}
 	}
 
+	// A scenario started straight away on its own map (the Mission Editor's Play in the game, when no game from Studio is running).
+	L.launchScenario = async function (name) {
+		await L.refresh();
+		if (!L.state.editingSlot && !(await readyToLeave())) {
+			return;
+		}
+		if (app().project) {
+			await MS.friendly.repairProject(app().project);
+		}
+		const answer = await guarded(() => call('launch', { mode: 'scenario', map: name }));
+		if (!answer) {
+			return;
+		}
+		showLog('Launch', answer.log);
+		app().toast(answer.log[answer.log.length - 1] || 'Launched ' + name + '.', 'good');
+		follow(answer);
+	};
+
 	L.launch = async function (mode) {
 		// The top bar's Play button starts the way the game was last started, from its menu or the Game screen.
 		try {

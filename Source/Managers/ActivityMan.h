@@ -117,6 +117,14 @@ namespace RTE {
 			m_LaunchIntoActivity = true;
 		}
 
+		/// Sets the game to start straight in a scenario (the -scenario launch argument): a game activity, by its preset name, on its own map.
+		/// @param activityName The scenario's preset name.
+		void SetScenarioToLaunch(const std::string& activityName) {
+			m_ScenarioToLaunch = activityName;
+			m_LaunchIntoScenario = true;
+			m_LaunchIntoActivity = true;
+		}
+
 		void SetEditorToLaunch(const std::string_view& editorName) {
 			if (!editorName.empty()) {
 				m_EditorToLaunch = editorName;
@@ -179,6 +187,12 @@ namespace RTE {
 		/// @return Whether the game mode and the map exist to be started.
 		bool SetStartSandboxActivity(const std::string& sceneName = "", const std::string& activityName = "Sandbox");
 
+		/// Sets a scenario (a game activity, by its preset name) as the one to start, on the map it names: one human player on the first team,
+		/// at medium difficulty with that difficulty's starting gold.
+		/// @param activityName The scenario's preset name.
+		/// @return Whether it exists, names a map that exists, and was set to start.
+		bool SetStartScenarioActivity(const std::string& activityName);
+
 		/// Loads "Editor Scene" and starts the given editor Activity.
 		/// @param editorToLaunch The editor name to put into effect next time ResetActivity is called.
 		void SetStartEditorActivity(const std::string_view& editorToLaunch);
@@ -239,6 +253,8 @@ namespace RTE {
 
 		bool m_LaunchIntoActivity; //!< Whether to skip the intro and main menu and launch directly into the set default Activity instead.
 		bool m_LaunchIntoSandbox = false; //!< Whether that Activity is the sandbox, started by SetStartSandboxActivity.
+		bool m_LaunchIntoScenario = false; //!< Whether that Activity is a scenario started by SetStartScenarioActivity (-scenario).
+		std::string m_ScenarioToLaunch; //!< The scenario -scenario starts, by its preset name.
 		std::string m_SandboxSceneToLaunch; //!< The map the sandbox opens on, or empty for its own.
 		std::string m_SandboxActivityToLaunch = "Sandbox"; //!< The game mode started that way: the sandbox, or Mod Studio's test (-test).
 		bool m_LaunchIntoEditor; //!< Whether to skip the intro and main menu and launch directly into the set editor Activity instead.
