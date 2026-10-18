@@ -199,16 +199,302 @@ window.MS = window.MS || {};
 		return { fg: fgCanvas, bg: bgCanvas };
 	}
 
+	// A material setting's index (a Material, usually a CopyOf), or -1.
+	function materialIndex(r, key) {
+		const m = r.last(key);
+		return m ? Math.round(app().lib.resolve(m.node).num('Index', -1)) : -1;
+	}
+
+	// The terrain's frostings and debris, with the game's defaults (TerrainFrosting, TerrainDebris).
+	function groundExtras(terrainRes) {
+		const lib = app().lib;
+		const frost = terrainRes.all('AddTerrainFrosting').map((e) => {
+			const r = lib.resolve(e.node);
+			return { target: materialIndex(r, 'TargetMaterial'), frost: materialIndex(r, 'FrostingMaterial'), min: Math.round(r.num('MinThickness', 5)), max: Math.round(r.num('MaxThickness', 5)), airOnly: r.bool('InAirOnly', true) };
+		});
+		const debris = terrainRes.all('AddTerrainDebris').map((e) => {
+			const r = lib.resolve(e.node);
+			const file = r.file('DebrisFile');
+			return {
+				frames: file ? MS.Images.framePaths(file, Math.max(1, Math.round(r.num('DebrisPieceCount', 1)))) : [],
+				mat: materialIndex(r, 'DebrisMaterial'),
+				target: materialIndex(r, 'TargetMaterial'),
+				mode: Math.round(r.num('DebrisPlacementMode', 0)),
+				buried: r.bool('OnlyBuried', false),
+				minDepth: Math.round(r.num('MinDepth', 0)),
+				maxDepth: Math.round(r.num('MaxDepth', 10)),
+				minRot: r.num('MinRotation', 0),
+				maxRot: r.num('MaxRotation', 0),
+				hFlip: r.bool('CanHFlip', false),
+				vFlip: r.bool('CanVFlip', false),
+				flipChance: r.num('FlipChance', 0.5),
+				density: r.num('DensityPerMeter', 0.01),
+			};
+		}).filter((d) => d.frames.length && d.target >= 0);
+		return { frost, debris };
+	}
+
+	// The same random numbers for the same scene each time it is drawn.
+	function seeded(seed) {
+		let t = seed >>> 0;
+		return () => {
+			t = (t + 0x6d2b79f5) >>> 0;
+			let r = Math.imul(t ^ (t >>> 15), 1 | t);
+			r = (r + Math.imul(r ^ (r >>> 7), 61 | r)) ^ r;
+			return ((r ^ (r >>> 14)) >>> 0) / 4294967296;
+		};
+	}
+
+	// Frosting and debris onto the ground's foreground and material map, as the game does once it has textured it
+	// (TerrainFrosting::FrostTerrain, TerrainDebris::ScatterOnTerrain). Random as the game's are: where each plant or rock goes differs from
+	// the game's, but not what kinds go where or how many.
+	function dressGround(fgCanvas, mat, w, h, extras, materials, loaded, seed) {
+		if (!extras.frost.length && !extras.debris.length) {
+			return;
+		}
+		const rnd = seeded(seed);
+		const between = (lo, hi) => (hi <= lo ? lo : lo + Math.floor(rnd() * (hi - lo + 1)));
+		const ctx = fgCanvas.getContext('2d');
+		const out = ctx.getImageData(0, 0, w, h);
+		const f = out.data;
+		const textureOf = (file) => {
+			const img = file && loaded.get(file);
+			return img ? { data: img.canvas.getContext('2d').getImageData(0, 0, img.width, img.height).data, w: img.width, h: img.height } : null;
+		};
+		// frosting: up each column, over the top of each run of its target material, a few pixels thick
+		for (const fr of extras.frost) {
+			if (fr.target < 0 || fr.frost < 0) {
+				continue;
+			}
+			const look = materials[fr.frost];
+			const tex = look ? textureOf(look.fg) : null;
+			const color = look ? look.color : [90, 140, 60];
+			let found = false;
+			let applying = false;
+			let applied = 0;
+			for (let x = 0; x < w; x++) {
+				const goal = between(fr.min, fr.max);
+				for (let y = h - 1; y >= 0; y--) {
+					const i = y * w + x;
+					const m = mat[i];
+					if (!found && m === fr.target) {
+						found = true;
+						applied = 0;
+					} else if (found && m !== fr.target && applied <= goal) {
+						found = false;
+						applying = true;
+					}
+					if (applying && (m === 0 || !fr.airOnly) && applied <= goal) {
+						const o = i * 4;
+						if (tex) {
+							const s = ((y % tex.h) * tex.w + (x % tex.w)) * 4;
+							f[o] = tex.data[s];
+							f[o + 1] = tex.data[s + 1];
+							f[o + 2] = tex.data[s + 2];
+						} else {
+							[f[o], f[o + 1], f[o + 2]] = color;
+						}
+						f[o + 3] = 255;
+						mat[i] = fr.frost;
+						applied++;
+					} else {
+						applying = false;
+					}
+				}
+			}
+		}
+		// debris: a piece at a random column, on (or under) the first pixel of its target material that its placement allows
+		const AIR = 0;
+		const CAVITY = 1;
+		const at = (x, y) => (x >= 0 && x < w && y >= 0 && y < h ? mat[y * w + x] : -1);
+		const piece = document.createElement('canvas');
+		const pctx = piece.getContext('2d', { willReadFrequently: true });
+		for (const d of extras.debris) {
+			const imgs = d.frames.map((p) => loaded.get(p)).filter(Boolean);
+			if (!imgs.length) {
+				continue;
+			}
+			const overhang = d.mode >= 4;
+			const valid = (m, prev) => {
+				if (m !== d.target) {
+					return false;
+				}
+				const kind = d.mode >= 4 ? d.mode - 3 : d.mode; // 1 open surface, 2 cave surface, 3 either
+				return kind === 1 ? prev === AIR : kind === 2 ? prev === CAVITY : kind === 3 ? prev === AIR || prev === CAVITY : true;
+			};
+			const count = Math.floor(w / 20 * d.density);
+			for (let n = 0; n < count; n++) {
+				const img = imgs[between(0, imgs.length - 1)];
+				const x = between(0, w);
+				const depth = between(d.minDepth, d.maxDepth);
+				const buriedBy = d.buried ? Math.floor(img.height * 0.6) : 0;
+				let corner = null;
+				let prev = -1;
+				for (let s = 0, o = h - 1; s < h && o > 0; s++, o--) {
+					const m = at(x, overhang ? o : s);
+					if (m !== AIR && valid(m, prev)) {
+						s += depth + buriedBy;
+						o -= depth + buriedBy;
+						const left = Math.floor(x - img.width / 2);
+						const top = Math.floor((overhang ? o : s) - img.height / 2);
+						const inGround = (px, py) => at(px, py) !== AIR;
+						if (!d.buried || (inGround(left, top) && inGround(left + img.width, top) && inGround(left, top + img.height) && inGround(left + img.width, top + img.height))) {
+							corner = { left, top };
+							break;
+						}
+					}
+					prev = m;
+				}
+				if (!corner) {
+					continue;
+				}
+				const size = 10 + Math.max(img.width, img.height);
+				piece.width = piece.height = size;
+				pctx.imageSmoothingEnabled = false;
+				pctx.translate(size / 2, size / 2);
+				if (d.hFlip && d.flipChance >= rnd()) {
+					pctx.scale(-1, 1);
+				}
+				if (d.vFlip && d.flipChance >= rnd()) {
+					pctx.scale(1, -1);
+				}
+				if (d.minRot !== 0 || d.maxRot !== 0) {
+					pctx.rotate((between(Math.round(d.minRot), Math.round(d.maxRot)) * Math.PI) / 180);
+				}
+				pctx.drawImage(img.canvas, -Math.floor(img.width / 2) - (img.width % 2 ? 0.5 : 0), -Math.floor(img.height / 2) - (img.height % 2 ? 0.5 : 0));
+				pctx.setTransform(1, 0, 0, 1, 0, 0);
+				const px = pctx.getImageData(0, 0, size, size).data;
+				const ox = corner.left - Math.floor((size - img.width) / 2);
+				const oy = corner.top - Math.floor((size - img.height) / 2);
+				const markAs = d.mat > 0 ? d.mat : d.target;
+				for (let y = 0; y < size; y++) {
+					const ty = oy + y;
+					if (ty < 0 || ty >= h) {
+						continue;
+					}
+					for (let xx = 0; xx < size; xx++) {
+						const tx = ox + xx;
+						const s = (y * size + xx) * 4;
+						if (tx < 0 || tx >= w || px[s + 3] < 128) {
+							continue;
+						}
+						const i = ty * w + tx;
+						const o = i * 4;
+						f[o] = px[s];
+						f[o + 1] = px[s + 1];
+						f[o + 2] = px[s + 2];
+						f[o + 3] = 255;
+						mat[i] = markAs;
+					}
+				}
+			}
+		}
+		ctx.putImageData(out, 0, 0);
+	}
+
+	// The scene's background layers (front first), with what places them (SLBackground).
+	function backdrops(ent) {
+		const lib = app().lib;
+		return ent.all('AddBackgroundLayer').map((e) => {
+			const r = lib.resolve(e.node);
+			return {
+				file: r.file('BitmapFile'),
+				wrapX: r.bool('WrapX', true),
+				wrapY: r.bool('WrapY', false),
+				scroll: r.vec('ScrollRatio', { x: 1, y: 1 }),
+				scale: r.vec('ScaleFactor', { x: 1, y: 1 }),
+				ignoreAutoScale: r.bool('IgnoreAutoScaling', false),
+				origin: r.vec('OriginPointOffset', { x: 0, y: 0 }),
+			};
+		}).filter((b) => b.file);
+	}
+
+	// The background layers behind everything, farthest first, where the game shows them to a full-HD screen looking at the ground (a far
+	// layer follows the camera, so on the whole map it can only be where it is from one place): each scaled to the screen as the game's
+	// default does, repeated across, and its top and bottom edges' colours carried on above and below it.
+	const SCREEN_H = 1080;
+	function drawBackdrops(ctx, backs, loaded, terrain) {
+		const w = terrain.width;
+		const h = terrain.height;
+		// the ground's usual height: the middle of where each column's ground begins
+		const tops = [];
+		for (let x = 0; x < w; x += 8) {
+			let y = 0;
+			while (y < h && terrain.indices[y * w + x] === 0) {
+				y++;
+			}
+			tops.push(y);
+		}
+		tops.sort((p, q) => p - q);
+		const ground = tops.length ? tops[tops.length >> 1] : h / 2;
+		const camTop = Math.max(0, Math.min(h - SCREEN_H, ground - SCREEN_H / 2));
+		ctx.imageSmoothingEnabled = false;
+		for (const b of [...backs].reverse()) {
+			const img = loaded.get(b.file);
+			if (!img) {
+				continue;
+			}
+			const fit = Math.min(2, Math.max(1, Math.min(h, SCREEN_H) / img.height));
+			const sx = b.ignoreAutoScale ? b.scale.x : fit;
+			const sy = b.ignoreAutoScale ? b.scale.y : fit;
+			const lw = Math.max(1, Math.round(img.width * sx));
+			const lh = Math.max(1, Math.round(img.height * sy));
+			// SceneLayer::InitScrollRatios, as it is
+			const info = b.scroll.y * (b.ignoreAutoScale ? 1 : sy);
+			let ratio;
+			if (b.wrapY) {
+				ratio = info;
+			} else {
+				ratio = info === -1 || info === 1 ? 1 : info === SCREEN_H ? img.height - SCREEN_H : img.height === SCREEN_H ? 1 / (info - SCREEN_H) : (img.height - SCREEN_H) / (info - SCREEN_H);
+				ratio += 1;
+			}
+			const top = Math.floor(camTop * ratio) - b.origin.y;
+			const left = -b.origin.x;
+			const c = img.canvas.getContext('2d');
+			const edge = (y) => {
+				const p = c.getImageData(img.width >> 1, y, 1, 1).data;
+				return p[3] > 128 ? 'rgb(' + p[0] + ',' + p[1] + ',' + p[2] + ')' : null;
+			};
+			if (!b.wrapY) {
+				const up = edge(0);
+				const down = edge(img.height - 1);
+				if (up && top > 0) {
+					ctx.fillStyle = up;
+					ctx.fillRect(0, 0, w, top);
+				}
+				if (down && top + lh < h) {
+					ctx.fillStyle = down;
+					ctx.fillRect(0, top + lh, w, h - top - lh);
+				}
+			}
+			const ys = b.wrapY ? [] : [top];
+			if (b.wrapY) {
+				for (let y = (((top % lh) + lh) % lh) - lh; y < h; y += lh) {
+					ys.push(y);
+				}
+			}
+			for (const y of ys) {
+				if (b.wrapX) {
+					for (let x = (((left % lw) + lw) % lw) - lw; x < w; x += lw) {
+						ctx.drawImage(img.canvas, x, y, lw, lh);
+					}
+				} else {
+					ctx.drawImage(img.canvas, left, y, lw, lh);
+				}
+			}
+		}
+	}
+
 	// As the game does once a scene is built (SLTerrain::CleanAir): the material layer is the terrain's (its picture is the material map) with
 	// each piece's material stamped over it in turn (colour 0 is see-through), cavity (1) becomes air (0), and wherever there is air the
 	// foreground is wiped. That is how pieces carve rooms and shafts out of the ground. mats: [{ img (with indices), x, y }] in placing order.
-	function cleanAir(ctx, terrain, mats) {
+	function cleanAir(ctx, terrain, base, mats) {
 		if (!terrain.indices) {
 			return; // a terrain given as a colour picture: no material map to go by
 		}
 		const w = terrain.width;
 		const h = terrain.height;
-		const mat = new Uint8Array(terrain.indices);
+		const mat = new Uint8Array(base || terrain.indices);
 		let x0 = w;
 		let y0 = h;
 		let x1 = -1;
@@ -270,16 +556,22 @@ window.MS = window.MS || {};
 		const textured = mode !== 'materials';
 		const materials = textured ? materialLooks() : [];
 		const terrainEntry = ent.last('Terrain');
-		const groundBack = textured && terrainEntry ? a.lib.resolve(terrainEntry.node).file('BackgroundTexture') : null;
+		const terrainRes = terrainEntry ? a.lib.resolve(terrainEntry.node) : null;
+		const groundBack = textured && terrainRes ? terrainRes.file('BackgroundTexture') : null;
+		// what the terrain itself adds, as the game builds it: grass and the like over its top (frosting), plants, rocks and such scattered
+		// in it (debris), and the pieces it places (a cave), before the scene's own
+		const extras = textured && terrainRes ? groundExtras(terrainRes) : { frost: [], debris: [] };
+		const backs = textured ? backdrops(ent) : [];
+		const groundPlaced = terrainRes ? terrainRes.all('PlaceTerrainObject') : [];
 		const placed = ent.all('PlaceSceneObject');
 		let hash = 0;
-		for (const e of placed) {
+		for (const e of [...groundPlaced, ...placed]) {
 			const pos = e.node.vector('Position') || { x: 0, y: 0 };
 			for (const ch of e.node.childValue('CopyOf', '') + pos.x + ',' + pos.y + e.node.childValue('HFlipped', '')) {
 				hash = (hash * 31 + ch.charCodeAt(0)) | 0;
 			}
 		}
-		const sig = terrainFile + '|' + placed.length + '|' + hash + '|' + (textured ? 't' : 'm');
+		const sig = terrainFile + '|' + placed.length + '|' + groundPlaced.length + '|' + hash + '|' + (textured ? 't' : 'm');
 		const key = p.doc.path + '::' + p.name + (textured ? '' : '::materials');
 		const known = pictures.get(key);
 		if (known && known.sig === sig) {
@@ -292,7 +584,7 @@ window.MS = window.MS || {};
 		pictures.set(key, job);
 		const found = new Map();
 		const items = [];
-		for (const entry of placed) {
+		for (const entry of [...groundPlaced, ...placed]) {
 			const look = placedLook(entry, found);
 			if (look) {
 				items.push({ look, pos: entry.node.vector('Position') || { x: 0, y: 0 }, flip: entry.node.childValue('HFlipped', '0').trim() === '1' });
@@ -307,6 +599,12 @@ window.MS = window.MS || {};
 		}
 		for (const { look } of items) {
 			[look.fg, look.bg, look.mat, look.sprite && MS.Images.framePaths(look.sprite, look.frames)[0]].forEach((f) => f && files.add(f));
+		}
+		for (const d of extras.debris) {
+			d.frames.forEach((f) => files.add(f));
+		}
+		for (const b of backs) {
+			files.add(b.file);
 		}
 		const loaded = new Map();
 		Promise.all([...files].map((f) => a.images.get(f).then((img) => loaded.set(f, img), () => loaded.set(f, null)))).then(() => {
@@ -348,7 +646,11 @@ window.MS = window.MS || {};
 			};
 			// textured: the ground's two layers made from the material map, as the game makes them (SLTerrain::TexturizeTerrain)
 			const layers = textured && terrain.indices ? texturize(terrain, materials, loaded, groundBack && loaded.get(groundBack)) : null;
+			// the material map as the game's ends up once the terrain has dressed itself
+			const mat = layers ? new Uint8Array(terrain.indices) : null;
 			if (layers) {
+				drawBackdrops(ctx, backs, loaded, terrain);
+				dressGround(layers.fg, mat, terrain.width, terrain.height, extras, materials, loaded, hash ^ terrain.width);
 				ctx.drawImage(layers.bg, 0, 0);
 			}
 			for (const it of items) {
@@ -370,7 +672,7 @@ window.MS = window.MS || {};
 					stamp(img, it.pos.x + offsetOf(it.look).x, it.pos.y + offsetOf(it.look).y);
 				}
 			}
-			cleanAir(ctx, terrain, items.map((it) => ({ img: it.look.mat && loaded.get(it.look.mat), x: it.pos.x + offsetOf(it.look).x, y: it.pos.y + offsetOf(it.look).y })));
+			cleanAir(ctx, terrain, mat, items.map((it) => ({ img: it.look.mat && loaded.get(it.look.mat), x: it.pos.x + offsetOf(it.look).x, y: it.pos.y + offsetOf(it.look).y })));
 			main.drawImage(fg, 0, 0);
 			ctx = main;
 			for (const it of items) {
