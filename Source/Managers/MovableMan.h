@@ -555,6 +555,11 @@ namespace RTE {
 		/// Clears all cached lua functions on all MOs, including owned child MOs.
 		void ReloadLuaScripts();
 
+		/// Reloads the scripts of every MO in the simulation (owned child MOs included) that uses one script, leaving every other MO as it is.
+		/// @param scriptPath The script's full path, as MovableObject::HasScript takes it.
+		/// @return How many MOs were reloaded.
+		int ReloadLuaScriptsUsing(const std::string& scriptPath);
+
 		/// Protected member variable and method declarations
 	protected:
 		// All actors in the scene

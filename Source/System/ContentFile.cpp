@@ -222,6 +222,11 @@ void ContentFile::ManuallyLoadDataPNG(const std::string& filePath, SDL_Surface* 
 	s_LoadedBitmaps[BitDepths::Eight].try_emplace(filePath, bitmap);
 }
 
+void ContentFile::ReloadBitmapFromDisk(const std::string& filePath) {
+	ReloadBitmap(filePath);
+	ReloadBitmap(filePath, COLORCONV_8_TO_32);
+}
+
 void ContentFile::ReloadAllBitmaps() {
 	for (const std::unordered_map<std::string, BITMAP*>& bitmapCache: s_LoadedBitmaps) {
 		for (const auto& [filePath, oldBitmap]: bitmapCache) {

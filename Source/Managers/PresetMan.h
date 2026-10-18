@@ -290,6 +290,11 @@ namespace RTE {
 		/// @return Whether reloading the preset was successful.
 		bool QuickReloadEntityPreset();
 
+		/// Reads every preset in one INI file again, as ReloadEntityPreset does for the file a preset is in. For a tool that knows which file changed.
+		/// @param filePath The file's path in its module, like MyMod.rte/Actors/Soldier.ini.
+		/// @return Whether the file is in a loaded module and was read.
+		bool ReloadPresetFile(const std::string& filePath);
+
 		/// Gets whether or not ReloadEntityPreset was called this update.
 		/// @return Whether or not ReloadEntityPreset was called this update.
 		bool GetReloadEntityPresetCalledThisUpdate() const { return m_ReloadEntityPresetCalledThisUpdate; }

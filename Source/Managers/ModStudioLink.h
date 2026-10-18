@@ -1,6 +1,7 @@
 #pragma once
 
 #include <chrono>
+#include <filesystem>
 #include <string>
 
 namespace RTE {
@@ -11,6 +12,10 @@ namespace RTE {
 	/// the tool asks for it, and with -modstudio left off none of it runs.
 	///
 	///   ModStudio/Console.log   Every line the console prints, as it prints it (the game's own LogConsole.txt is only written at exit).
+	///   ModStudio/Scripts.ini   From the tool, after it saves files: "ReloadFile = <module path>" reads an INI file's presets again (or an
+	///                           image's pixels), "ReloadScript = <module path>" reloads one script in the presets and MOs using it,
+	///                           "ReloadScripts = 1" reloads every script, and "Run = <path>" runs a Lua file (the tool's console).
+	///                           Handled each time the file is written again.
 	class ModStudioLink {
 
 	public:
@@ -25,11 +30,16 @@ namespace RTE {
 		/// @param line The line printed.
 		static void OnConsoleLine(const std::string& line);
 
-		/// Called once a frame: flushes the console log (and does the link's other periodic work). Does nothing with the link off.
+		/// Called once a frame: flushes the console log and carries out the tool's requests. Does nothing with the link off.
 		static void Update();
 
 	private:
+		/// Carries out ModStudio/Scripts.ini when it was written since it was last read.
+		static void HandleScriptRequests();
+
 		static bool s_Enabled; //!< Whether the game was started with -modstudio.
 		static std::chrono::steady_clock::time_point s_LastUpdate; //!< When Update last did its work.
+		static bool s_ScriptsLookedAt; //!< Whether Scripts.ini has been looked at yet. A request left from before the game started is skipped.
+		static std::filesystem::file_time_type s_ScriptsWriteTime; //!< When the last Scripts.ini handled was written.
 	};
 } // namespace RTE
