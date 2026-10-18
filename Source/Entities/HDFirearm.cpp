@@ -915,6 +915,12 @@ void HDFirearm::Update() {
 				const float maxShakiness = g_CameraMan.GetDefaultShakeFromRecoilMaximum(); // Some weapons fire huge rounds, so restrict the amount
 				float screenShakeAmount = m_RecoilScreenShakeAmount == -1.0F ? std::min(totalFireForce * m_JointStiffness * shakiness, maxShakiness) : m_RecoilScreenShakeAmount;
 				g_CameraMan.ApplyScreenShake(screenShakeAmount, screenId);
+				// The view kicks back with the gun.
+				if (!m_RecoilForce.IsZero()) {
+					Vector kick = m_RecoilForce;
+					kick.SetMagnitude(std::min(screenShakeAmount * 0.35F, 4.0F));
+					g_CameraMan.AddScreenKick(kick, screenId);
+				}
 			}
 		}
 

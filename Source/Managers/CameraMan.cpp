@@ -174,6 +174,7 @@ void CameraMan::ResetAllScreenShake() {
 		screen.ScreenShakeMagnitude = 0;
 		screen.ScreenShakeTime = 0;
 		screen.ScreenShakeOffset.Reset();
+		screen.KickOffset.Reset();
 		screen.ScrollTimer.Reset();
 	}
 }
@@ -202,6 +203,14 @@ void CameraMan::AddScreenShake(float magnitude, const Vector& position) {
 		float screenDistance = std::max(frameSize.GetX(), frameSize.GetY()) * screenShakeFalloff;
 		float screenShakeMultipler = std::max(1.0F - (closestDistanceFromScreen / screenDistance), 0.0F);
 		screen.ScreenShakeMagnitude += magnitude * screenShakeMultipler;
+	}
+}
+
+void CameraMan::AddScreenKick(const Vector& kick, int screenId) {
+	if (screenId >= 0 && screenId < static_cast<int>(m_Screens.size())) {
+		Screen& screen = m_Screens[screenId];
+		screen.KickOffset += kick * m_ScreenShakeStrength;
+		screen.KickOffset.CapMagnitude(6.0F);
 	}
 }
 
@@ -274,6 +283,14 @@ void CameraMan::Update(int screenId) {
 		}
 	} else {
 		screen.ScreenShakeMagnitude = 0;
+	}
+	// The recoil kick rides on top of the shake and springs back quickly.
+	screen.KickOffset *= std::exp(-static_cast<float>(screen.ScrollTimer.GetElapsedRealTimeS()) * 16.0F);
+	if (screen.KickOffset.MagnitudeIsGreaterThan(0.05F)) {
+		screen.ScreenShakeOffset += screen.KickOffset;
+		newOffset += screen.KickOffset;
+	} else {
+		screen.KickOffset.Reset();
 	}
 
 	SetOffset(newOffset, screenId);

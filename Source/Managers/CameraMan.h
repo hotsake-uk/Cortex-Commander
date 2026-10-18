@@ -122,6 +122,11 @@ namespace RTE {
 #pragma endregion
 
 #pragma region Screen Shake Getters and Setters
+		/// Nudges a screen's view in a direction; it springs back within a moment. For weapon recoil: the view kicks away from the shot. Render only.
+		/// @param kick The nudge in pixels, before the screen shake strength setting is applied.
+		/// @param screenId Which screen.
+		void AddScreenKick(const Vector& kick, int screenId = 0);
+
 		/// Gets the screen shake strength multiplier.
 		/// @return The screen shake strength multiplier.
 		float GetScreenShakeStrength() const { return m_ScreenShakeStrength; }
@@ -206,6 +211,7 @@ namespace RTE {
 			float ScreenShakeMagnitude = 0; //!< The magnitude of screen shake that is currently being applied.
 			float ScreenShakeTime = 0; //!< Real seconds of shaking so far, driving the shake's smooth noise.
 			Vector ScreenShakeOffset; //!< The shake currently added to Offset, taken back out before the next update so shake never drifts the view.
+			Vector KickOffset; //!< A recoil kick, springing back to nothing.
 
 			std::vector<Camera> Cameras;
 		};
