@@ -255,8 +255,6 @@ void ScenarioActivityConfigGUI::UpdateAtmosphereButtons() {
 }
 
 void ScenarioActivityConfigGUI::StartGame() {
-	// Drawing only: the time of day and weather change how the game looks, not what happens in it.
-	g_PostProcessMan.SetActivityAtmosphere(c_TimeOfDayChoices[m_TimeOfDayChoice].Hour, m_WeatherChoice - 1);
 	GameActivity* gameActivity = dynamic_cast<GameActivity*>(m_SelectedActivity->Clone());
 
 	gameActivity->SetDifficulty(m_ActivityDifficultySlider->GetValue());
@@ -294,6 +292,8 @@ void ScenarioActivityConfigGUI::StartGame() {
 	}
 	g_LuaMan.FileCloseAll();
 	g_ActivityMan.SetStartActivity(gameActivity);
+	// Drawing only: the time of day and weather change how the game looks, not what happens in it. Set after the activity, which clears them.
+	g_PostProcessMan.SetActivityAtmosphere(c_TimeOfDayChoices[m_TimeOfDayChoice].Hour, m_WeatherChoice - 1);
 }
 
 bool ScenarioActivityConfigGUI::Update(int mouseX, int mouseY) {

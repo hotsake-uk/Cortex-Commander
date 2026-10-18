@@ -404,6 +404,8 @@ bool ActivityMan::LoadAndLaunchGame(const std::string& fileName) {
 void ActivityMan::SetStartActivity(Activity* newActivity) {
 	RTEAssert(newActivity, "Trying to replace an activity with a null one!");
 	m_StartActivity.reset(newActivity);
+	// A time of day and weather picked on the scenario setup screen are for that game only (set after this), not for whatever is started next.
+	g_PostProcessMan.SetActivityAtmosphere(-1.0F, -1);
 }
 
 void ActivityMan::SetStartTutorialActivity() {

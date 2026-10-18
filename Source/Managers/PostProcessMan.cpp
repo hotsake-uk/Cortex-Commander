@@ -42,10 +42,11 @@ using namespace RTE;
 
 PostProcessMan::PostProcessMan() {
 	Clear();
-	// The lighting is experimental, so a fresh install starts with the classic look: the Classic preset, and no weather but a map's own.
-	// The other settings keep their defaults, ready for when the player turns the lighting on. Settings.ini, once saved, keeps the player's own.
+	// The lighting is experimental, so a fresh install starts with the classic look: the Classic preset, and clear weather on every map, maps
+	// that have weather of their own included. The other settings keep their defaults, ready for when the player turns the lighting on.
+	// Settings.ini, once saved, keeps the player's own.
 	m_LightingSettings.ApplyQualityPreset(LightingSettings::QualityClassic);
-	m_LightingSettings.OverrideMapWeather = false;
+	m_LightingSettings.OverrideMapWeather = true;
 	m_LightingSettings.WeatherType = 0;
 	m_LightingSettings.WeatherName.clear();
 }
