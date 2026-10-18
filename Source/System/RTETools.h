@@ -31,28 +31,28 @@ namespace RTE {
 		/// @return Uniformly distributed random number in the range [-1, 1].
 		template <typename floatType = float>
 		typename std::enable_if<std::is_floating_point<floatType>::value, floatType>::type RandomNormalNum() {
-			return std::uniform_real_distribution<floatType>(floatType(-1.0), std::nextafter(floatType(1.0), std::numeric_limits<floatType>::max()))(m_RNG);
+			return floatType(2.0) * UnitInterval<floatType>() - floatType(1.0);
 		}
 
 		/// Function template specialization for int types which returns a uniformly distributed random number in the range [-1, 1].
 		/// @return Uniformly distributed random number in the range [-1, 1].
 		template <typename intType>
 		typename std::enable_if<std::is_integral<intType>::value, intType>::type RandomNormalNum() {
-			return std::uniform_int_distribution<intType>(intType(-1), intType(1))(m_RNG);
+			return static_cast<intType>(static_cast<int>(UpTo(2)) - 1);
 		}
 
 		/// Function template which returns a uniformly distributed random number in the range [0, 1].
 		/// @return Uniformly distributed random number in the range [0, 1].
 		template <typename floatType = float>
 		typename std::enable_if<std::is_floating_point<floatType>::value, floatType>::type RandomNum() {
-			return std::uniform_real_distribution<floatType>(floatType(0.0), std::nextafter(floatType(1.0), std::numeric_limits<floatType>::max()))(m_RNG);
+			return UnitInterval<floatType>();
 		}
 
 		/// Function template specialization for int types which returns a uniformly distributed random number in the range [0, 1].
 		/// @return Uniformly distributed random number in the range [0, 1].
 		template <typename intType>
 		typename std::enable_if<std::is_integral<intType>::value, intType>::type RandomNum() {
-			return std::uniform_int_distribution<intType>(intType(0), intType(1))(m_RNG);
+			return static_cast<intType>(UpTo(1));
 		}
 
 		/// Function template which returns a uniformly distributed random number in the range [min, max].
@@ -64,7 +64,7 @@ namespace RTE {
 			if (max < min) {
 				std::swap(min, max);
 			}
-			return (std::uniform_real_distribution<floatType>(floatType(0.0), std::nextafter(max - min, std::numeric_limits<floatType>::max()))(m_RNG) + min);
+			return min + UnitInterval<floatType>() * (max - min);
 		}
 
 		/// Function template specialization for int types which returns a uniformly distributed random number in the range [min, max].
@@ -76,7 +76,53 @@ namespace RTE {
 			if (max < min) {
 				std::swap(min, max);
 			}
-			return (std::uniform_int_distribution<intType>(intType(0), max - min)(m_RNG) + min);
+			using UnsignedType = std::make_unsigned_t<intType>;
+			return static_cast<intType>(static_cast<UnsignedType>(min) + static_cast<UnsignedType>(UpTo(static_cast<uint64_t>(static_cast<UnsignedType>(static_cast<UnsignedType>(max) - static_cast<UnsignedType>(min))))));
+		}
+
+	private:
+		// The standard library's distributions aren't specified exactly, so each library (MSVC's, libstdc++, libc++) turns the same raw numbers into different ones.
+		// These are written out here instead, so that the same seed gives the same numbers on every platform. mt19937 itself is specified exactly.
+
+		/// Gets a uniformly distributed number in the range [0, 1], from as many raw bits as the type can hold exactly.
+		template <typename floatType>
+		floatType UnitInterval() {
+			if constexpr (sizeof(floatType) <= sizeof(float)) {
+				return static_cast<floatType>(static_cast<float>(m_RNG() >> 8) * (1.0F / 16777215.0F));
+			} else {
+				uint64_t bits = Raw64() >> 11;
+				return static_cast<floatType>(static_cast<double>(bits) * (1.0 / 9007199254740991.0));
+			}
+		}
+
+		/// Gets 64 raw bits, from two raw numbers taken in a fixed order (the order the operands of an expression are worked out in isn't fixed).
+		uint64_t Raw64() {
+			uint64_t high = m_RNG();
+			uint64_t low = m_RNG();
+			return high << 32 | low;
+		}
+
+		/// Gets a uniformly distributed whole number in the range [0, max], by rejecting the raw numbers that would make some results likelier than others.
+		uint64_t UpTo(uint64_t max) {
+			if (max <= 0xFFFFFFFFULL) {
+				uint32_t range = static_cast<uint32_t>(max);
+				if (range == 0xFFFFFFFFU) {
+					return m_RNG();
+				}
+				uint32_t bucketCount = range + 1;
+				uint32_t limit = 0xFFFFFFFFU - (0xFFFFFFFFU % bucketCount + 1) % bucketCount;
+				uint32_t raw;
+				do {
+					raw = m_RNG();
+				} while (raw > limit);
+				return raw % bucketCount;
+			}
+			uint64_t limit = max == ~0ULL ? ~0ULL : ~0ULL - (~0ULL % (max + 1) + 1) % (max + 1);
+			uint64_t raw;
+			do {
+				raw = Raw64();
+			} while (raw > limit);
+			return max == ~0ULL ? raw : raw % (max + 1);
 		}
 	};
 
