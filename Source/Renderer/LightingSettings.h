@@ -13,7 +13,7 @@ namespace RTE {
 	struct LightingSettings {
 		/// Graphics quality presets, from the classic look up to every effect at full quality.
 		enum Quality {
-			QualityPotato,
+			QualityClassic,
 			QualityLow,
 			QualityMedium,
 			QualityHigh,
@@ -26,7 +26,7 @@ namespace RTE {
 		/// Sets the effects that cost performance to one of the presets, leaving the art direction (colors, grading, time of day) alone.
 		void ApplyQualityPreset(int quality) {
 			GraphicsQuality = quality;
-			if (quality < QualityPotato || quality >= QualityCustom) {
+			if (quality < QualityClassic || quality >= QualityCustom) {
 				return;
 			}
 			struct Preset {
@@ -38,7 +38,7 @@ namespace RTE {
 				float Smoke;
 			};
 			static constexpr Preset presets[] = {
-			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6, false, 0.0F, 0.0F}, // Potato: the classic look.
+			    {false, false, false, false, 0.0F, 0.0F, 0.0F, 6, false, 0.0F, 0.0F}, // Classic: the game as it always looked.
 			    {true, true, false, true, 0.5F, 0.0F, 0.0F, 3, false, 0.5F, 0.0F}, // Low
 			    {true, true, true, true, 1.0F, 0.7F, 0.0F, 4, false, 1.0F, 0.7F}, // Medium
 			    {true, true, true, true, 1.0F, 0.7F, 0.35F, 6, false, 1.0F, 1.0F}, // High
@@ -69,9 +69,9 @@ namespace RTE {
 			FogVolume = quality >= QualityUltra ? 0.71F : (quality >= QualityMedium ? 0.6F : 0.0F);
 			// Low lights its steady scenery lamps once into a map instead of every frame.
 			LampCache = quality == QualityLow;
-			// The sun's shadow map: remade only when the ground changes or the sun moves, from Low up (Potato has no sun shadows).
+			// The sun's shadow map: remade only when the ground changes or the sun moves, from Low up (Classic has no sun shadows).
 			SunShadowMap = quality >= QualityLow;
-			// The weather's shelter map, the same kind of strip, from Low up too, so Potato keeps the classic weather.
+			// The weather's shelter map, the same kind of strip, from Low up too, so Classic keeps the classic weather.
 			ShelterMask = quality >= QualityLow;
 			// The wetness map: one small pass over the light grid a frame, from Medium up.
 			WetnessMap = quality >= QualityMedium;
@@ -192,7 +192,7 @@ namespace RTE {
 		/// Sets only the shadow effects to a preset's values: directional daylight and terrain shadows on the background from Low up, shadows from solid objects and contact shading from Medium up.
 		/// Also used when reading settings saved before these existed, so they follow the saved preset.
 		void ApplyShadowPreset(int quality) {
-			if (quality < QualityPotato || quality >= QualityCustom) {
+			if (quality < QualityClassic || quality >= QualityCustom) {
 				return;
 			}
 			// Ultra is the default look: the values the settings start with.

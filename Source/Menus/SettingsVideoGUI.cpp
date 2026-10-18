@@ -64,7 +64,7 @@ SettingsVideoGUI::SettingsVideoGUI(GUIControlManager* parentControlManager) :
 	m_DistortionCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxDistortion"));
 	m_GraphicsQualityComboBox = dynamic_cast<GUIComboBox*>(m_GUIControlManager->GetControl("ComboGraphicsQuality"));
 	if (m_GraphicsQualityComboBox) {
-		for (const char* name: {"Potato (classic)", "Low", "Medium", "High", "Ultra", "Custom"}) {
+		for (const char* name: {"Classic", "Low", "Medium", "High", "Ultra", "Custom"}) {
 			m_GraphicsQualityComboBox->AddItem(name);
 		}
 	}
