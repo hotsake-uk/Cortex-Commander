@@ -1820,7 +1820,7 @@ void MOSRotating::Draw(const Camera& camera) const {
 		spritePos += m_RecoilOffset;
 	}
 
-	Vector scale(1.0f, 1.0f);
+	Vector scale(m_Scale, m_Scale);
 
 	if (m_HFlipped) {
 		scale.m_X *= -1;
