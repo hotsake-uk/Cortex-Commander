@@ -744,6 +744,37 @@ test('a stage keeps its objective at the top of the screen; a message shows over
 	assert.deepEqual(lines(m.step()), ['msg Reach the {count} doors'], 'put back the next frame');
 });
 
+// ---- any unit as a player's brain ----
+
+test('any unit as your brain: the one you control is made it, and the game is lost when it dies', () => {
+	const g = graph([
+		['start', {}, { then: 1 }],
+		['setBrain', { player: '0', unit: 'controlled', mark: true }],
+		['brainLost', { who: 'all' }, { then: 3 }],
+		['win', { team: 1, after: 0, text: '' }],
+	]);
+	const m = game(g);
+	m.run('Brains = PlayerBrains; S = MakeActor(0, 5, 5, { PresetName = "Soldier" }); Controlled[0] = S');
+	const out = lines(m.step());
+	assert.ok(out.includes('brain for 0: Soldier'), out.join(' / '));
+	assert.equal(m.run('return tostring(S.groups["Brains"]) .. " " .. tostring(S.groups["Brain 0"])'), 'true true');
+	assert.deepEqual(lines(m.step(0.1, 3)), [], 'alive: nothing');
+	m.run('S.Health = 0; Remove(S)');
+	assert.deepEqual(lines(m.step()), ['end winner 1'], 'it died: the other team wins');
+});
+
+test('a spawned unit can become a player brain, and the players can start with any unit as their brain', () => {
+	const g = graph([['start', {}, { then: 1 }], ['spawn', { source: 'group', group: 'Actors - Heavy', team: 0, area: 'Here', count: V(3), arrive: 'appear', facing: 'auto', ai: 'sentry', arm: 'none', brainOf: '0' }]]);
+	const m = game(g);
+	m.run('Areas["Here"] = { x = 0, y = 0, w = 10, h = 10 }');
+	const out = lines(m.step());
+	assert.equal(out.filter((l) => l.startsWith('brain for 0:')).length, 1, 'only the first: ' + out.join(' / '));
+	const start = game(graph([['start', {}, { then: 1 }], ['playerStart', { team: 0, area: 'Here', brain: 'group', brainGroup: 'Actors - Heavy', squad: V(0), group: 'Actors - Light', arm: 'none' }]]));
+	start.run('Areas["Here"] = { x = 0, y = 0, w = 10, h = 10 }');
+	assert.ok(lines(start.step()).includes('brain for 0: Random Actors - Heavy'));
+	assert.equal(start.run('return tostring(PlayerBrains[0].groups["Brains"])'), 'true', 'counted as a brain');
+});
+
 // ---- deploying a brain ----
 
 test('deploying a brain: the button works in its area, a robot leaves its body for a brain case, then undeploy and swap control', () => {
