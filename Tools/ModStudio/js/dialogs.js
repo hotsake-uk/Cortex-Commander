@@ -242,7 +242,7 @@ window.MS = window.MS || {};
 	function attachablePresets() {
 		const seen = new Set();
 		return app().lib.presets.filter((p) => {
-			if (!MS.panels.TAB_CLASSES.attachments.has(p.cls)) {
+			if (!MS.panels.TAB_CLASSES.attachments.has(p.cls) || app().hiddenModule(p.module)) {
 				return false;
 			}
 			const key = p.module + '/' + p.name;
@@ -300,7 +300,7 @@ window.MS = window.MS || {};
 
 	function pickItem() {
 		const a = app();
-		const items = a.lib.presets.filter((p) => MS.panels.TAB_CLASSES.items.has(p.cls) && p.topLevel);
+		const items = a.lib.presets.filter((p) => MS.panels.TAB_CLASSES.items.has(p.cls) && p.topLevel && !a.hiddenModule(p.module));
 		open('Put an item in the unit\'s hand', pickerGrid(items, (p) => a.setDevice(p), (c, p) => MS.panels.drawSpriteThumb(c, p)), [{ text: 'Cancel' }], true);
 	}
 

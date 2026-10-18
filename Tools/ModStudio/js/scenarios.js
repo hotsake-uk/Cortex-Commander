@@ -111,11 +111,11 @@ window.MS = window.MS || {};
 			}
 		},
 		pickItem: (onPick) => {
-			const items = app().lib.presets.filter((x) => x.topLevel && ['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice'].includes(x.cls)).sort((x, y) => x.name.localeCompare(y.name));
+			const items = app().lib.presets.filter((x) => x.topLevel && !app().hiddenModule(x.module) && ['HDFirearm', 'HeldDevice', 'TDExplosive', 'ThrownDevice'].includes(x.cls)).sort((x, y) => x.name.localeCompare(y.name));
 			MS.dialogs.open('Pick an item', MS.dialogs.parts.pickerGrid(items, (chosen) => onPick(chosen), (c, x) => MS.panels.drawSpriteThumb(c, x), false, []), [{ text: 'Cancel' }], true);
 		},
 		pickUnit: (onPick) => {
-			const units = app().lib.presets.filter((x) => x.topLevel && (x.cls === 'AHuman' || x.cls === 'ACrab')).sort((x, y) => x.name.localeCompare(y.name));
+			const units = app().lib.presets.filter((x) => x.topLevel && !app().hiddenModule(x.module) && (x.cls === 'AHuman' || x.cls === 'ACrab')).sort((x, y) => x.name.localeCompare(y.name));
 			MS.dialogs.open('Pick a unit', MS.dialogs.parts.pickerGrid(units, (chosen) => onPick(chosen), (c, x) => MS.panels.drawRigThumb(c, x), false, []), [{ text: 'Cancel' }], true);
 		},
 	};

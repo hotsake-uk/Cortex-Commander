@@ -594,6 +594,10 @@ window.MS = window.MS || {};
 
 	// The game's presets by class, the groups units are put in, and the mods: read once per load of the library.
 	let libMemo = null;
+	if (MS.settings && MS.settings.on) {
+		MS.settings.on('game.disableMedieval', () => (libMemo = null));
+		MS.settings.on('game.disabledMods', () => (libMemo = null));
+	}
 	const ACTOR_CLASSES = ['AHuman', 'ACrab', 'Actor', 'Turret', 'AMech', 'ACRocket', 'ACDropShip', 'ACShip', 'AVehicle', 'ADoor'];
 	function libLists() {
 		const lib = app().lib;
@@ -608,6 +612,9 @@ window.MS = window.MS || {};
 		const groups = new Set();
 		const modules = new Set();
 		for (const p of all) {
+			if (app().hiddenModule(p.module)) {
+				continue; // switched off in Studio's game options
+			}
 			if (!byCls.has(p.cls)) {
 				byCls.set(p.cls, []);
 			}
@@ -617,7 +624,13 @@ window.MS = window.MS || {};
 				p.node.children.forEach((c) => c.key === 'AddToGroup' && c.value && groups.add(String(c.value).trim()));
 			}
 		}
-		libMemo = { lib, gen: lib.generation, byCls, groups: [...groups].sort(), modules: [...modules].filter((m) => /\.rte$/i.test(m || '')).sort(), lists: new Map() };
+		// the factions: modules that say so in their Index.ini (IsFaction), as the game's team pickers list them
+		const factions = [...modules].filter((m) => {
+			const index = /\.rte$/i.test(m || '') && lib.docFor ? lib.docFor(m + '/Index.ini') : null;
+			const dm = index && index.root.children.find((n) => n.key === 'DataModule');
+			return !!dm && /^(1|true)$/i.test(dm.childValue('IsFaction', '0'));
+		}).sort();
+		libMemo = { lib, gen: lib.generation, byCls, groups: [...groups].sort(), modules: [...modules].filter((m) => /\.rte$/i.test(m || '')).sort(), factions, lists: new Map() };
 		return libMemo;
 	}
 
@@ -738,6 +751,9 @@ window.MS = window.MS || {};
 		}
 		if (key === 'song') {
 			return () => presetItems(['DynamicSong'], false);
+		}
+		if (key === 'faction') {
+			return () => [{ v: '', t: '(the team\'s own)', sec: 'Factions' }].concat((libLists() ? libLists().factions : []).map((v) => ({ v, t: v.replace(/\.rte$/i, ''), sub: v, sec: 'Factions' })));
 		}
 		if (key === 'tech') {
 			return () => (libLists() ? libLists().modules : []).map((v) => ({ v, t: v }));

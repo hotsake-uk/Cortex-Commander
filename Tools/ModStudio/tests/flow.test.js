@@ -775,6 +775,15 @@ test('a spawned unit can become a player brain, and the players can start with a
 	assert.equal(start.run('return tostring(PlayerBrains[0].groups["Brains"])'), 'true', 'counted as a brain');
 });
 
+test('units from a faction picked, whatever the team plays (and the team own when that faction is not loaded)', () => {
+	const g = graph([['start', {}, { then: 1 }], ['spawn', { source: 'group', group: 'Actors - Light', team: 1, faction: 'Ronin.rte', area: 'Here', count: V(1), arrive: 'appear', facing: 'auto', ai: 'sentry', arm: 'light' }]]);
+	const m = game(g);
+	assert.match(m.block, /local tech = studioFaction\(self, "Ronin\.rte", 1\)/);
+	m.run('Areas["Here"] = { x = 0, y = 0, w = 10, h = 10 }; Asked = {}; local get = PresetMan.GetModuleID; PresetMan.GetModuleID = function(self, name) Asked[#Asked + 1] = name; return name == "Ronin.rte" and 3 or get(self, name) end');
+	assert.ok(lines(m.step()).some((l) => l.startsWith('spawn Random Actors - Light team 1')));
+	assert.equal(m.run('return Asked[1]'), 'Ronin.rte');
+});
+
 // ---- deploying a brain ----
 
 test('deploying a brain: the button works in its area, a robot leaves its body for a brain case, then undeploy and swap control', () => {

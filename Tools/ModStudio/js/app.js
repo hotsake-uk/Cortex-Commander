@@ -222,7 +222,24 @@ window.MS = window.MS || {};
 	applyScope();
 
 	app.inScope = function (pathOrModule) {
+		if (app.hiddenModule(pathOrModule)) {
+			return false;
+		}
 		return !app.scope || app.scope.has(String(pathOrModule).split('/')[0].toLowerCase());
+	};
+
+	// A module switched off in Studio's game options (the medieval factions, or a mod): left out of the game Studio starts, and hidden in the
+	// library, the pickers and the faction lists (never the mod you're working on). Its presets are still read, for those that copy them.
+	const MEDIEVAL = new Set(['medieval.rte', 'felllegion.rte']);
+	app.hiddenModule = function (pathOrModule) {
+		const module = String(pathOrModule || '').split('/')[0].toLowerCase();
+		if (!module || (app.project && module === app.project.toLowerCase()) || !MS.settings) {
+			return false;
+		}
+		if (MEDIEVAL.has(module) && MS.settings.get('game.disableMedieval', false)) {
+			return true;
+		}
+		return (MS.settings.get('game.disabledMods', []) || []).some((m) => String(m).toLowerCase() === module);
 	};
 
 	function updateScopeButton() {
