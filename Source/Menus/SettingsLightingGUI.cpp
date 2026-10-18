@@ -143,6 +143,12 @@ void SettingsLightingGUI::ChangeSetting(const LightingOption& option, float valu
 	for (LightingSettings* changing: {&settings, &playerAtmosphere}) {
 		LightingOptions::SetValue(option, *changing, value);
 		changing->GraphicsQuality = LightingSettings::QualityCustom;
+		if (option.ColorField == &LightingSettings::Ambient) {
+			// The interior light takes the floor with it: the floor is the least light units and solid ground ever get, so left behind it would keep them bright in a dark room.
+			if (const LightingOption* floor = LightingOptions::Find("LightingForegroundAmbient")) {
+				LightingOptions::SetValue(*floor, *changing, value * 0.83F);
+			}
+		}
 	}
 	if (option.IntField == &LightingSettings::WeatherType) {
 		// A weather picked here goes by its slot, not a name asked for before the Weather presets were loaded.
@@ -203,6 +209,10 @@ void SettingsLightingGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			if (guiEvent.GetControl() == m_RowSliders[row] && guiEvent.GetMsg() == GUISlider::Changed) {
 				float value = GetSliderValue(*option, m_RowSliders[row]->GetValue());
 				ChangeSetting(*option, value);
+				if (option->ColorField == &LightingSettings::Ambient) {
+					// The floor row moved with it.
+					UpdateRows();
+				}
 				m_RowValueLabels[row]->SetText(GetValueText(*option, LightingOptions::GetValue(*option, g_PostProcessMan.GetLightingSettingsToSave())));
 				break;
 			} else if (guiEvent.GetControl() == m_RowCheckboxes[row] && guiEvent.GetMsg() == GUICheckbox::Changed) {

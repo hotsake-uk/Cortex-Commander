@@ -26,8 +26,8 @@ namespace RTE {
 		    Key(key), Label(label), Page(page), FloatField(field), Min(min), Max(max) {}
 		LightingOption(const char* key, const char* label, int page, int LightingSettings::*field, float min = 0.0F, float max = 0.0F) :
 		    Key(key), Label(label), Page(page), IntField(field), Min(min), Max(max) {}
-		LightingOption(const char* key, const char* label, int page, glm::vec3 LightingSettings::*field) :
-		    Key(key), Label(label), Page(page), ColorField(field) {}
+		LightingOption(const char* key, const char* label, int page, glm::vec3 LightingSettings::*field, float min = 0.0F, float max = 0.0F) :
+		    Key(key), Label(label), Page(page), ColorField(field), Min(min), Max(max) {}
 
 		/// Gets whether the option has limits.
 		bool HasRange() const { return Max > Min; }
@@ -48,10 +48,10 @@ namespace RTE {
 		/// @return The option, or nullptr if there's none with that key.
 		static const LightingOption* Find(const std::string& key);
 
-		/// Gets an option's value as a number: 0 or 1 for one that's on or off. Not for colours.
+		/// Gets an option's value as a number: 0 or 1 for one that's on or off, a colour's brightness (its brightest part).
 		static float GetValue(const LightingOption& option, const LightingSettings& settings);
 
-		/// Sets an option's value from a number, kept within its limits. Not for colours.
+		/// Sets an option's value from a number, kept within its limits. A colour keeps its tint and takes the number as its brightness.
 		static void SetValue(const LightingOption& option, LightingSettings& settings, float value);
 
 		/// Gets an option's value as Settings.ini writes it.
