@@ -784,6 +784,22 @@ test('units from a faction picked, whatever the team plays (and the team own whe
 	assert.equal(m.run('return Asked[1]'), 'Ronin.rte');
 });
 
+test('a goal to wipe out a group spawned: not done while they are still on the way, done when the last one dies', () => {
+	const g = graph([
+		['stageKillGroup', { name: 'Kill', text: 'Kill them: {left} left', group: 'Targets', marker: true, viewer: 0, failAfter: 0 }, { done: 1 }],
+		['message', { text: 'All dead' }],
+	]);
+	const m = game(g);
+	assert.equal(lines(m.step(0.5, 4)).length, 0, 'none of them here yet (in a dropship): not done');
+	m.run('A = MakeActor(1, 5, 5); A.groups["Targets"] = true; B = MakeActor(1, 9, 5); B.groups["Targets"] = true');
+	m.step();
+	assert.equal(m.run('return tostring(Test.StudioState.vars.left) .. " " .. Marks'), '2 2', 'two left, a marker over each');
+	m.run('A.Health = 0; Remove(A)');
+	assert.deepEqual(lines(m.step()), [], 'one left');
+	m.run('B.Health = 0; Remove(B)');
+	assert.deepEqual(lines(m.step()), ['msg All dead']);
+});
+
 // ---- deploying a brain ----
 
 test('deploying a brain: the button works in its area, a robot leaves its body for a brain case, then undeploy and swap control', () => {
