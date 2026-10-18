@@ -85,11 +85,17 @@ def test_scenario(name, scenario_args, options, trace_dir):
 
     mode = "windowed" if options.windowed else "headless"
 
-    print(f"{name}: recording, {mode}...", flush=True)
-    finished, report = run_game(options.exe, scenario_args, ["-determinism-record", str(trace)], mode == "headless", settings, "Determinism_" + file_name, options.timeout, options.base_settings)
-    if not finished:
-        print(f"{name}: FAILED, the recording run didn't finish properly\n{report}")
-        return False
+    if options.verify_only:
+        # The trace was recorded elsewhere, such as by another build or on another machine, so this checks that this build matches it.
+        if not trace.is_file():
+            print(f"{name}: FAILED, there's no recorded trace at {trace}")
+            return False
+    else:
+        print(f"{name}: recording, {mode}...", flush=True)
+        finished, report = run_game(options.exe, scenario_args, ["-determinism-record", str(trace)], mode == "headless", settings, "Determinism_" + file_name, options.timeout, options.base_settings)
+        if not finished:
+            print(f"{name}: FAILED, the recording run didn't finish properly\n{report}")
+            return False
     # A scenario that fails to launch still exits normally, it just doesn't make any checkpoints.
     if trace.stat().st_size == 0:
         print(f"{name}: FAILED, the scenario didn't start")
@@ -123,9 +129,12 @@ def main():
     parser.add_argument("--activity", action="append", default=[], nargs=3, metavar=("TYPE", "ACTIVITY", "SCENE"), help="an Activity and Scene to run, can be given several times")
     parser.add_argument("--scenario", action="append", default=[], metavar="NAME", help="a scenario to run on its own map, by its preset name, can be given several times")
     parser.add_argument("--trace-dir", type=Path, help="where to keep the recorded traces, instead of a temporary directory")
+    parser.add_argument("--verify-only", action="store_true", help="don't record, verify against the traces already in --trace-dir, such as ones recorded by another build or on another machine")
     parser.add_argument("--timeout", type=int, default=1800, help="how many seconds a single run can take before it is given up on (default: %(default)s)")
     options = parser.parse_args()
     options.exe = str(Path(options.exe).resolve())
+    if options.verify_only and not options.trace_dir:
+        parser.error("--verify-only needs --trace-dir, to say where the recorded traces are")
 
     scenarios =[(f"Save {save}", ["-save", save]) for save in options.save]
     scenarios += [(f"Scenario {scenario}", ["-scenario", scenario]) for scenario in options.scenario]
