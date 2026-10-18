@@ -80,6 +80,24 @@ namespace RTE {
 		/// Gets the average of the MSPF reading buffer, calculated each frame.
 		/// @return The average value of the MSPF reading buffer.
 		float GetMSPFAverage() const { return m_MSPFAverage; }
+
+		/// Gets the average of the MSPU reading buffer, calculated each frame.
+		/// @return The average value of the MSPU reading buffer.
+		float GetMSPUAverage() const { return m_MSPUAverage; }
+
+		/// Gets the average of the MSPD reading buffer, calculated each frame.
+		/// @return The average value of the MSPD reading buffer.
+		float GetMSPDAverage() const { return m_MSPDAverage; }
+
+		/// Gets the average time of the last few samples of a performance counter, as the advanced performance stats show it.
+		/// @param counter The counter to get the average of.
+		/// @return The average, in milliseconds.
+		float GetPerformanceCounterAverageMS(PerformanceCounters counter) const { return static_cast<float>(GetPerformanceCounterAverage(counter)) / 1000.0F; }
+
+		/// Gets the name a performance counter is shown with.
+		/// @param counter The counter to get the name of.
+		/// @return The counter's name.
+		static const std::string& GetPerformanceCounterName(PerformanceCounters counter) { return m_PerfCounterNames[counter]; }
 #pragma endregion
 
 #pragma region Performance Counter Handling

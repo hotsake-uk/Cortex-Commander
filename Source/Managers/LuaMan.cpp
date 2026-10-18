@@ -4,6 +4,7 @@
 #include "LuaBindingRegisterDefinitions.h"
 #include "ThreadMan.h"
 #include "System.h"
+#include "ModStudioLink.h"
 
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyLua.hpp"
@@ -122,6 +123,7 @@ void LuaStateWrapper::Initialize() {
 	                         luabind::def("GetPathFindingDefaultDigStrength", &LuaAdaptersUtility::GetPathFindingDefaultDigStrength),
 	                         luabind::def("RoundFloatToPrecision", &RoundFloatToPrecision),
 	                         luabind::def("RoundToNearestMultiple", &RoundToNearestMultiple),
+	                         luabind::def("_StudioWatch", &ModStudioLink::Watch),
 
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Vector),
 	                         RegisterLuaBindingsOfType(SystemLuaBindings, Box),
@@ -251,6 +253,8 @@ void LuaStateWrapper::Initialize() {
 	              "package.cpath = package.cpath .. \";Data/Base.rte/LuaIntegration/?.so;Data/Base.rte/LuaIntegration/?/?.so;\"\n"
 	              // Add cls() as a shortcut to ConsoleMan:Clear().
 	              "cls = function() ConsoleMan:Clear(); end\n"
+	              // StudioWatch(name, value) shows a value in Cortex Mod Studio's Watch panel (in a game started with -modstudio; otherwise it does nothing).
+	              "StudioWatch = function(name, value) _StudioWatch(tostring(name), tostring(value)); end\n"
 	              // Override "print" in the lua state to output to the console.
 	              "print = function(stringToPrint) ConsoleMan:PrintString(\"PRINT: \" .. tostring(stringToPrint)); end\n"
 	              // Override random functions to appear global instead of under LuaMan

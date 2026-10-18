@@ -1,11 +1,13 @@
 #include "ModStudioLink.h"
 
 #include "ActivityMan.h"
+#include "AudioMan.h"
 #include "ConsoleMan.h"
 #include "ContentFile.h"
 #include "GAScripted.h"
 #include "LuaMan.h"
 #include "MovableMan.h"
+#include "PerformanceMan.h"
 #include "PresetMan.h"
 #include "System.h"
 
@@ -13,7 +15,10 @@
 #include <fstream>
 #include <iterator>
 #include <list>
+#include <map>
 #include <mutex>
+#include <sstream>
+#include <unordered_map>
 #include <vector>
 
 using namespace RTE;
@@ -22,6 +27,7 @@ bool ModStudioLink::s_Enabled = false;
 std::chrono::steady_clock::time_point ModStudioLink::s_LastUpdate = {};
 bool ModStudioLink::s_ScriptsLookedAt = false;
 std::filesystem::file_time_type ModStudioLink::s_ScriptsWriteTime = {};
+std::chrono::steady_clock::time_point ModStudioLink::s_LastProfileWrite = {};
 
 namespace {
 	std::filesystem::path LinkFolder() {
@@ -39,6 +45,47 @@ namespace {
 	ConsoleLog& Log() {
 		static ConsoleLog* log = new ConsoleLog();
 		return *log;
+	}
+
+	/// A file the tool reads while the game runs, written to a temporary file and swapped in when it's done so the tool never reads half of one.
+	/// Where the swap can't be made (the tool has the file open just then, on Windows) it is written in place.
+	class LinkFileOut : public std::ostringstream {
+	public:
+		explicit LinkFileOut(std::filesystem::path path) :
+		    m_Path(std::move(path)) {}
+
+		~LinkFileOut() override {
+			const std::string text = str();
+			std::error_code error;
+			std::filesystem::create_directories(m_Path.parent_path(), error);
+			std::filesystem::path temp = m_Path;
+			temp += ".tmp";
+			{
+				std::ofstream out(temp, std::ios::binary | std::ios::trunc);
+				out << text;
+			}
+			std::filesystem::rename(temp, m_Path, error);
+			if (error) {
+				std::ofstream out(m_Path, std::ios::binary | std::ios::trunc);
+				out << text;
+				std::filesystem::remove(temp, error);
+			}
+		}
+
+	private:
+		std::filesystem::path m_Path;
+	};
+
+	/// The values scripts watch. Scripts can run on other threads, so it has a lock; like the log, it is never freed.
+	struct WatchedValues {
+		std::mutex Mutex;
+		std::map<std::string, std::string> Values; //!< The values, by name.
+		bool Changed = false; //!< Whether one changed since Watch.ini was last written.
+	};
+
+	WatchedValues& Watched() {
+		static WatchedValues* watched = new WatchedValues();
+		return *watched;
 	}
 
 	std::string TrimSpaces(const std::string& text) {
@@ -98,7 +145,89 @@ void ModStudioLink::Update() {
 			log.Unflushed = false;
 		}
 	}
+	{
+		WatchedValues& watched = Watched();
+		std::scoped_lock<std::mutex> watchLock(watched.Mutex);
+		if (watched.Changed) {
+			watched.Changed = false;
+			LinkFileOut watchFile(LinkFolder() / "Watch.ini");
+			for (const auto& [name, value]: watched.Values) {
+				watchFile << name << " = " << value << '\n';
+			}
+		}
+	}
 	HandleScriptRequests();
+}
+
+void ModStudioLink::Watch(const std::string& name, const std::string& value) {
+	if (!s_Enabled) {
+		return;
+	}
+	WatchedValues& watched = Watched();
+	std::scoped_lock<std::mutex> watchLock(watched.Mutex);
+	auto [entry, added] = watched.Values.try_emplace(name, value);
+	if (added || entry->second != value) {
+		entry->second = value;
+		watched.Changed = true;
+	}
+}
+
+void ModStudioLink::UpdateProfile() {
+	if (!s_Enabled || !g_ActivityMan.IsInActivity()) {
+		return;
+	}
+	struct ScriptTotal {
+		long long Microseconds = 0;
+		long long Calls = 0;
+	};
+	static std::unordered_map<std::string, ScriptTotal> s_Scripts;
+	static int s_Updates = 0;
+
+	// This sim update's script timings (LuaMan clears them before each MovableMan update).
+	for (const auto& [path, timing]: g_LuaMan.GetScriptTimings()) {
+		ScriptTotal& total = s_Scripts[path];
+		total.Microseconds += timing.m_Time;
+		total.Calls += timing.m_CallCount;
+	}
+	++s_Updates;
+
+	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
+	if (now - s_LastProfileWrite < std::chrono::milliseconds(500)) {
+		return;
+	}
+	s_LastProfileWrite = now;
+
+	std::vector<std::pair<std::string, ScriptTotal>> scripts(s_Scripts.begin(), s_Scripts.end());
+	std::sort(scripts.begin(), scripts.end(), [](const auto& left, const auto& right) { return left.second.Microseconds > right.second.Microseconds; });
+	const double updates = static_cast<double>(std::max(s_Updates, 1));
+	int virtualChannels = 0;
+	int realChannels = 0;
+	g_AudioMan.GetPlayingChannelCount(&virtualChannels, &realChannels);
+
+	LinkFileOut profile(LinkFolder() / "Profile.ini");
+	profile << "// Written by the game twice a second for Cortex Mod Studio's profiler. Times are in milliseconds; scripts' are per sim update.\n";
+	profile << "Frame = " << g_PerformanceMan.GetMSPFAverage() << '\n';
+	profile << "SimUpdate = " << g_PerformanceMan.GetMSPSUAverage() << '\n';
+	profile << "Update = " << g_PerformanceMan.GetMSPUAverage() << '\n';
+	profile << "Draw = " << g_PerformanceMan.GetMSPDAverage() << '\n';
+	profile << "SimUpdates = " << s_Updates << '\n';
+	profile << "Actors = " << g_MovableMan.GetActorCount() << '\n';
+	profile << "Particles = " << g_MovableMan.GetParticleCount() << '\n';
+	profile << "MOIDs = " << g_MovableMan.GetMOIDCount() << '\n';
+	profile << "SoundChannels = " << realChannels << '\n';
+	for (int counter = PerformanceMan::SimTotal; counter < PerformanceMan::PerfCounterCount; ++counter) {
+		const PerformanceMan::PerformanceCounters performanceCounter = static_cast<PerformanceMan::PerformanceCounters>(counter);
+		profile << "Stage = " << PerformanceMan::GetPerformanceCounterName(performanceCounter) << '\t' << g_PerformanceMan.GetPerformanceCounterAverageMS(performanceCounter) << '\n';
+	}
+	int written = 0;
+	for (const auto& [path, total]: scripts) {
+		if (++written > 40) {
+			break;
+		}
+		profile << "Script = " << path << '\t' << static_cast<double>(total.Microseconds) / 1000.0 / updates << '\t' << static_cast<double>(total.Calls) / updates << '\n';
+	}
+	s_Scripts.clear();
+	s_Updates = 0;
 }
 
 void ModStudioLink::HandleScriptRequests() {

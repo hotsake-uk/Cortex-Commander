@@ -16,6 +16,11 @@ namespace RTE {
 	///                           image's pixels), "ReloadScript = <module path>" reloads one script in the presets and MOs using it,
 	///                           "ReloadScripts = 1" reloads every script, and "Run = <path>" runs a Lua file (the tool's console).
 	///                           Handled each time the file is written again.
+	///   ModStudio/Watch.ini     The values scripts show with StudioWatch(name, value), as "name = value" lines.
+	///   ModStudio/Profile.ini   Twice a second in an activity: frame, update and draw times, object counts, the performance counters
+	///                           ("Stage = <name>\t<ms>") and each script's time and calls in a sim update ("Script = <path>\t<ms>\t<calls>").
+	///
+	/// The files the game writes are written to a temporary file first and swapped in, so the tool never reads half of one.
 	class ModStudioLink {
 
 	public:
@@ -33,6 +38,14 @@ namespace RTE {
 		/// Called once a frame: flushes the console log and carries out the tool's requests. Does nothing with the link off.
 		static void Update();
 
+		/// Called after each sim update's MovableMan update: adds up the scripts' time for Profile.ini, and writes it twice a second.
+		static void UpdateProfile();
+
+		/// StudioWatch(name, value) in Lua: shows a value in the tool's Watch panel. Any thread can call it.
+		/// @param name The value's name.
+		/// @param value The value, as text.
+		static void Watch(const std::string& name, const std::string& value);
+
 	private:
 		/// Carries out ModStudio/Scripts.ini when it was written since it was last read.
 		static void HandleScriptRequests();
@@ -41,5 +54,6 @@ namespace RTE {
 		static std::chrono::steady_clock::time_point s_LastUpdate; //!< When Update last did its work.
 		static bool s_ScriptsLookedAt; //!< Whether Scripts.ini has been looked at yet. A request left from before the game started is skipped.
 		static std::filesystem::file_time_type s_ScriptsWriteTime; //!< When the last Scripts.ini handled was written.
+		static std::chrono::steady_clock::time_point s_LastProfileWrite; //!< When Profile.ini was last written.
 	};
 } // namespace RTE
