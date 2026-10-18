@@ -153,6 +153,16 @@ window.MS = window.MS || {};
 			for (const t of TARGETS) {
 				body.append(choice(t.id, t.name, t.classic ? 'Classic: a release build of Community Edition, no live link to the game' : 'This game, with everything Studio does'));
 			}
+			// In the app, Studio can download Community Edition itself (the Game screen's Community Edition tab, launcher.js).
+			const game = document.getElementById('btnGame');
+			if (game && !game.hidden && MS.launcher) {
+				const get = el('button', { className: 'tb', textContent: 'Get Community Edition…', title: 'Download a release build of Community Edition and make mods for it' });
+				get.onclick = () => {
+					MS.settings.close();
+					MS.launcher.open('community');
+				};
+				body.append(el('p', {}, get));
+			}
 		},
 	});
 })();

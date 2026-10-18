@@ -46,8 +46,11 @@ Then:
   then checks the version out at that commit again (new files in `Data` go too) and makes your mods folder the backup again.
   **Lock again** keeps your changes. Update & build waits while it's unlocked, since it moves the version to another commit.
 
-A Community Edition release folder (6.2.2 or the nightly) opens in Classic mode (see `Tools/ModStudio/README.md`): there is no Game
-screen, **▶ Play** starts the release where it is (`launch_release` in `launcher.rs`), and its ▾ has the game's editors.
+A Community Edition release folder (6.2.2 or the nightly) opens in Classic mode (see `Tools/ModStudio/README.md`): **▶ Play** starts
+the release where it is (`launch_release` in `launcher.rs`), and its ▾ has the game's editors. Studio can download the release
+itself: on the first start with no game folder it offers to, and the Game screen's **Community Edition** tab gets 6.2.2 or the
+nightly (in `Documents/Cortex Studio/` unless you pick another folder), says when GitHub has a newer build, and switches Studio to
+the one you pick. Getting a newer build replaces the program and `Data` and keeps `Mods`, `Userdata` and the game's settings.
 
 Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn the first time it's opened ("More info",
 "Run anyway" on Windows; right-click, Open on macOS).
@@ -64,6 +67,9 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
   Studio's own saves are left alone.
 - `src-tauri/src/backup.rs`: backups of a whole mod, a copy of its folder taken when you ask, in `CortexStudio/Backups/<mod>/` in your
   config folder. A restore puts the folder back as it was (after backing up how it is now).
+- `src-tauri/src/community.rs`: Community Edition release builds from GitHub (`CortexCommand.<platform>.zip` from
+  cortex-command-community/Cortex-Command-Community-Project), downloaded and unpacked as a launcher job, with a
+  `.cortex-studio-release.json` in the folder saying which build it is.
 - `src-tauri/src/launcher.rs`: the Game screen's work (setup check, versions, builds, launching), ported from `Tools/Launcher`,
   answering the server's `launcher/...` requests. The screen itself is `Tools/ModStudio/js/launcher.js`.
 - `src-tauri/src/main.rs`: finds the game folder (remembered in `CortexStudio/settings.json` in the user's config folder),

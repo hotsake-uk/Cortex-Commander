@@ -460,7 +460,10 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 		}
 		"info" => {
 			let name = root.file_name().map(|n| n.to_string_lossy().into_owned()).unwrap_or_default();
-			let body = format!("{{\"name\":{},\"path\":{},\"app\":\"Cortex Studio\"}}", json_string(&name), json_string(&root.to_string_lossy()));
+			// game: false when the folder is waiting for a Community Edition download (the first start, with no game), which the page then gets
+			let game = root.join("Data").join("Base.rte").is_dir();
+			let wants = crate::community::release_for(root).filter(|_| !game).unwrap_or("");
+			let body = format!("{{\"name\":{},\"path\":{},\"app\":\"Cortex Studio\",\"game\":{game},\"download\":{}}}", json_string(&name), json_string(&root.to_string_lossy()), json_string(wants));
 			bytes(body.into_bytes(), "application/json")
 		}
 		"inis" | "luas" => {

@@ -9,6 +9,7 @@
 #![cfg_attr(not(debug_assertions), windows_subsystem = "windows")]
 
 mod backup;
+mod community;
 mod launcher;
 mod server;
 mod watcher;
@@ -112,6 +113,25 @@ fn game_dir_above(start: &Path) -> Option<PathBuf> {
 }
 
 fn pick_game_dir() -> Option<PathBuf> {
+	// No game yet: Studio can download Community Edition (the page does it, with its progress, in the folder it opens on), or you pick one.
+	let get = "Download Community Edition";
+	let answer = rfd::MessageDialog::new()
+		.set_title("Cortex Studio")
+		.set_description("Studio needs a Cortex Command game folder to make mods for. Download Community Edition 6.2.2 (a few hundred MB, into Documents/Cortex Studio), or pick the folder of a game you already have.")
+		.set_buttons(rfd::MessageButtons::YesNoCancelCustom(get.into(), "Pick a folder".into(), "Quit".into()))
+		.show();
+	// some desktops answer with the button's place (Yes, No, Cancel) rather than its label
+	let download = match answer {
+		rfd::MessageDialogResult::Custom(c) => c == get,
+		rfd::MessageDialogResult::Yes => true,
+		rfd::MessageDialogResult::No => false,
+		_ => return None,
+	};
+	if download {
+		let dir = community::folder("ce-6.2.2", "")?;
+		std::fs::create_dir_all(&dir).ok()?;
+		return Some(dir);
+	}
 	loop {
 		let picked = rfd::FileDialog::new().set_title("Pick the Cortex Command game folder (the one with Data inside)").pick_folder()?;
 		if is_game_dir(&picked) {
@@ -130,6 +150,10 @@ fn find_game_dir(given: Option<PathBuf>, settings: &Settings) -> Option<PathBuf>
 		return if is_game_dir(&dir) { Some(dir) } else { None };
 	}
 	if let Some(dir) = settings.game_dir.as_ref().filter(|d| is_game_dir(d)) {
+		return Some(dir.clone());
+	}
+	// a Community Edition download that didn't finish: the page carries on with it
+	if let Some(dir) = settings.game_dir.as_ref().filter(|d| community::waiting_for_download(d)) {
 		return Some(dir.clone());
 	}
 	let exe = std::env::current_exe().ok().and_then(|e| e.parent().map(Path::to_path_buf));
