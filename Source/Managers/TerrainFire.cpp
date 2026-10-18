@@ -360,8 +360,12 @@ void TerrainFire::SpawnSteam(const Vector& position, int count) {
 	GasGrid::Add(position + Vector(0.0F, -4.0F), GasGrid::Steam, 0.15F * static_cast<float>(count));
 	for (int i = 0; i < count; ++i) {
 		if (MovableObject* steam = CreateEffect("MOSParticle", "Steam Puff")) {
-			steam->SetPos(position + Vector((Random01(s_Random) - 0.5F) * 6.0F, -2.0F - Random01(s_Random) * 4.0F));
-			steam->SetVel(Vector((Random01(s_Random) - 0.5F) * 1.5F, -1.0F - Random01(s_Random) * 1.5F));
+			float offsetX = (Random01(s_Random) - 0.5F) * 6.0F;
+			float offsetY = -2.0F - Random01(s_Random) * 4.0F;
+			steam->SetPos(position + Vector(offsetX, offsetY));
+			float driftX = (Random01(s_Random) - 0.5F) * 1.5F;
+			float driftY = -1.0F - Random01(s_Random) * 1.5F;
+			steam->SetVel(Vector(driftX, driftY));
 			g_MovableMan.AddParticle(steam);
 		}
 	}
@@ -659,7 +663,9 @@ void TerrainFire::Update() {
 		if (count >= 2 && Random01(s_Random) < 0.25F) {
 			if (MovableObject* flame = CreateEffect("MOPixel", "Flame Hurt Particle")) {
 				flame->SetPos(Vector(static_cast<float>(position.x), static_cast<float>(position.y - 2)));
-				flame->SetVel(Vector((Random01(s_Random) - 0.5F) * 2.0F, -2.0F - Random01(s_Random) * 3.0F));
+				float driftX = (Random01(s_Random) - 0.5F) * 2.0F;
+				float driftY = -2.0F - Random01(s_Random) * 3.0F;
+				flame->SetVel(Vector(driftX, driftY));
 				g_MovableMan.AddParticle(flame);
 			}
 		}
@@ -667,7 +673,9 @@ void TerrainFire::Update() {
 		if (count >= 4 && Random01(s_Random) < 0.2F) {
 			if (MovableObject* smoke = CreateEffect("MOSParticle", "Tiny Smoke Ball 1")) {
 				smoke->SetPos(Vector(static_cast<float>(position.x), static_cast<float>(position.y - 3)));
-				smoke->SetVel(Vector((Random01(s_Random) - 0.5F) * 1.0F, -1.0F - Random01(s_Random)));
+				float driftX = (Random01(s_Random) - 0.5F) * 1.0F;
+				float driftY = -1.0F - Random01(s_Random);
+				smoke->SetVel(Vector(driftX, driftY));
 				g_MovableMan.AddParticle(smoke);
 			}
 		}

@@ -127,7 +127,9 @@ namespace SandboxDetail {
 			}
 			const Vector step(0.0F, 2.0F);
 			for (int tries = 0; tries < 60; ++tries) {
-				Vector at(left + Random01() * (right - left), top + Random01() * (bottom - top));
+				float atX = left + Random01() * (right - left);
+				float atY = top + Random01() * (bottom - top);
+				Vector at(atX, atY);
 				if (!IsInZone(zone, at)) {
 					continue;
 				}
@@ -403,7 +405,9 @@ namespace SandboxDetail {
 			}
 			const Vector down(0.0F, 1.0F);
 			for (int tries = 0; tries < 60; ++tries) {
-				Vector at(left + Random01() * (right - left), top + Random01() * (bottom - top));
+				float atX = left + Random01() * (right - left);
+				float atY = top + Random01() * (bottom - top);
+				Vector at(atX, atY);
 				if (!InsideZone(zone, at)) {
 					continue;
 				}
@@ -519,7 +523,9 @@ namespace SandboxDetail {
 			float bestScore = 0.0F;
 			bool found = false;
 			for (int tries = 0; tries < 60; ++tries) {
-				Vector at(margin + Random01() * (width - margin * 2.0F), Random01() * bottom);
+				float atX = margin + Random01() * (width - margin * 2.0F);
+				float atY = Random01() * bottom;
+				Vector at(atX, atY);
 				while (at.m_Y > 0.0F && !AirAt(at)) {
 					at -= step;
 				}

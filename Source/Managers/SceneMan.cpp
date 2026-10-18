@@ -627,11 +627,12 @@ int SceneMan::RemoveOrphans(int posX, int posY,
 			// Density is used as the mass for the new MOPixel
 			float tempMax = 2.0F * sprayScale;
 			float tempMin = tempMax / 2.0F;
+			float spawnVelX = -RandomNum(tempMin, tempMax);
+			float spawnVelY = -RandomNum(tempMin, tempMax);
 			MOPixel* pixelMO = new MOPixel(spawnColor,
 			                               spawnMat->GetPixelDensity(),
 			                               Vector(posX, posY),
-			                               Vector(-RandomNum(tempMin, tempMax),
-			                                      -RandomNum(tempMin, tempMax)),
+			                               Vector(spawnVelX, spawnVelY),
 			                               new Atom(Vector(), spawnMat->GetIndex(), 0, spawnColor, 2),
 			                               0);
 
@@ -717,11 +718,12 @@ bool SceneMan::TryPenetrate(int posX,
 				float tempMinX = tempMaxX / 2.0F;
 				float tempMaxY = velocity.m_Y * sprayScale;
 				float tempMinY = tempMaxY / 2.0F;
+				float spawnVelX = -RandomNum(tempMinX, tempMaxX);
+				float spawnVelY = -RandomNum(tempMinY, tempMaxY);
 				MOPixel* pixelMO = new MOPixel(spawnColor,
 				                               spawnMat->GetPixelDensity(),
 				                               Vector(posX, posY),
-				                               Vector(-RandomNum(tempMinX, tempMaxX),
-				                                      -RandomNum(tempMinY, tempMaxY)),
+				                               Vector(spawnVelX, spawnVelY),
 				                               //                                              -(impulse * (sprayScale * RandomNum() / spawnMat.density)),
 				                               new Atom(Vector(), spawnMat->GetIndex(), 0, spawnColor, 2),
 				                               0);

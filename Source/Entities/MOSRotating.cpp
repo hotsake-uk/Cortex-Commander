@@ -1180,7 +1180,9 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					float angularVel = std::abs(gibParticleClone->GetAngularVel() * 0.5F) + std::abs(gibParticleClone->GetAngularVel() * 0.5F * offCenterRatio);
 					gibParticleClone->SetAngularVel(angularVel * (rotatedGibOffset.m_X > 0 ? -1 : 1));
 				} else {
-					gibParticleClone->SetAngularVel((gibParticleClone->GetAngularVel() * 0.5F + (gibParticleClone->GetAngularVel() * RandomNum())) * (RandomNormalNum() > 0.0F ? 1.0F : -1.0F));
+					float spinScale = RandomNum();
+					float spinDirection = RandomNormalNum() > 0.0F ? 1.0F : -1.0F;
+					gibParticleClone->SetAngularVel((gibParticleClone->GetAngularVel() * 0.5F + (gibParticleClone->GetAngularVel() * spinScale)) * spinDirection);
 				}
 
 				gibParticleClone->SetPos(m_Pos + rotatedGibOffset);
@@ -1507,7 +1509,9 @@ bool MOSRotating::DeepCheck(bool makeMOPs, int skipMOP, int maxMOPs) {
 				if (tally >= 1.0) {
 					tally -= 1.0;
 					(*itr)->SetPos((*itr)->GetPos() - m_Vel.GetNormalized() * depth);
-					(*itr)->SetVel(Vector(velMag * RandomNum(0.0F, splashDir), -RandomNum(0.0F, velMag)));
+					float splashX = velMag * RandomNum(0.0F, splashDir);
+					float splashY = -RandomNum(0.0F, velMag);
+					(*itr)->SetVel(Vector(splashX, splashY));
 					m_DeepHardness += (*itr)->GetMaterial()->GetIntegrity() * (*itr)->GetMaterial()->GetPixelDensity();
 					g_MovableMan.AddParticle(*itr);
 					*itr = 0;

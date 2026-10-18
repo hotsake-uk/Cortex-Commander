@@ -613,7 +613,8 @@ void ACShip::UpdateCombat() {
 	Vector spot;
 	if (jink) {
 		// A little way off where it is, never nearer over the enemy; outward on a cautious order.
-		float across = (RandomNum(0.0F, 1.0F) < (direct < 0.0F ? 0.8F : 0.5F) ? 1.0F : -1.0F) * RandomNum(0.08F, 0.16F) * range * static_cast<float>(side);
+		float acrossSide = RandomNum(0.0F, 1.0F) < (direct < 0.0F ? 0.8F : 0.5F) ? 1.0F : -1.0F;
+		float across = acrossSide * RandomNum(0.08F, 0.16F) * range * static_cast<float>(side);
 		spot = keepNearPost(m_Pos + Vector(across, RandomNum(-50.0F, 30.0F)));
 		if (std::abs(g_SceneMan.ShortestDistance(enemyPos, spot, wraps).m_X) < range * 0.15F) {
 			spot = keepNearPost(m_Pos + Vector(std::abs(across) * static_cast<float>(side), RandomNum(-50.0F, 0.0F)));
@@ -1874,7 +1875,9 @@ void ACShip::UpdateGuns() {
 				gun.TargetID = 0;
 				if (gun.SuppressTimer.IsPastSimMS(500)) {
 					gun.SuppressTimer.Reset();
-					gun.SuppressPoint = suppressCentre + Vector(RandomNum(-1.0F, 1.0F) * suppressRadius, RandomNum(-0.5F, 0.5F) * suppressRadius);
+					float suppressX = RandomNum(-1.0F, 1.0F) * suppressRadius;
+					float suppressY = RandomNum(-0.5F, 0.5F) * suppressRadius;
+					gun.SuppressPoint = suppressCentre + Vector(suppressX, suppressY);
 				}
 				Vector toPoint = g_SceneMan.ShortestDistance(turret->GetPos(), gun.SuppressPoint);
 				float angle = DetMath::Atan2(-toPoint.m_Y, std::abs(toPoint.m_X));

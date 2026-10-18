@@ -128,7 +128,11 @@ namespace RTE {
 
 		/// Gets a random point within this box.
 		/// @return The random point within the box.
-		Vector GetRandomPoint() const { return Vector(m_Corner.m_X + RandomNum(0.0F, m_Width), m_Corner.m_Y + RandomNum(0.0F, m_Height)); }
+		Vector GetRandomPoint() const {
+			// C++ leaves the order of a call's arguments up to the compiler, and MSVC and GCC pick differently, so the random numbers are drawn one statement at a time to give every platform the same point.
+			float x = m_Corner.m_X + RandomNum(0.0F, m_Width);
+			return Vector(x, m_Corner.m_Y + RandomNum(0.0F, m_Height));
+		}
 
 		/// @brief Gets the intersection of this Box with another Box
 		/// @param rhs The other Box.

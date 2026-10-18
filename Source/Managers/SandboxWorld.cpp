@@ -151,8 +151,12 @@ namespace SandboxDetail {
 	void SpawnPuffs(const char* presetName, const Vector& position, int radius, int count) {
 		for (int i = 0; i < count; ++i) {
 			if (MovableObject* puff = CreateBaseObject("MOSParticle", presetName)) {
-				puff->SetPos(position + Vector((Random01() - 0.5F) * 2.0F * static_cast<float>(radius), (Random01() - 0.5F) * 2.0F * static_cast<float>(radius)));
-				puff->SetVel(Vector((Random01() - 0.5F) * 2.0F, (Random01() - 0.5F) * 2.0F));
+				float offsetX = (Random01() - 0.5F) * 2.0F * static_cast<float>(radius);
+				float offsetY = (Random01() - 0.5F) * 2.0F * static_cast<float>(radius);
+				puff->SetPos(position + Vector(offsetX, offsetY));
+				float driftX = (Random01() - 0.5F) * 2.0F;
+				float driftY = (Random01() - 0.5F) * 2.0F;
+				puff->SetVel(Vector(driftX, driftY));
 				g_MovableMan.AddParticle(puff);
 			}
 		}
@@ -1659,7 +1663,10 @@ namespace SandboxDetail {
 				owed = static_cast<int>(effect.Due[i]);
 				effect.Due[i] -= static_cast<float>(owed);
 			}
-			auto jitter = [&]() { return where + Vector((Random01() - 0.5F) * layer.Size, (Random01() - 0.5F) * layer.Size); };
+			auto jitter = [&]() {
+				float jitterX = (Random01() - 0.5F) * layer.Size;
+				return where + Vector(jitterX, (Random01() - 0.5F) * layer.Size);
+			};
 			switch (layer.Kind) {
 				case LayerKind::Light:
 					g_PostProcessMan.RegisterLight(where, colour, std::max(layer.Size, 4.0F), brightness, LightSource::Sandbox);
@@ -1688,7 +1695,9 @@ namespace SandboxDetail {
 					for (int n = 0; n < owed; ++n) {
 						if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
 							flame->SetPos(jitter());
-							flame->SetVel(direction * layer.Speed + Vector((Random01() - 0.5F) * 2.0F, (Random01() - 0.5F) * 2.0F) * (layer.Spread * layer.Speed * 0.5F));
+							float spreadX = (Random01() - 0.5F) * 2.0F;
+							float spreadY = (Random01() - 0.5F) * 2.0F;
+							flame->SetVel(direction * layer.Speed + Vector(spreadX, spreadY) * (layer.Spread * layer.Speed * 0.5F));
 							g_MovableMan.AddParticle(flame);
 						}
 					}
@@ -2244,7 +2253,9 @@ namespace SandboxDetail {
 					if (every(2)) {
 						if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
 							flame->SetPos(at);
-							flame->SetVel(Vector((Random01() - 0.5F) * 2.0F, -7.0F - Random01() * 3.0F));
+							float velX = (Random01() - 0.5F) * 2.0F;
+							float velY = -7.0F - Random01() * 3.0F;
+							flame->SetVel(Vector(velX, velY));
 							g_MovableMan.AddParticle(flame);
 						}
 					}
@@ -3831,8 +3842,12 @@ namespace SandboxDetail {
 				// they were they hit and hurt units the fire wasn't painted on. What burns is the fire itself.)
 				if (MovableObject* flame = CreateBaseObject("MOSParticle", "Flame Hurt Short")) {
 					flame->SetToHitMOs(false);
-					flame->SetPos(at + Vector((Random01() - 0.5F) * radius, (Random01() - 0.5F) * radius));
-					flame->SetVel(Vector((Random01() - 0.5F) * 1.5F, -1.0F - Random01()));
+					float offsetX = (Random01() - 0.5F) * radius;
+					float offsetY = (Random01() - 0.5F) * radius;
+					flame->SetPos(at + Vector(offsetX, offsetY));
+					float driftX = (Random01() - 0.5F) * 1.5F;
+					float driftY = -1.0F - Random01();
+					flame->SetVel(Vector(driftX, driftY));
 					g_MovableMan.AddParticle(flame);
 				}
 				break;
@@ -3990,7 +4005,9 @@ namespace SandboxDetail {
 				break;
 			case Tool::RocketBarrage:
 				for (int i = 0; i < 8; ++i) {
-					Vector target = at + Vector((Random01() - 0.5F) * 160.0F, (Random01() - 0.5F) * 40.0F);
+					float targetX = (Random01() - 0.5F) * 160.0F;
+					float targetY = (Random01() - 0.5F) * 40.0F;
+					Vector target = at + Vector(targetX, targetY);
 					Launch(i * 9, target + Vector(-380.0F + Random01() * 120.0F, -560.0F), target, 11.0F, i % 3 == 0 ? "Standard Bomb" : "Frag Grenade", 14);
 				}
 				break;
@@ -4061,7 +4078,10 @@ namespace SandboxDetail {
 				break;
 			case Tool::BoulderRain:
 				for (int i = 0; i < 8; ++i) {
-					TerrainCollapse::SpawnChunk(at + Vector((Random01() - 0.5F) * 300.0F, -260.0F - Random01() * 220.0F), 8.0F + Random01() * 16.0F, "Stone");
+					float chunkX = (Random01() - 0.5F) * 300.0F;
+					float chunkY = -260.0F - Random01() * 220.0F;
+					float chunkSize = 8.0F + Random01() * 16.0F;
+					TerrainCollapse::SpawnChunk(at + Vector(chunkX, chunkY), chunkSize, "Stone");
 				}
 				break;
 			case Tool::BuildBeam:
@@ -4147,7 +4167,9 @@ namespace SandboxDetail {
 			case Tool::SmokeBomb:
 				// A thick cloud and no blast: smoke let out in a ball of cells (8 pixels a side), a puff of it thrown out as well.
 				for (int i = 0; i < 24; ++i) {
-					GasGrid::Add(at + Vector((Random01() - 0.5F) * 56.0F, (Random01() - 0.5F) * 40.0F), GasGrid::Smoke, 1.6F);
+					float puffX = (Random01() - 0.5F) * 56.0F;
+					float puffY = (Random01() - 0.5F) * 40.0F;
+					GasGrid::Add(at + Vector(puffX, puffY), GasGrid::Smoke, 1.6F);
 				}
 				EffectsParticles::Emit("Smoke", at, Vector(0.0F, -2.0F), 1.0F, 18, 0);
 				break;
@@ -4155,7 +4177,9 @@ namespace SandboxDetail {
 				// Bursts of coloured sparks in the air above the point, each lighting up the sky for a moment.
 				static constexpr unsigned int colours[] = {0xFF4040, 0xFFC040, 0x60E060, 0x50A0FF, 0xE070FF, 0xFFFFFF};
 				for (int i = 0; i < 5; ++i) {
-					Vector burst = at + Vector((Random01() - 0.5F) * 140.0F, -90.0F - Random01() * 130.0F);
+					float burstX = (Random01() - 0.5F) * 140.0F;
+					float burstY = -90.0F - Random01() * 130.0F;
+					Vector burst = at + Vector(burstX, burstY);
 					unsigned int colour = colours[std::min(5, static_cast<int>(Random01() * 6.0F))];
 					EffectsParticles::Emit("Sparks", burst, Vector(0.0F, 0.0F), 1.0F, 70, colour);
 					g_PostProcessMan.RegisterLight(burst, glm::vec3(static_cast<float>((colour >> 16) & 0xFF), static_cast<float>((colour >> 8) & 0xFF), static_cast<float>(colour & 0xFF)), 150.0F, 1.4F, LightSource::Sandbox);

@@ -1244,7 +1244,8 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 				}
 			}
 			// A shuffle, never nearer than it may go.
-			float step = RandomNum(30.0F, 60.0F) * (RandomNum(0.0F, 1.0F) < 0.5F ? 1.0F : -1.0F);
+			float step = RandomNum(30.0F, 60.0F);
+			step *= RandomNum(0.0F, 1.0F) < 0.5F ? 1.0F : -1.0F;
 			if (across + step * away < nearest) {
 				step = std::abs(step) * away;
 			}
@@ -1285,7 +1286,8 @@ bool AVehicle::UpdateAIManoeuvre(const Actor* enemy) {
 	if (m_AIMode == AIMODE_SENTRY && m_StandingOrder.HasPost && m_GunTargetID != 0 && mayJink) {
 		float slack = GetRadius() * 0.8F + 30.0F;
 		float offPost = g_SceneMan.ShortestDistance(m_StandingOrder.Post, m_Pos, wraps).m_X;
-		float step = RandomNum(25.0F, 50.0F) * (RandomNum(0.0F, 1.0F) < 0.5F ? 1.0F : -1.0F);
+		float step = RandomNum(25.0F, 50.0F);
+		step *= RandomNum(0.0F, 1.0F) < 0.5F ? 1.0F : -1.0F;
 		return start(m_StandingOrder.Post.m_X + std::clamp(offPost + step, -slack, slack));
 	}
 	return false;
@@ -1745,7 +1747,9 @@ void AVehicle::UpdateGun() {
 			// front of it. No line of sight is wanted: the fire is to keep heads down there.
 			if (m_SuppressTimer.IsPastSimMS(500)) {
 				m_SuppressTimer.Reset();
-				m_SuppressPoint = suppressCentre + Vector(RandomNum(-1.0F, 1.0F) * suppressRadius, RandomNum(-0.5F, 0.5F) * suppressRadius);
+				float suppressX = RandomNum(-1.0F, 1.0F) * suppressRadius;
+				float suppressY = RandomNum(-0.5F, 0.5F) * suppressRadius;
+				m_SuppressPoint = suppressCentre + Vector(suppressX, suppressY);
 			}
 			Vector pivot = lobs ? GetReleasePoint() : m_Turret->GetPos();
 			Vector toPoint = g_SceneMan.ShortestDistance(pivot, m_SuppressPoint);

@@ -186,7 +186,9 @@ namespace {
 		for (int i = 0; i < 2; ++i) {
 			if (MovableObject* smoke = CreateEffect("MOSParticle", "Tiny Smoke Ball 1")) {
 				smoke->SetPos(Vector(static_cast<float>(x) + 0.5F, static_cast<float>(y) - 1.0F - static_cast<float>(i) * 2.0F));
-				smoke->SetVel(Vector((Random01(s_Random) - 0.5F) * 0.4F, -0.6F - Random01(s_Random) * 0.5F));
+				float driftX = (Random01(s_Random) - 0.5F) * 0.4F;
+				float driftY = -0.6F - Random01(s_Random) * 0.5F;
+				smoke->SetVel(Vector(driftX, driftY));
 				g_MovableMan.AddParticle(smoke);
 			}
 		}

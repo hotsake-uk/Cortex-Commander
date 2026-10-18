@@ -408,8 +408,12 @@ namespace {
 					float thickness = s_Gas[kind][cell];
 					if (puffs > 0 && thickness > 0.08F && Random01() < thickness * 0.15F * shown) {
 						if (MovableObject* puff = CreateEffect(kind == GasGrid::Toxic ? "Toxic Gas Ball" : "Steam Puff")) {
-							puff->SetPos(middle + Vector((Random01() - 0.5F) * c_Cell, (Random01() - 0.5F) * c_Cell));
-							puff->SetVel(Vector((Random01() - 0.5F) * 0.6F, (Random01() - 0.5F) * 0.6F));
+							float offsetX = (Random01() - 0.5F) * c_Cell;
+							float offsetY = (Random01() - 0.5F) * c_Cell;
+							puff->SetPos(middle + Vector(offsetX, offsetY));
+							float driftX = (Random01() - 0.5F) * 0.6F;
+							float driftY = (Random01() - 0.5F) * 0.6F;
+							puff->SetVel(Vector(driftX, driftY));
 							puff->SetLifetime(1200);
 							puff->SetToHitMOs(false);
 							g_MovableMan.AddParticle(puff);

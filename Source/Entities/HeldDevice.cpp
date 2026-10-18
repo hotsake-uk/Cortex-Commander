@@ -1470,7 +1470,8 @@ void HeldDevice::StartThrownFlight(MovableObject* thrower) {
 			m_AngularVel = 0.0F;
 			break;
 		case ThrowSpinMode::Tumbling:
-			m_AngularVel = RandomNum(0.4F, 1.0F) * m_ThrowSpinSpeed * (RandomNum() < 0.5F ? -1.0F : 1.0F);
+			m_AngularVel = RandomNum(0.4F, 1.0F) * m_ThrowSpinSpeed;
+			m_AngularVel *= RandomNum() < 0.5F ? -1.0F : 1.0F;
 			break;
 		default:
 			// End over end, the top going forward: clockwise facing right. Steadily, so it wheels along a clean arc.

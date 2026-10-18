@@ -944,7 +944,9 @@ namespace {
 				if (body.Materials[local]) {
 					glm::vec2 offset = glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F) - body.Center;
 					glm::vec2 at = ToWorld(body, offset, body.Pos, body.Angle);
-					ShedPixel(body.Materials[local], body.Colors[local], at, body.Vel + glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
+					float flingX = Random01() - 0.5F;
+					float flingY = Random01() - 0.5F;
+					ShedPixel(body.Materials[local], body.Colors[local], at, body.Vel + glm::vec2(flingX, flingY));
 				}
 			}
 		}
@@ -1043,7 +1045,12 @@ namespace {
 		int cuts = 1 + (violence > 1.5F ? 1 : 0) + (body.Toughness < 60.0F ? 1 : 0);
 		for (int i = 0; i < cuts; ++i) {
 			float angle = Random01() * 3.14159F;
-			glm::vec2 through = i == 0 ? glm::mix(hitLocal, body.Center, 0.35F) : body.Center + glm::vec2(Random01() - 0.5F, Random01() - 0.5F) * body.Radius * 0.8F;
+			glm::vec2 through = glm::mix(hitLocal, body.Center, 0.35F);
+			if (i != 0) {
+				float throughX = Random01() - 0.5F;
+				float throughY = Random01() - 0.5F;
+				through = body.Center + glm::vec2(throughX, throughY) * body.Radius * 0.8F;
+			}
 			cracks.push_back({through, glm::vec2(DetMath::Cos(angle), DetMath::Sin(angle)), 1.0F + Random01() * 2.5F, Random01() * 6.28F});
 		}
 		// Splinter: across its long axis (the grain), through the middle nudged toward the hit; a second snap only for a huge hit.
@@ -1082,7 +1089,9 @@ namespace {
 		for (int i = 0; i < shards; ++i) {
 			glm::vec2 seed = body.Center;
 			for (int attempt = 0; attempt < 30; ++attempt) {
-				glm::vec2 candidate(Random01() * static_cast<float>(body.W), Random01() * static_cast<float>(body.H));
+				float candidateX = Random01() * static_cast<float>(body.W);
+				float candidateY = Random01() * static_cast<float>(body.H);
+				glm::vec2 candidate(candidateX, candidateY);
 				int cx = std::clamp(static_cast<int>(candidate.x), 0, body.W - 1);
 				int cy = std::clamp(static_cast<int>(candidate.y), 0, body.H - 1);
 				if (!body.Materials[static_cast<size_t>(cy) * body.W + cx]) {
@@ -1199,7 +1208,9 @@ namespace {
 				glm::vec2 arm = at - body.Pos;
 				// Grains spill at the piece's speed; chips fly up and out.
 				float spray = s_Style[body.Materials[local]] == c_Crumble ? 0.6F : 1.5F + 0.4F * std::min(violence, 3.0F);
-				ShedPixel(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(Random01() - 0.5F, -Random01()) * spray);
+				float flingX = Random01() - 0.5F;
+				float flingY = -Random01();
+				ShedPixel(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(flingX, flingY) * spray);
 				region[local] = -2;
 			}
 		}
@@ -1249,7 +1260,9 @@ namespace {
 					glm::vec2 partOffset = glm::vec2(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F) - body.Center;
 					glm::vec2 at = ToWorld(body, partOffset, body.Pos, body.Angle);
 					glm::vec2 arm = at - body.Pos;
-					ThrowDebris(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(Random01() - 0.5F, -Random01()) * 1.5F);
+					float flingX = Random01() - 0.5F;
+					float flingY = -Random01();
+					ThrowDebris(body.Materials[local], body.Colors[local], at, body.Vel + body.Spin * glm::vec2(-arm.y, arm.x) + glm::vec2(flingX, flingY) * 1.5F);
 				}
 				continue;
 			}
@@ -1606,7 +1619,9 @@ namespace {
 			float closeness = 1.0F - std::min(glm::length(at - hitLocal) / reach, 1.0F);
 			if (Random01() < share * (0.3F + closeness)) {
 				glm::vec2 world = ToWorld(body, at - body.Center, body.Pos, body.Angle);
-				ShedPixel(material, body.Colors[local], world, body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F);
+				float flingX = Random01() - 0.5F;
+				float flingY = -Random01();
+				ShedPixel(material, body.Colors[local], world, body.Vel * 0.5F + glm::vec2(flingX, flingY) * 1.2F);
 				body.Materials[local] = 0;
 				++shed;
 			}
@@ -1648,7 +1663,9 @@ namespace {
 			if (body.Materials[local] && !held[local]) {
 				// (Laid on the ground rather than lost when there's no room to throw it.)
 				glm::vec2 at(static_cast<float>(local % body.W) + 0.5F, static_cast<float>(local / body.W) + 0.5F);
-				ShedPixel(body.Materials[local], body.Colors[local], ToWorld(body, at - body.Center, body.Pos, body.Angle), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()) * 1.2F, !CanThrow(1));
+				float flingX = Random01() - 0.5F;
+				float flingY = -Random01();
+				ShedPixel(body.Materials[local], body.Colors[local], ToWorld(body, at - body.Center, body.Pos, body.Angle), body.Vel * 0.5F + glm::vec2(flingX, flingY) * 1.2F, !CanThrow(1));
 				body.Materials[local] = 0;
 			}
 		}
@@ -1902,7 +1919,9 @@ namespace {
 					for (int key: scrap) {
 						int x = key % s_Width;
 						int y = key / s_Width;
-						ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), body.Vel * 0.5F + glm::vec2(Random01() - 0.5F, -Random01()));
+						float flingX = Random01() - 0.5F;
+						float flingY = -Random01();
+						ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), body.Vel * 0.5F + glm::vec2(flingX, flingY));
 						terrain->SetMaterialPixel(x, y, g_MaterialAir);
 						terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
 						s_State[key] &= static_cast<unsigned char>(~c_Falling);
@@ -3009,7 +3028,9 @@ namespace {
 				terrain->SetMaterialPixel(x, y, g_MaterialAir);
 				terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
 				// (Laid on the ground rather than lost when there's no room to throw it.)
-				ShedPixel(material, color, glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2((Random01() - 0.5F) * 0.6F, Random01() * 0.3F), !CanThrow(1));
+				float flingX = (Random01() - 0.5F) * 0.6F;
+				float flingY = Random01() * 0.3F;
+				ShedPixel(material, color, glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(flingX, flingY), !CanThrow(1));
 			}
 		}
 		if (!stray.empty()) {
@@ -3048,7 +3069,9 @@ namespace {
 					if (materialBitmap->line[y][x] == g_MaterialAir) {
 						continue;
 					}
-					ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
+					float flingX = Random01() - 0.5F;
+					float flingY = Random01() - 0.5F;
+					ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(flingX, flingY));
 					terrain->SetMaterialPixel(x, y, g_MaterialAir);
 					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
 				}
@@ -3256,7 +3279,9 @@ namespace {
 			seeds.reserve(static_cast<size_t>(gridWidth) * gridHeight);
 			for (int gy = 0; gy < gridHeight; ++gy) {
 				for (int gx = 0; gx < gridWidth; ++gx) {
-					seeds.emplace_back((static_cast<float>(gx) + 0.15F + Random01() * 0.7F) * c_DropChunk, (static_cast<float>(gy) + 0.15F + Random01() * 0.7F) * c_DropChunk);
+					float seedX = (static_cast<float>(gx) + 0.15F + Random01() * 0.7F) * c_DropChunk;
+					float seedY = (static_cast<float>(gy) + 0.15F + Random01() * 0.7F) * c_DropChunk;
+					seeds.emplace_back(seedX, seedY);
 				}
 			}
 		}

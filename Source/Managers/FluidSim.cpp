@@ -1556,7 +1556,9 @@ void FluidSim::Update() {
 				s_Active.Remove(y * width + x);
 				const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 				float outward = static_cast<float>(dx) / static_cast<float>(splash.Radius);
-				Vector velocity((outward * 0.7F + (Random01() - 0.5F) * 0.6F) * splash.Speed, -(0.35F + Random01() * 0.65F) * splash.Speed);
+				float dropVelX = (outward * 0.7F + (Random01() - 0.5F) * 0.6F) * splash.Speed;
+				float dropVelY = -(0.35F + Random01() * 0.65F) * splash.Speed;
+				Vector velocity(dropVelX, dropVelY);
 				MOPixel* drop = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(static_cast<float>(x), static_cast<float>(y - 1)), velocity, new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
 				drop->SetToHitMOs(false);
 				g_MovableMan.AddParticle(drop);
@@ -1849,7 +1851,9 @@ void FluidSim::Update() {
 					Uncover(terrain, x, y, width);
 					const Material* sceneMaterial = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(material));
 					// Particle speeds are in metres a second: 20 pixels to the metre, 60 updates a second.
-					Vector velocity((Random01() - 0.5F) * 9.0F, -(1.5F + Random01() * static_cast<float>(velY) * 0.3F));
+					float dropVelX = (Random01() - 0.5F) * 9.0F;
+					float dropVelY = -(1.5F + Random01() * static_cast<float>(velY) * 0.3F);
+					Vector velocity(dropVelX, dropVelY);
 					MOPixel* drop = new MOPixel(color, sceneMaterial->GetPixelDensity(), Vector(static_cast<float>(x), static_cast<float>(y - 1)), velocity, new Atom(Vector(), sceneMaterial->GetIndex(), nullptr, color, 2), 0);
 					drop->SetToHitMOs(false);
 					g_MovableMan.AddParticle(drop);

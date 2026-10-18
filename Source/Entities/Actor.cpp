@@ -1415,7 +1415,9 @@ void Actor::DropAllInventory() {
 			}
 			// Gib is too close to center to always make it rotate in one direction, so give it a baseline rotation and then randomize
 			else {
-				pObject->SetAngularVel((pObject->GetAngularVel() * RandomNum(0.5F, 1.5F)) * (RandomNum() < 0.5F ? 1.0F : -1.0F));
+				float spinScale = RandomNum(0.5F, 1.5F);
+				float spinDirection = RandomNum() < 0.5F ? 1.0F : -1.0F;
+				pObject->SetAngularVel((pObject->GetAngularVel() * spinScale) * spinDirection);
 			}
 
 			// TODO: Optimize making the random angles!")
@@ -1520,7 +1522,9 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 		velRange = 10.0F;
 
 		// Randomize the offset from center to be within the original object
-		gibROffset.SetXY(m_SpriteRadius * 0.35F * RandomNormalNum(), m_SpriteRadius * 0.35F * RandomNormalNum());
+		float gibOffsetX = m_SpriteRadius * 0.35F * RandomNormalNum();
+		float gibOffsetY = m_SpriteRadius * 0.35F * RandomNormalNum();
+		gibROffset.SetXY(gibOffsetX, gibOffsetY);
 		// Set up its position and velocity according to the parameters of this AEmitter.
 		pObject->SetPos(m_Pos + gibROffset /*Vector(m_Pos.m_X + 5 * NormalRand(), m_Pos.m_Y + 5 * NormalRand())*/);
 		pObject->SetRotAngle(m_Rotation.GetRadAngle() + pObject->GetRotMatrix().GetRadAngle());
@@ -1536,7 +1540,9 @@ void Actor::GibThis(const Vector& impactImpulse, MovableObject* movableObjectToI
 		}
 		// Gib is too close to center to always make it rotate in one direction, so give it a baseline rotation and then randomize
 		else {
-			pObject->SetAngularVel((pObject->GetAngularVel() * 0.5F + pObject->GetAngularVel() * RandomNum()) * (RandomNormalNum() > 0.0F ? 1.0F : -1.0F));
+			float spinScale = RandomNum();
+			float spinDirection = RandomNormalNum() > 0.0F ? 1.0F : -1.0F;
+			pObject->SetAngularVel((pObject->GetAngularVel() * 0.5F + pObject->GetAngularVel() * spinScale) * spinDirection);
 		}
 
 		// TODO: Optimize making the random angles!")

@@ -170,7 +170,9 @@ namespace SandboxDetail {
 			const float height = static_cast<float>(g_SceneMan.GetSceneHeight());
 			for (int tries = 0; tries < 80; ++tries) {
 				Vector ground;
-				if (GroundUnder(Vector(RandomNum(0.0F, width - 1.0F), RandomNum(0.0F, height - 1.0F)), ground, 40.0F) && !NearASpawn(ground) && !NearAPickup(ground, c_ClearOfPickups)) {
+				float tryX = RandomNum(0.0F, width - 1.0F);
+				float tryY = RandomNum(0.0F, height - 1.0F);
+				if (GroundUnder(Vector(tryX, tryY), ground, 40.0F) && !NearASpawn(ground) && !NearAPickup(ground, c_ClearOfPickups)) {
 					spot = ground;
 					return true;
 				}

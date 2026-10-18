@@ -268,7 +268,9 @@ void ActorFire::Update() {
 		}
 		const Vector& center = source->GetPos();
 		if (Random01() < 0.25F) {
-			Vector spot = center + Vector((Random01() - 0.5F) * aura * 2.0F, source->GetRadius() * 0.6F + Random01() * 6.0F);
+			float spotX = (Random01() - 0.5F) * aura * 2.0F;
+			float spotY = source->GetRadius() * 0.6F + Random01() * 6.0F;
+			Vector spot = center + Vector(spotX, spotY);
 			TerrainFire::QueueIgnite(spot.GetFloorIntX(), spot.GetFloorIntY());
 		}
 		for (Actor* other: g_MovableMan.m_Actors) {
@@ -330,8 +332,12 @@ void ActorFire::Update() {
 			}
 			// More flames, along its length: it's a big thing burning.
 			if (MovableObject* flame = CreateEffect("MOSParticle", "Body Flame")) {
-				flame->SetPos(position + Vector((Random01() - 0.5F) * radius * 1.6F, (Random01() - 0.7F) * radius * 0.5F));
-				flame->SetVel(actor->GetVel() * 0.5F + Vector((Random01() - 0.5F) * 1.0F, -1.0F - Random01()));
+				float offsetX = (Random01() - 0.5F) * radius * 1.6F;
+				float offsetY = (Random01() - 0.7F) * radius * 0.5F;
+				flame->SetPos(position + Vector(offsetX, offsetY));
+				float driftX = (Random01() - 0.5F) * 1.0F;
+				float driftY = -1.0F - Random01();
+				flame->SetVel(actor->GetVel() * 0.5F + Vector(driftX, driftY));
 				g_MovableMan.AddParticle(flame);
 			}
 		} else {
@@ -339,8 +345,12 @@ void ActorFire::Update() {
 		}
 		// Flames licking off the body.
 		if (MovableObject* flame = CreateEffect("MOSParticle", "Body Flame")) {
-			flame->SetPos(position + Vector((Random01() - 0.5F) * radius, (Random01() - 0.6F) * radius));
-			flame->SetVel(actor->GetVel() * 0.5F + Vector((Random01() - 0.5F) * 1.0F, -1.0F - Random01()));
+			float offsetX = (Random01() - 0.5F) * radius;
+			float offsetY = (Random01() - 0.6F) * radius;
+			flame->SetPos(position + Vector(offsetX, offsetY));
+			float driftX = (Random01() - 0.5F) * 1.0F;
+			float driftY = -1.0F - Random01();
+			flame->SetVel(actor->GetVel() * 0.5F + Vector(driftX, driftY));
 			g_MovableMan.AddParticle(flame);
 		}
 		// And soft smoke winding up off it (visual only).

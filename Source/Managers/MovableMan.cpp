@@ -2267,12 +2267,6 @@ void MovableMan::Update() {
 		UpdateDrawMOIDs();
 	});
 
-	// TEMP determinism experiment: finish the background work now instead of letting it overlap whatever runs next.
-	if (DeterminismChecker::IsActive() && std::getenv("CCCP_SYNC_SEE")) {
-		m_ActorsSeeFuture.wait();
-		m_DrawMOIDsTask.wait();
-	}
-
 	// The objects used to be drawn in software into the MO color layer here every drawn update. The GPU renderer draws them from their own Draw(camera),
 	// and the only thing that still looks at that layer is the world dump, which draws it when one is taken (FrameMan::DrawWorldDump). In a 500 unit battle this cost 7 to 8 ms an update.
 
