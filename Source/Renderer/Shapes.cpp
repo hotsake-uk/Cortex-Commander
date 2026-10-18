@@ -86,6 +86,24 @@ Shape::Shape Shape::Pixel(glm::vec2 position, Color color) {
 	return Rectangle(FloatRect(position.x, position.y, 1.0f, 1.0f), color);
 }
 
+Shape::Shape Shape::Pixels(const std::vector<std::pair<int, int>>& positions, Color color) {
+	ZoneScoped;
+	Shape pixels;
+	glm::u8vec4 vertexColor = color;
+	pixels.m_Vertices.reserve(positions.size() * 4);
+	pixels.m_Indices.reserve(positions.size() * 6);
+	for (const auto& [x, y]: positions) {
+		int base = static_cast<int>(pixels.m_Vertices.size());
+		glm::vec2 corner(static_cast<float>(x), static_cast<float>(y));
+		pixels.m_Vertices.emplace_back(corner, vertexColor);
+		pixels.m_Vertices.emplace_back(corner + glm::vec2(1.0f, 0.0f), vertexColor);
+		pixels.m_Vertices.emplace_back(corner + glm::vec2(1.0f, 1.0f), vertexColor);
+		pixels.m_Vertices.emplace_back(corner + glm::vec2(0.0f, 1.0f), vertexColor);
+		pixels.m_Indices.insert(pixels.m_Indices.end(), {base, base + 1, base + 2, base, base + 2, base + 3});
+	}
+	return pixels;
+}
+
 Shape::Shape Shape::Line(glm::vec2 start, glm::vec2 end, Color color) {
 	return Line(start, end, 1.0f, color);
 }
@@ -472,6 +490,10 @@ Shape::Shape Shape::Lines::Line(const glm::vec2& start, const glm::vec2& end, Co
 
 std::shared_ptr<DrawCall> Draw::Pixel(glm::vec2 position, Color color) {
 	return Submit(Shape::Pixel(position, color));
+}
+
+std::shared_ptr<DrawCall> Draw::Pixels(const std::vector<std::pair<int, int>>& positions, Color color) {
+	return Submit(Shape::Pixels(positions, color));
 }
 
 std::shared_ptr<DrawCall> Draw::Line(glm::vec2 start, glm::vec2 end, Color color) {

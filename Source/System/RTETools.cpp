@@ -9,6 +9,7 @@
 namespace RTE {
 
 	RandomGenerator g_RandomGenerator;
+	RandomGenerator g_DrawRandomGenerator;
 
 	void SeedRNG() {
 		// Use a constant seed for determinism.
@@ -29,6 +30,7 @@ namespace RTE {
 		}();
 
 		g_RandomGenerator.Seed(constSeed);
+		g_DrawRandomGenerator.Seed(constSeed);
 	}
 
 	float Lerp(float scaleStart, float scaleEnd, float startValue, float endValue, float progressScalar) {

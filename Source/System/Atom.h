@@ -163,6 +163,10 @@ namespace RTE {
 		/// @return The new max length, in pixels. If 0, no trail is drawn.
 		int GetTrailLength() const { return m_TrailLength; }
 
+		/// Gets the trail pixels from the last drawn sim update, in scene coordinates, for the renderer.
+		/// @return The trail pixels, oldest first.
+		const std::vector<std::pair<int, int>>& GetDrawnTrail() const { return m_DrawnTrail; }
+
 		/// Sets the longest a trail can be drawn, in pixels.
 		/// @param trailLength The new max length, in pixels. If 0, no trail is drawn.
 		void SetTrailLength(const int trailLength) { m_TrailLength = trailLength; }
@@ -389,6 +393,7 @@ namespace RTE {
 
 		Color m_TrailColor; //!< Trail color
 		int m_TrailLength; //!< The longest the trail should/can get drawn. If 0, no trail is drawn.
+		std::vector<std::pair<int, int>> m_DrawnTrail; //!< Trail pixels from the last drawn sim update, for the renderer.
 		float m_TrailLengthVariation; //!< What percentage the trail length of this Atom can vary each frame it's drawn. 0 means no variance, 1 means 100% variance between 0 and its TrailLength.
 
 		// Bresenham line algorithm variables

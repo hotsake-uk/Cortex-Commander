@@ -77,6 +77,7 @@ namespace RTE {
 	};
 
 	extern RandomGenerator g_RandomGenerator; //!< The global random number generator used in our simulation thread.
+	extern RandomGenerator g_DrawRandomGenerator; //!< The random number generator for drawing and audio code. How much of either goes on is not up to the simulation, so they can't be allowed to use up the simulation's random numbers.
 
 	/// Seed global the global random number generators.
 	void SeedRNG();

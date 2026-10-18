@@ -246,5 +246,8 @@ void MOPixel::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode,
 }
 
 void MOPixel::Draw(const Camera& camera) const {
-	Draw::Pixel(m_Pos, m_Color);
+	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
+		Draw::Pixels(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
+	}
+	Draw::Pixel(m_Pos.GetFloored(), m_Color);
 }

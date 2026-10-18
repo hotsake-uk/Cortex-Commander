@@ -221,6 +221,9 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 void MOSParticle::Draw(const Camera& camera) const {
 	RTEAssert(!m_Sprites.empty(), "No sprite bitmaps loaded to draw " + GetPresetName());
 	RTEAssert(m_Frame >= 0 && m_Frame < m_FrameCount, "Frame is out of bounds for " + GetPresetName());
+	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
+		Draw::Pixels(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
+	}
 	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
 		return;
 	}
