@@ -26,10 +26,23 @@ namespace RTE {
 		}
 
 		/// Adds a number or enum value to the hash. Pointers are deliberately not accepted, since they differ from run to run.
+		/// Whole numbers are widened to 64 bits first, since types like long and size_t are different sizes on different platforms, and the same state has to hash the same everywhere.
 		/// @param value The value to add.
 		template <typename ValueType>
 		    requires std::is_arithmetic_v<ValueType> || std::is_enum_v<ValueType>
-		void Add(ValueType value) { AddBytes(&value, sizeof(value)); }
+		void Add(ValueType value) {
+			if constexpr (std::is_enum_v<ValueType>) {
+				Add(static_cast<std::underlying_type_t<ValueType>>(value));
+			} else if constexpr (std::is_floating_point_v<ValueType>) {
+				AddBytes(&value, sizeof(value));
+			} else if constexpr (std::is_signed_v<ValueType>) {
+				int64_t widened = value;
+				AddBytes(&widened, sizeof(widened));
+			} else {
+				uint64_t widened = value;
+				AddBytes(&widened, sizeof(widened));
+			}
+		}
 
 		/// Adds a Vector to the hash.
 		/// @param value The Vector to add.
