@@ -31,6 +31,8 @@
 
 #include "allegro.h"
 
+#include <cstdlib>
+
 #include <format>
 #include <iostream>
 
@@ -99,7 +101,7 @@ void DeterminismChecker::SubmitCheckpoint(std::string_view label, uint64_t hash)
 }
 
 void DeterminismChecker::CheckpointSimState(std::string_view label) {
-	CheckpointSimState(label, g_TimerMan.GetSimUpdateCount() % c_SceneCheckInterval == 0);
+	CheckpointSimState(label, g_TimerMan.GetSimUpdateCount() % GetSceneCheckInterval() == 0);
 }
 
 void DeterminismChecker::CheckpointSimState(std::string_view label, bool checkSceneLayers) {
@@ -144,7 +146,7 @@ void DeterminismChecker::CheckpointWorldSystems(std::string_view label) {
 	checkpointSystem("Burning units", &ActorFire::HashState);
 	checkpointSystem("Threat memory", &ThreatMemory::HashState);
 
-	if (g_TimerMan.GetSimUpdateCount() % c_SceneCheckInterval == 0) {
+	if (g_TimerMan.GetSimUpdateCount() % GetSceneCheckInterval() == 0) {
 		// These only gather their state up as text for saving, which is too slow to do every update. Liquids and falling ground live in the terrain, which the scene layers check covers.
 		Checkpoint(std::format("{} - Liquids", label), FluidSim::GetSaveState());
 		Checkpoint(std::format("{} - Terrain fire", label), TerrainFire::GetSaveState());
@@ -154,6 +156,15 @@ void DeterminismChecker::CheckpointWorldSystems(std::string_view label) {
 		Checkpoint(std::format("{} - Grazing", label), TerrainGrazing::GetSaveState());
 		Checkpoint(std::format("{} - Falling ground hold zones", label), TerrainCollapse::GetHoldZonesSaveState());
 	}
+}
+
+int DeterminismChecker::GetSceneCheckInterval() {
+	// CCCP_SCENE_CHECK_INTERVAL checks the scene more often, to narrow down when two runs' terrain first differs. Both runs need the same value.
+	static const int interval = [] {
+		const char* value = std::getenv("CCCP_SCENE_CHECK_INTERVAL");
+		return value && std::atoi(value) > 0 ? std::atoi(value) : c_SceneCheckInterval;
+	}();
+	return interval;
 }
 
 void DeterminismChecker::CheckpointSceneLayers(std::string_view label) {
@@ -171,7 +182,19 @@ void DeterminismChecker::CheckpointSceneLayers(std::string_view label) {
 		return hasher.GetHash();
 	};
 
-	Checkpoint(std::format("{} - Terrain material", label), hashBitmap(scene->GetTerrain()->GetMaterialBitmap()));
+	BITMAP* materialBitmap = scene->GetTerrain()->GetMaterialBitmap();
+	Checkpoint(std::format("{} - Terrain material", label), hashBitmap(materialBitmap));
+
+	// For finding where two platforms' terrain differs: CCCP_DUMP_TERRAIN_AT names a sim update to write the raw material layer out at, next to the trace, as width, height and then one byte per pixel.
+	if (const char* dumpAt = std::getenv("CCCP_DUMP_TERRAIN_AT"); dumpAt && g_TimerMan.GetSimUpdateCount() == std::atoll(dumpAt) && label == "MOs travelled") {
+		std::ofstream dump(s_TraceFilePath + ".terrain", std::ios::binary);
+		int32_t size[2] = {materialBitmap->w, materialBitmap->h};
+		dump.write(reinterpret_cast<const char*>(size), sizeof(size));
+		size_t bytesPerLine = static_cast<size_t>(materialBitmap->w) * (bitmap_color_depth(materialBitmap) / 8);
+		for (int y = 0; y < materialBitmap->h; ++y) {
+			dump.write(reinterpret_cast<const char*>(materialBitmap->line[y]), bytesPerLine);
+		}
+	}
 
 	for (int team = Activity::Teams::TeamOne; team < Activity::Teams::MaxTeamCount; ++team) {
 		if (const SceneLayer* unseenLayer = scene->GetUnseenLayer(team)) {

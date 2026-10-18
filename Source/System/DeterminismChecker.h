@@ -119,6 +119,9 @@ namespace RTE {
 
 		static constexpr int c_SceneCheckInterval = 60; //!< How many sim updates to go between checking the layers of the Scene.
 
+		/// Gets how many sim updates to go between checking the layers of the Scene, which CCCP_SCENE_CHECK_INTERVAL can change.
+		static int GetSceneCheckInterval();
+
 		static Mode s_Mode; //!< Whether checkpoints are being recorded, verified or neither.
 		static bool s_Diverged; //!< Whether a checkpoint that didn't match the trace being verified against was found.
 		static std::string s_TraceFilePath; //!< The path of the trace file being recorded to or verified against.
