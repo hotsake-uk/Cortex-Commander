@@ -559,6 +559,8 @@ window.MS = window.MS || {};
 				L.push('\t-- (the capture point marks itself)');
 			} else if (['stageReach', 'stageHold', 'stageFetch'].includes(n.kind) || (n.kind === 'stageDeploy' && a.area)) {
 				L.push('\tlocal where = ' + area(a.area), '\tif where then self:AddObjectivePoint(' + text + ', where.Center, ' + viewer + ', GameActivity.ARROWDOWN) end');
+			} else if (n.kind === 'stageKillGroup') {
+				L.push('\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and actor:IsInGroup(' + luaStr(a.group) + ') then self:AddObjectivePoint(' + text + ', actor.AboveHUDPos, ' + viewer + ', GameActivity.ARROWDOWN) end', '\tend');
 			} else if (n.kind === 'stageDestroy' || n.kind === 'stageBrain') {
 				L.push('\tfor actor in MovableMan.Actors do', '\t\tif actor.Team == ' + luaNum(a.team) + ' and actor.Health > 0' + (n.kind === 'stageBrain' ? ' and actor:IsInGroup("Brains")' : '') + ' then self:AddObjectivePoint(' + text + ', actor.AboveHUDPos, ' + viewer + ', GameActivity.ARROWDOWN) end', '\tend');
 			} else {
@@ -576,6 +578,9 @@ window.MS = window.MS || {};
 				break;
 			case 'stageDestroy': L.push('\treturn elapsed > 1 and studioCount(' + luaNum(a.team) + ', nil) == 0'); break;
 			case 'stageDeploy': L.push('\treturn st.anyDeployed == true'); break;
+			case 'stageKillGroup':
+				L.push('\tlocal left = studioGroupCount(' + luaStr(a.group) + ')', '\tst.vars.left = left', '\tif left > 0 then st.groupSeen = true end', '\treturn st.groupSeen == true and left == 0');
+				break;
 			case 'stageBrain': L.push('\treturn elapsed > 1 and studioBrains(' + luaNum(a.team) + ') == 0'); break;
 			case 'stageFetch': L.push('\treturn studioItemIn(' + luaStr(a.area) + ', ' + luaStr(String(a.item || '').split('|')[1] || '') + ')'); break;
 			case 'stageBattle': L.push('\treturn st.battle ~= nil and st.battle.ended and (' + luaNum(a.team) + ' < 0 or st.battle.winner == ' + luaNum(a.team) + ')'); break;
@@ -993,7 +998,7 @@ end
 				'\t\t\tst.stage = nil',
 				'\t\telse',
 				'\t\t\tif not st.stageStarted then',
-				'\t\t\t\tst.stageStarted = true', '\t\t\t\tst.stageClock = Timer()', '\t\t\t\tst.holdFrom = nil',
+				'\t\t\t\tst.stageStarted = true', '\t\t\t\tst.stageClock = Timer()', '\t\t\t\tst.holdFrom = nil', '\t\t\t\tst.groupSeen = nil',
 				'\t\t\t\tself["StudioStage_" .. id .. "_Start"](self)',
 				'\t\t\tend',
 				'\t\t\tif st.stage == id then',

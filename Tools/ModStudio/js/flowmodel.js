@@ -103,6 +103,9 @@ window.MS = window.MS || {};
 	stage('stageHold', 'Goal: hold an area for some seconds', [['area', 'area', 'area', ''], ['team', 'team', 'team', 0], ['seconds', 'number', 'seconds', 60]]);
 	stage('stageDestroy', 'Goal: a team has no units left', [['team', 'team', 'team', 1]]);
 	stage('stageBrain', 'Goal: a team\'s brain is destroyed', [['team', 'team', 'team', 1]]);
+	// Kill a group: done once the group has been in the game (a squad still in its dropship isn't dead) and has none left alive. {left} in the
+	// objective text shows how many are left.
+	stage('stageKillGroup', 'Goal: a group is wiped out', [['group', 'text', 'the group (put in it by Spawn units)', 'Targets']]);
 	stage('stageDeploy', 'Goal: a player deploys their brain', [['area', 'area', 'marker on area (optional)', '']], { optional: ['area'] });
 	stage('stageFetch', 'Goal: an item is brought to an area', [['item', 'item', 'item', ''], ['from', 'area', 'put it in', ''], ['area', 'area', 'bring it to', '']]);
 	stage('stageSurvive', 'Goal: time passes', [['seconds', 'number', 'seconds', 120]]);
