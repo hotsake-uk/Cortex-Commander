@@ -13,6 +13,7 @@
 #include "Serializable.h"
 #include "System.h"
 #include "PostProcessMan.h"
+#include "EffectsParticles.h"
 
 #include "Base64/base64.h"
 #include "tracy/Tracy.hpp"
@@ -101,6 +102,20 @@ void MovableObject::Clear() {
 	m_EffectStopStrength = 128;
 	m_EffectAlwaysShows = false;
 	m_PostEffectEnabled = false;
+	m_SparkGlow = false;
+	m_JetpackExhaust = false;
+	m_LightColor.SetRGB(255, 255, 255);
+	m_LightRadius = 0.0F;
+	m_LightIntensity = 0.0F;
+	m_LightFlicker = 0.0F;
+	m_LightConeAngle = 0.0F;
+	m_LightConeDirection = 0.0F;
+	m_LightOffset.Reset();
+	m_Shimmer = 0.0F;
+	m_VisualEmission.clear();
+	m_VisualEmissionRate = 0.0F;
+	m_VisualEmissionSpread = 0.6F;
+	m_VisualEmissionDue = 0.0F;
 
 	m_UniqueID = 0;
 
@@ -225,6 +240,19 @@ int MovableObject::Create(const MovableObject& reference) {
 	m_CanBeSquished = reference.m_CanBeSquished;
 	m_HUDVisible = reference.m_HUDVisible;
 	m_PostEffectEnabled = reference.m_PostEffectEnabled;
+	m_SparkGlow = reference.m_SparkGlow;
+	m_JetpackExhaust = reference.m_JetpackExhaust;
+	m_LightColor = reference.m_LightColor;
+	m_LightRadius = reference.m_LightRadius;
+	m_LightIntensity = reference.m_LightIntensity;
+	m_LightFlicker = reference.m_LightFlicker;
+	m_LightConeAngle = reference.m_LightConeAngle;
+	m_LightConeDirection = reference.m_LightConeDirection;
+	m_LightOffset = reference.m_LightOffset;
+	m_Shimmer = reference.m_Shimmer;
+	m_VisualEmission = reference.m_VisualEmission;
+	m_VisualEmissionRate = reference.m_VisualEmissionRate;
+	m_VisualEmissionSpread = reference.m_VisualEmissionSpread;
 
 	m_ForceIntoMasterLuaState = reference.m_ForceIntoMasterLuaState;
 	for (const auto& scriptPath: reference.m_AllLoadedScripts) {
@@ -369,6 +397,18 @@ int MovableObject::ReadProperty(const std::string_view& propName, Reader& reader
 		m_EffectStopStrength = std::floor((float)255 * strength);
 	});
 	MatchProperty("EffectAlwaysShows", { reader >> m_EffectAlwaysShows; });
+	MatchProperty("SparkGlow", { reader >> m_SparkGlow; });
+	MatchProperty("LightColor", { reader >> m_LightColor; });
+	MatchProperty("LightRadius", { reader >> m_LightRadius; });
+	MatchProperty("LightIntensity", { reader >> m_LightIntensity; });
+	MatchProperty("LightFlicker", { reader >> m_LightFlicker; });
+	MatchProperty("LightConeAngle", { reader >> m_LightConeAngle; });
+	MatchProperty("LightConeDirection", { reader >> m_LightConeDirection; });
+	MatchProperty("LightOffset", { reader >> m_LightOffset; });
+	MatchProperty("Shimmer", { reader >> m_Shimmer; m_Shimmer = std::max(m_Shimmer, 0.0F); });
+	MatchProperty("VisualEmission", { m_VisualEmission = reader.ReadPropValue(); });
+	MatchProperty("VisualEmissionRate", { reader >> m_VisualEmissionRate; });
+	MatchProperty("VisualEmissionSpread", { reader >> m_VisualEmissionSpread; });
 	MatchProperty("DamageOnCollision", { reader >> m_DamageOnCollision; });
 	MatchProperty("DamageOnPenetration", { reader >> m_DamageOnPenetration; });
 	MatchProperty("WoundDamageMultiplier", { reader >> m_WoundDamageMultiplier; });
@@ -466,6 +506,24 @@ int MovableObject::Save(Writer& writer) const {
 	writer << (float)m_EffectStopStrength / 255.0f;
 	writer.NewProperty("EffectAlwaysShows");
 	writer << m_EffectAlwaysShows;
+	writer.NewPropertyWithValue("SparkGlow", m_SparkGlow);
+	if (m_LightRadius > 0.0F && m_LightIntensity > 0.0F) {
+		writer.NewPropertyWithValue("LightColor", m_LightColor);
+		writer.NewPropertyWithValue("LightRadius", m_LightRadius);
+		writer.NewPropertyWithValue("LightIntensity", m_LightIntensity);
+		writer.NewPropertyWithValue("LightFlicker", m_LightFlicker);
+		writer.NewPropertyWithValue("LightConeAngle", m_LightConeAngle);
+		writer.NewPropertyWithValue("LightConeDirection", m_LightConeDirection);
+		writer.NewPropertyWithValue("LightOffset", m_LightOffset);
+	}
+	if (m_Shimmer > 0.0F) {
+		writer.NewPropertyWithValue("Shimmer", m_Shimmer);
+	}
+	if (!m_VisualEmission.empty()) {
+		writer.NewPropertyWithValue("VisualEmission", m_VisualEmission);
+		writer.NewPropertyWithValue("VisualEmissionRate", m_VisualEmissionRate);
+		writer.NewPropertyWithValue("VisualEmissionSpread", m_VisualEmissionSpread);
+	}
 	writer.NewProperty("DamageOnCollision");
 	writer << m_DamageOnCollision;
 	writer.NewProperty("DamageOnPenetration");
@@ -901,6 +959,52 @@ void MovableObject::Update() {
 	if (m_ScreenEffect && m_PostEffectEnabled) {
 		SetPostScreenEffectToDraw();
 	}
+
+	if (!m_VisualEmission.empty() && m_VisualEmissionRate > 0.0F) {
+		m_VisualEmissionDue += m_VisualEmissionRate * g_TimerMan.GetDeltaTimeSecs();
+		if (m_VisualEmissionDue >= 1.0F) {
+			int count = static_cast<int>(m_VisualEmissionDue);
+			m_VisualEmissionDue -= static_cast<float>(count);
+			EffectsParticles::Emit(m_VisualEmission, m_Pos, m_Vel, m_VisualEmissionSpread, count, 0);
+		}
+	}
+
+	if (m_Shimmer > 0.0F) {
+		g_PostProcessMan.RegisterShimmer(m_Pos, std::max(GetRadius() * 1.35F, 10.0F), m_Shimmer);
+	}
+
+	if (m_LightRadius > 0.0F && m_LightIntensity > 0.0F) {
+		Vector lightOffset = m_LightOffset;
+		if (!lightOffset.IsZero()) {
+			lightOffset = lightOffset.GetXFlipped(IsHFlipped()) * GetRotMatrix();
+		}
+		float flicker = 1.0F;
+		if (m_LightFlicker > 0.0F) {
+			// A hash of this object and the sim update rather than the sim's random numbers, so drawing never changes what happens.
+			uint32_t hash = static_cast<uint32_t>(m_UniqueID) * 0x9E3779B1u ^ static_cast<uint32_t>(g_TimerMan.GetSimUpdateCount()) * 0x85EBCA77u;
+			hash ^= hash >> 15;
+			hash *= 0x2C1B3C6Du;
+			hash ^= hash >> 12;
+			flicker = 1.0F - m_LightFlicker * static_cast<float>(hash & 0xFFFF) / 65535.0F;
+		}
+		glm::vec3 lightColor(m_LightColor.GetR(), m_LightColor.GetG(), m_LightColor.GetB());
+		float radius = m_LightRadius;
+		float intensity = m_LightIntensity * flicker;
+		if (m_JetpackExhaust) {
+			const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+			radius *= lighting.JetpackLightReach;
+			intensity *= lighting.JetpackLightBrightness;
+		}
+		if (intensity <= 0.0F || radius <= 0.0F) {
+			// (A jetpack's exhaust with the jetpack light at 0.)
+		} else if (m_LightConeAngle > 0.0F) {
+			// A beam pointing the way this faces, turned by the cone direction.
+			Vector direction = Vector(1.0F, 0.0F).GetRadRotatedCopy(-m_LightConeDirection * c_PI / 180.0F).GetXFlipped(IsHFlipped()) * GetRotMatrix();
+			g_PostProcessMan.RegisterConeLight(m_Pos + lightOffset, direction, m_LightConeAngle, lightColor, radius, intensity, LightSource::Objects);
+		} else {
+			g_PostProcessMan.RegisterLight(m_Pos + lightOffset, lightColor, radius, intensity, LightSource::Objects);
+		}
+	}
 }
 
 void MovableObject::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {
@@ -1133,7 +1237,22 @@ bool MovableObject::DrawToTerrain(SLTerrain* terrain) {
 void MovableObject::SetPostScreenEffectToDraw() const {
 	if (m_AgeTimer.GetElapsedSimTimeMS() >= m_EffectStartTime && (m_EffectStopTime == 0 || !m_AgeTimer.IsPastSimMS(m_EffectStopTime))) {
 		if (m_EffectAlwaysShows || !g_SceneMan.ObscuredPoint(m_Pos.GetFloorIntX(), m_Pos.GetFloorIntY())) {
-			g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS()), m_EffectRotAngle);
+			float strength = Lerp(m_EffectStartTime, m_EffectStopTime, m_EffectStartStrength, m_EffectStopStrength, m_AgeTimer.GetElapsedSimTimeMS());
+			if (m_SparkGlow) {
+				// A spark's glow and the light it casts follow Spark lights, and go with the sparks when they're turned off.
+				const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+				strength *= lighting.EffectsSparks > 0.0F ? lighting.SparkLights : 0.0F;
+				if (strength < 1.0F) {
+					return;
+				}
+			}
+			if (m_JetpackExhaust) {
+				// A jetpack's flame or glowing exhaust: the glow is drawn as it is, the light it casts follows the Jetpack light settings.
+				const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+				g_PostProcessMan.RegisterPostEffectScaledLight(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle, lighting.JetpackLightBrightness, lighting.JetpackLightReach);
+			} else {
+				g_PostProcessMan.RegisterPostEffect(m_Pos, m_ScreenEffect, m_ScreenEffectHash, static_cast<int>(std::min(strength, 255.0F)), m_EffectRotAngle);
+			}
 		}
 	}
 }

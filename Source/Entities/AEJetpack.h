@@ -37,12 +37,19 @@ namespace RTE {
 		/// Destructor method used to clean up a AEJetpack object before deletion from system memory.
 		~AEJetpack() override;
 
+		/// Whether this is a jetpack: it is.
+		/// @return True.
+		bool IsJetpack() const override { return true; }
+
 		/// Resets the entire AEJetpack, including its inherited members, to their default settings or values.
 		void Reset() override {
 			Clear();
 			AEmitter::Reset();
 		}
 #pragma endregion
+
+		/// Updates this AEJetpack as an AEmitter, then lights the scene at its nozzle while it fires (LightingSettings::JetpackLightBrightness and JetpackLightReach).
+		void Update() override;
 
 		/// Updates this AEJetpack from our parent actor.
 		void UpdateBurstState(Actor& parentActor);

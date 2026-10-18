@@ -115,6 +115,21 @@ namespace RTE {
 		/// Indicates whether or not to use the Material's own color when a pixel of this Material is knocked loose from the terrain.
 		/// @return Whether the Material's color, or the terrain pixel's color should be applied.
 		bool UsesOwnColor() const { return m_UseOwnColor; }
+
+		/// Gets how metallic things made of this Material look under the lighting: metal mirrors its surroundings and tints its highlights.
+		/// Set with Metalness in INI; when it isn't, a value that suits the Material's name is used (the metals, "Military Stuff" and so on).
+		/// @return The metalness, 0 to 1.
+		float GetMetalness() const;
+
+		/// Gets how glossy things made of this Material look under the lighting: how strong and tight the highlights lights throw on them are.
+		/// Set with Gloss in INI; when it isn't, a value that suits the Material's name is used.
+		/// @return The gloss, 0 to 1.
+		float GetGloss() const;
+
+		/// Gets whether drops of this Material leave stains where they land (blood, oil). Drawing only.
+		/// Set with Stains in INI; below 0 when it isn't, and the name decides.
+		/// @return 1 to stain, 0 not to, below 0 if unset.
+		int GetStains() const { return m_Stains; }
 #pragma endregion
 
 #pragma region Operator Overloads
@@ -155,6 +170,9 @@ namespace RTE {
 
 		Color m_Color; //!< The natural color of this material.
 		bool m_UseOwnColor; //!< Whether or not to use the own color when a pixel of this material is knocked loose from the terrain. If 0, then the terrain pixel's color will be applied instead.
+		mutable float m_Metalness; //!< How metallic this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
+		mutable float m_Gloss; //!< How glossy this looks, 0 to 1. Below 0 until set or first asked for, when it's worked out from the name.
+		int m_Stains; //!< 1 if drops of it leave stains where they land, 0 if not, below 0 to go by the name.
 
 		ContentFile m_FGTextureFile; //!< The file pointing to the terrain foreground texture of this Material.
 		ContentFile m_BGTextureFile; //!< The file pointing to the terrain background texture of this Material.

@@ -30,6 +30,10 @@ namespace RTE {
 		/// from system memory.
 		~AEmitter() override;
 
+		/// Whether this is a jetpack (AEJetpack): what it emits lights the scene by the Jetpack light settings.
+		/// @return Whether this is a jetpack.
+		virtual bool IsJetpack() const { return false; }
+
 		/// Creates a AEmitter to be identical to another, by deep copy.
 		/// @param reference A reference to the AEmitter to deep copy.
 		/// @return An error return value signaling sucess or any particular failure.

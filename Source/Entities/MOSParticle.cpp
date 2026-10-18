@@ -1,14 +1,62 @@
 #include "MOSParticle.h"
+#include "EffectsParticles.h"
 
 #include "Atom.h"
 #include "PostProcessMan.h"
 #include "Draw.h"
 #include "FrameMan.h"
+#include "RenderMan.h"
+#include "Texture.h"
+#include "allegro.h"
 #include <array>
+#include <mutex>
+#include <unordered_map>
 
 using namespace RTE;
 
 ConcreteClassInfo(MOSParticle, MovableObject, 1000);
+
+namespace {
+	/// The average colour of a sprite's drawn pixels, as 0xRRGGBB: what colour its smoke is. Worked out once per sprite frame.
+	unsigned int SpriteColor(const BitmapTexture* sprite) {
+		// Kept with the bitmap it was worked out from, so a sprite freed and another made at the same address (a mod reload) is worked out again.
+		static std::unordered_map<const BitmapTexture*, std::pair<const BITMAP*, unsigned int>> cache;
+		static std::mutex cacheMutex;
+		if (!sprite) {
+			return 0xF2E6D9;
+		}
+		std::scoped_lock lock(cacheMutex);
+		BITMAP* bitmap = sprite->GetBitmap();
+		auto found = cache.find(sprite);
+		if (found != cache.end() && found->second.first == bitmap) {
+			return found->second.second;
+		}
+		unsigned int color = 0xF2E6D9;
+		if (bitmap && bitmap_color_depth(bitmap) == 8) {
+			unsigned long red = 0;
+			unsigned long green = 0;
+			unsigned long blue = 0;
+			unsigned long count = 0;
+			for (int y = 0; y < bitmap->h; ++y) {
+				for (int x = 0; x < bitmap->w; ++x) {
+					int index = _getpixel(bitmap, x, y);
+					if (index != 0) {
+						unsigned int rgb = EffectsParticles::ColorToRGB(Color(index));
+						red += (rgb >> 16) & 0xFF;
+						green += (rgb >> 8) & 0xFF;
+						blue += rgb & 0xFF;
+						++count;
+					}
+				}
+			}
+			if (count > 0) {
+				color = static_cast<unsigned int>(((red / count) << 16) | ((green / count) << 8) | (blue / count));
+			}
+		}
+		cache[sprite] = {bitmap, color};
+		return color;
+	}
+} // namespace
 
 MOSParticle::MOSParticle() {
 	Clear();
@@ -22,6 +70,7 @@ void MOSParticle::Clear() {
 	m_Atom = nullptr;
 	m_SpriteAnimMode = OVERLIFETIME;
 	m_PostEffectEnabled = true; // Default to true for backwards compatibility reasons
+	m_FlameSprite = false;
 }
 
 int MOSParticle::Create() {
@@ -31,6 +80,8 @@ int MOSParticle::Create() {
 	if (!m_Atom) {
 		m_Atom = new Atom();
 	}
+	// The game's flame particles (Flame 1, Flame 2 and every copy of them) all draw this one animation.
+	m_FlameSprite = m_SpriteFile.GetDataPath().find("Effects/Pyro/Flame/Flame.png") != std::string::npos;
 	return 0;
 }
 
@@ -39,6 +90,7 @@ int MOSParticle::Create(const MOSParticle& reference) {
 
 	m_Atom = new Atom(*(reference.m_Atom));
 	m_Atom->SetOwner(this);
+	m_FlameSprite = reference.m_FlameSprite;
 
 	return 0;
 }
@@ -231,6 +283,30 @@ void MOSParticle::Draw(const Camera& camera) const {
 	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
 		return;
 	}
+	// A flame gets the fire shader's flames drawn over this sprite in the glow pass, or the shader only, no sprite.
+	int fireStyle = m_FlameSprite ? g_PostProcessMan.GetLightingSettings().FireStyle : LightingSettings::FirePixel;
+	if (fireStyle != LightingSettings::FirePixel) {
+		float age = static_cast<float>(GetAge());
+		float size = std::clamp(age / 120.0F, 0.3F, 1.0F);
+		float heat = m_Lifetime > 0 ? std::clamp(1.0F - age / static_cast<float>(m_Lifetime), 0.35F, 1.0F) : 1.0F;
+		EffectsParticles::RegisterFlame(this, glm::vec2(m_Pos.m_X, m_Pos.m_Y), size, heat);
+		if (fireStyle == LightingSettings::FireShaderOnly) {
+			return;
+		}
+	}
+	// Smoke: weightless air particles that float up.
+	bool smoke = m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir;
+	// It's drawn in the effects layer (LightingSettings::Behind), behind units and the ground in front.
+	float previousZOffset = g_RenderMan.GetCurrentZOffset();
+	if (smoke && g_PostProcessMan.GetLightingSettings().Behind(LightingSettings::LayerSmoke)) {
+		g_RenderMan.SetCurrentZOffset(c_EffectsDepth);
+	}
 	Vector spritePos((m_Pos + m_SpriteOffset).GetFloored());
 	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos);
+	g_RenderMan.SetCurrentZOffset(previousZOffset);
+	// Smoke scatters the light passing through it.
+	if (smoke) {
+		float density = m_Lifetime > 0 ? std::clamp(1.0F - static_cast<float>(GetAge()) / static_cast<float>(m_Lifetime), 0.0F, 1.0F) : 1.0F;
+		EffectsParticles::RegisterSmoke(this, glm::vec2(m_Pos.m_X, m_Pos.m_Y), m_SpriteRadius, density, SpriteColor(m_Sprites[m_Frame].get()));
+	}
 }

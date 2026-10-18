@@ -7,6 +7,7 @@
 #include "MOPixel.h"
 #include "PresetMan.h"
 #include "Actor.h"
+#include "EffectsParticles.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -918,6 +919,20 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 				hitPos[X] = intPos[X];
 				hitPos[Y] = intPos[Y];
 				++hitCount;
+
+				// Visual only: blood and oil leave stains where they splash on terrain.
+				if (m_Material && m_Material->GetIntegrity() <= 1.0F && velocity.MagnitudeIsGreaterThan(2.0F) && hitMaterial->GetIndex() != g_MaterialOutOfBounds && EffectsParticles::IsStainingMaterial(m_Material)) {
+					Color stainColor = m_Material->GetColor();
+					if (m_Material->UsesOwnColor()) {
+						if (const MOPixel* ownerPixel = dynamic_cast<const MOPixel*>(m_OwnerMO)) {
+							stainColor = ownerPixel->GetColor();
+						}
+					}
+					unsigned int stainRGB = EffectsParticles::ColorToRGB(stainColor);
+					if (stainRGB != 0) {
+						EffectsParticles::SpawnStain(Vector(static_cast<float>(intPos[X]), static_cast<float>(intPos[Y])), (stainRGB >> 16) & 0xFF, (stainRGB >> 8) & 0xFF, stainRGB & 0xFF, velocity.GetMagnitude(), EffectsParticles::StainGloss(m_Material));
+					}
+				}
 
 				// Try penetration of the terrain.
 				if (hitMaterial->GetIndex() != g_MaterialOutOfBounds && g_SceneMan.TryPenetrate(intPos[X], intPos[Y], velocity * mass * sharpness, velocity, retardation, 0.65F, m_NumPenetrations, removeOrphansRadius, removeOrphansMaxArea, removeOrphansRate)) {

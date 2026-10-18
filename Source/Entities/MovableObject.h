@@ -446,6 +446,60 @@ namespace RTE {
 		/// @param newValue Boolean indicating whether or not the effect can be obscured.
 		void SetEffectAlwaysShows(bool newValue) { m_EffectAlwaysShows = newValue; }
 
+		/// Gets whether this MovableObject's screen effect is a spark's glow, scaled by the Spark lights setting (LightingSettings::SparkLights).
+		/// @return Whether the screen effect is a spark's glow.
+		bool GetSparkGlow() const { return m_SparkGlow; }
+
+		/// Gets whether this MovableObject was emitted by a jetpack (AEJetpack), so the light it casts follows the Jetpack light settings
+		/// (LightingSettings::JetpackLightBrightness and JetpackLightReach).
+		/// @return Whether this is a jetpack's exhaust.
+		bool IsJetpackExhaust() const { return m_JetpackExhaust; }
+
+		/// Sets whether this MovableObject was emitted by a jetpack. Not read or written: set as a jetpack emits it.
+		/// @param newValue Whether this is a jetpack's exhaust.
+		void SetJetpackExhaust(bool newValue) { m_JetpackExhaust = newValue; }
+
+		/// Gets the radius of the light this casts. 0 means no light. The light is drawing only and never affects the simulation.
+		float GetLightRadius() const { return m_LightRadius; }
+		void SetLightRadius(float radius) { m_LightRadius = radius; }
+		/// Gets the brightness of the light this casts. 0 means no light.
+		float GetLightIntensity() const { return m_LightIntensity; }
+		void SetLightIntensity(float intensity) { m_LightIntensity = intensity; }
+		/// Gets how much the light this casts flickers, 0 to 1.
+		float GetLightFlicker() const { return m_LightFlicker; }
+		void SetLightFlicker(float flicker) { m_LightFlicker = flicker; }
+		/// Sets the color of the light this casts, 0-255 per channel.
+		void SetLightColor(int red, int green, int blue) { m_LightColor.SetRGB(red, green, blue); }
+		int GetLightRed() const { return m_LightColor.GetR(); }
+		int GetLightGreen() const { return m_LightColor.GetG(); }
+		int GetLightBlue() const { return m_LightColor.GetB(); }
+		/// Gets the offset of the light from this' position, rotated and flipped with this.
+		const Vector& GetLightOffset() const { return m_LightOffset; }
+		void SetLightOffset(const Vector& offset) { m_LightOffset = offset; }
+		/// Gets the half-angle of this' light's cone in degrees, 0 for a light that shines all round.
+		float GetLightConeAngle() const { return m_LightConeAngle; }
+		/// Sets the half-angle of this' light's cone in degrees: above 0 the light is a beam like a flashlight, pointing the way this faces. 0 shines all round.
+		void SetLightConeAngle(float degrees) { m_LightConeAngle = degrees; }
+		/// Gets which way the light's cone points, in degrees clockwise from the way this faces.
+		float GetLightConeDirection() const { return m_LightConeDirection; }
+		/// Sets which way the light's cone points, in degrees clockwise from the way this faces.
+		void SetLightConeDirection(float degrees) { m_LightConeDirection = degrees; }
+
+		/// Gets how strongly the scene shimmers around this (see PostProcessMan::RegisterShimmer). 0 for none.
+		float GetShimmer() const { return m_Shimmer; }
+		/// Sets how strongly the scene shimmers around this, around 1; 0 for none. For energy shields, cloaks and hot things.
+		void SetShimmer(float shimmer) { m_Shimmer = std::max(shimmer, 0.0F); }
+
+		/// Sets the purely visual particles this gives off as it goes. They never affect the simulation.
+		/// @param kind "Sparks", "Dust", "Debris" or "Embers", or an empty string for none.
+		/// @param perSecond How many per second.
+		/// @param spread How much their direction and speed vary, 0 to 1.
+		void SetVisualEmission(const std::string& kind, float perSecond, float spread) {
+			m_VisualEmission = kind;
+			m_VisualEmissionRate = perSecond;
+			m_VisualEmissionSpread = spread;
+		}
+
 		/// Sets the current angular velocity of this MovableObject. Positive is
 		/// a counter clockwise rotation.
 		/// @param newRotVel The new angular velocity in radians per second.
@@ -1279,6 +1333,20 @@ namespace RTE {
 		bool m_RandomizeEffectRotAngleEveryFrame;
 		// Whether or not to draw the effect every frame; used for flashes
 		bool m_PostEffectEnabled;
+		bool m_SparkGlow; //!< The screen effect is a spark's glow: its strength, and so the light it casts, follows LightingSettings::SparkLights, and it's gone with EffectsSparks at 0.
+		bool m_JetpackExhaust; //!< Emitted by a jetpack: the light it casts (its glow's, its own) follows LightingSettings::JetpackLightBrightness and JetpackLightReach.
+		Color m_LightColor; //!< Color of the light this casts, 0-255.
+		float m_LightRadius; //!< Radius of the light this casts, in pixels. 0 means no light.
+		float m_LightIntensity; //!< Brightness of the light this casts. 0 means no light.
+		float m_LightFlicker; //!< How much the light flickers, 0 to 1.
+		float m_LightConeAngle; //!< Half-angle of the light's cone in degrees, 0 for a light that shines all round.
+		float m_LightConeDirection; //!< Which way the cone points, in degrees clockwise from the way this faces.
+		Vector m_LightOffset; //!< Offset of the light from this' position, rotated and flipped with this.
+		float m_Shimmer; //!< How strongly the scene shimmers around this, 0 for none.
+		std::string m_VisualEmission; //!< Kind of purely visual particles this gives off ("Sparks", "Dust", "Debris", "Embers"), or empty for none.
+		float m_VisualEmissionRate; //!< How many it gives off per second.
+		float m_VisualEmissionSpread; //!< How much their direction and speed vary, 0 to 1.
+		float m_VisualEmissionDue; //!< Fraction of a particle carried over to the next update.
 
 		// This object's unique persistent ID
 		long m_UniqueID;

@@ -21,6 +21,7 @@
 #include "FrameMan.h"
 #include "PerformanceMan.h"
 #include "PostProcessMan.h"
+#include "SceneLighting.h"
 #include "PieMenu.h"
 
 #include "GUI.h"
@@ -90,6 +91,12 @@ void Actor::Clear() {
 	m_LastAlarmPos.Reset();
 	m_SightDistance = 450.0F;
 	m_Perceptiveness = 0.5F;
+	m_HeadlampBrightness = 1.0F;
+	m_HeadlampColor.SetRGB(255, 240, 215);
+	m_HeadlampHasColor = false;
+	m_HeadlampLit = false;
+	m_HeadlampFade = 0.0F;
+	m_HeadlampSkyOpen = -1.0F;
 	m_PainThreshold = 15.0F;
 	m_CanRevealUnseen = true;
 	m_CharHeight = 0;
@@ -214,6 +221,9 @@ int Actor::Create(const Actor& reference) {
 	m_SeenTargetPos = reference.m_SeenTargetPos;
 	m_SightDistance = reference.m_SightDistance;
 	m_Perceptiveness = reference.m_Perceptiveness;
+	m_HeadlampBrightness = reference.m_HeadlampBrightness;
+	m_HeadlampColor = reference.m_HeadlampColor;
+	m_HeadlampHasColor = reference.m_HeadlampHasColor;
 	m_PainThreshold = reference.m_PainThreshold;
 	m_CanRevealUnseen = reference.m_CanRevealUnseen;
 	m_CharHeight = reference.m_CharHeight;
@@ -342,6 +352,11 @@ int Actor::ReadProperty(const std::string_view& propName, Reader& reader) {
 	MatchProperty("SharpAimDelay", { reader >> m_SharpAimDelay; });
 	MatchProperty("SightDistance", { reader >> m_SightDistance; });
 	MatchProperty("Perceptiveness", { reader >> m_Perceptiveness; });
+	MatchProperty("HeadlampBrightness", { reader >> m_HeadlampBrightness; });
+	MatchProperty("HeadlampColor", {
+		reader >> m_HeadlampColor;
+		m_HeadlampHasColor = true;
+	});
 	MatchProperty("PainThreshold", { reader >> m_PainThreshold; });
 	MatchProperty("CanRevealUnseen", { reader >> m_CanRevealUnseen; });
 	MatchProperty("CharHeight", { reader >> m_CharHeight; });
@@ -428,6 +443,10 @@ int Actor::Save(Writer& writer) const {
 	writer << m_SightDistance;
 	writer.NewProperty("Perceptiveness");
 	writer << m_Perceptiveness;
+	writer.NewPropertyWithValue("HeadlampBrightness", m_HeadlampBrightness);
+	if (m_HeadlampHasColor) {
+		writer.NewPropertyWithValue("HeadlampColor", m_HeadlampColor);
+	}
 	writer.NewProperty("PainThreshold");
 	writer << m_PainThreshold;
 	writer.NewProperty("CanRevealUnseen");
@@ -1106,8 +1125,99 @@ void Actor::PreControllerUpdate() {
 	}
 }
 
+float Actor::GetNightAmount() {
+	glm::vec3 daylight = SceneLighting::GetDaylightTint(g_PostProcessMan.GetLightingSettings().TimeOfDay);
+	float dayFactor = glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+	return std::clamp((0.45F - dayFactor) / 0.35F, 0.0F, 1.0F);
+}
+
+float Actor::GetAmbientLightForHeadlamp() {
+	const Vector eyes = GetEyePos();
+	// The sky: how open it is above, from three rays up (straight and a little to either side) that either reach the air above a roof's
+	// thickness or stop in the ground. Looked again every few updates, each unit on its own turn, as the ground and the unit move slowly next to that.
+	if (m_HeadlampSkyOpen < 0.0F || (g_TimerMan.GetSimUpdateCount() + GetUniqueID()) % 8 == 0) {
+		const float up = std::max(160.0F, GetHeight() * 3.0F);
+		int open = 0;
+		for (float sideways: {0.0F, -0.5F, 0.5F}) {
+			Vector roof;
+			if (!g_SceneMan.CastNotMaterialRay(eyes, Vector(up * sideways, -up), g_MaterialAir, roof)) {
+				++open;
+			}
+		}
+		m_HeadlampSkyOpen = static_cast<float>(open) / 3.0F;
+	}
+	// Only the sky and the clock, never the lights on screen: what the lighting shows can differ between machines, and this stays the same on all of them.
+	return (1.0F - GetNightAmount()) * m_HeadlampSkyOpen;
+}
+
+void Actor::UpdateHeadlamp() {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (!lighting.Headlamps || !lighting.Enabled || m_HeadlampBrightness <= 0.0F || m_Status == DEAD || m_Status == DYING) {
+		m_HeadlampLit = false;
+		m_HeadlampFade = 0.0F;
+		return;
+	}
+	// How bright the lamp is drawn: full, except at night by the clock, where it comes up with the dark as it used to.
+	float strength = 1.0F;
+	if (lighting.HeadlampsByDay) {
+		m_HeadlampLit = true;
+	} else if (!lighting.HeadlampsOnlyInDark) {
+		strength = GetNightAmount();
+		m_HeadlampLit = strength > 0.05F;
+	} else {
+		// On when it gets darker than the threshold, off only once it's a little lighter than it: at the edge of a lamp's light or a cave mouth,
+		// or with the light wavering (a fire, a flash), the lamp stays as it is instead of flickering.
+		const float threshold = std::clamp(lighting.HeadlampDarkThreshold, 0.0F, 1.0F);
+		const float margin = 0.1F;
+		float light = GetAmbientLightForHeadlamp();
+		if (m_HeadlampLit && light > threshold + margin) {
+			m_HeadlampLit = false;
+		} else if (!m_HeadlampLit && light < threshold) {
+			m_HeadlampLit = true;
+		}
+	}
+	// It comes on and goes off over about a third of a second.
+	const float step = g_TimerMan.GetDeltaTimeSecs() / 0.3F;
+	m_HeadlampFade = std::clamp(m_HeadlampFade + (m_HeadlampLit ? step : -step), 0.0F, 1.0F);
+
+	// A headlamp lighting where the actor looks, plus a little glow around it.
+	if (m_HeadlampFade > 0.0F) {
+		Vector eyePos = GetEyePos();
+		float aimAngle = GetAimAngle(true);
+		// CC angles are counter-clockwise with Y up; screen space is Y down.
+		Vector direction(std::cos(aimAngle), -std::sin(aimAngle));
+		// The lamp's color: this unit's own if its INI or a script gave it one, else the player's setting, with as much of the side's color as the player asked for.
+		glm::vec3 color = glm::pow(glm::clamp(lighting.HeadlampColor, glm::vec3(0.0F), glm::vec3(1.0F)), glm::vec3(1.0F / 2.2F)) * 255.0F;
+		if (m_HeadlampHasColor) {
+			color = glm::vec3(m_HeadlampColor.GetR(), m_HeadlampColor.GetG(), m_HeadlampColor.GetB());
+		} else if (lighting.HeadlampTeamTint > 0.0F && m_Team >= 0 && m_Team < 4) {
+			static const glm::vec3 teamColors[4] = {{255.0F, 105.0F, 85.0F}, {105.0F, 255.0F, 120.0F}, {110.0F, 165.0F, 255.0F}, {255.0F, 225.0F, 95.0F}};
+			color = glm::mix(color, teamColors[m_Team], std::clamp(lighting.HeadlampTeamTint, 0.0F, 1.0F));
+		}
+		g_PostProcessMan.RegisterConeLight(eyePos, direction, std::clamp(lighting.HeadlampWidth, 2.0F, 89.0F), color, lighting.HeadlampReach, lighting.HeadlampBrightness * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
+		g_PostProcessMan.RegisterLight(eyePos, color, 36.0F, lighting.HeadlampGlow * m_HeadlampBrightness * m_HeadlampFade * strength, LightSource::Headlamps);
+	}
+}
+
+void Actor::UpdateOutlineGlow() {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (lighting.UnitOutlineGlow <= 0.0F || !lighting.Enabled || !lighting.UnitOutline || lighting.UnitOutlineOpacity <= 0.0F || m_Status == DEAD || m_Status == DYING || GetClassName() == "ADoor" || GetClassName() == "AMover") {
+		return;
+	}
+	// The outline's own colour, as Tonemap.frag draws it: the side's or the set one. The sides' colours as SceneLighting gives them to the outline, and white for no side.
+	static const glm::vec3 sideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
+	glm::vec3 color = lighting.UnitOutlineTeamColor ? sideColors[std::clamp(m_Team, -1, 3) + 1] : glm::clamp(lighting.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F));
+	float brightness = std::min(lighting.UnitOutlineGlow, 2.0F);
+	// From the middle of the body, reaching a little past the unit so the ground and anyone beside it pick up the colour.
+	float reach = std::max(40.0F, GetHeight() * 1.5F);
+	g_PostProcessMan.RegisterLight(m_Pos, color * 255.0F, reach, brightness, LightSource::Outlines);
+}
+
 void Actor::Update() {
 	ZoneScoped;
+
+	UpdateHeadlamp();
+	UpdateOutlineGlow();
 
 	/////////////////////////////////
 	// Hit Body update and handling

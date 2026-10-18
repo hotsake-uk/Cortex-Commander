@@ -2,6 +2,7 @@
 
 #include "Atom.h"
 #include "PostProcessMan.h"
+#include "SLTerrain.h"
 #include "FrameMan.h"
 #include "Draw.h"
 
@@ -203,6 +204,49 @@ void MOPixel::RestDetection() {
 
 void MOPixel::Update() {
 	MovableObject::Update();
+
+	// A fast shot with a trail is a tracer: it throws a little light in its trail's color on what it passes. Only so many a frame, so a firefight doesn't turn into hundreds of lights.
+	if (m_Atom && m_Atom->GetTrailLength() > 0 && m_LightRadius <= 0.0F && !m_ScreenEffect && g_PostProcessMan.GetLightingSettings().TracerLights && g_PostProcessMan.GetLightingSettings().Enabled && m_Vel.MagnitudeIsGreaterThan(40.0F)) {
+		static long long s_TracerUpdate = -1;
+		static int s_TracersLit = 0;
+		long long update = g_TimerMan.GetSimUpdateCount();
+		if (update != s_TracerUpdate) {
+			s_TracerUpdate = update;
+			s_TracersLit = 0;
+		}
+		if (s_TracersLit < 40) {
+			++s_TracersLit;
+			Color trailColor(m_Atom->GetTrailColor().GetIndex());
+			const LightingSettings& lightSettings = g_PostProcessMan.GetLightingSettings();
+			float reach = lightSettings.TracerLightReach;
+			float brightness = lightSettings.TracerLightBrightness;
+			if (float randomness = std::clamp(lightSettings.TracerLightRandomness, 0.0F, 1.0F); randomness > 0.0F) {
+				// Each tracer keeps a size and brightness of its own for as long as it flies (from its ID, so no two side by side match), and wavers a little as it goes.
+				// Worked out from the ID and the clock, not from the game's random numbers, so it changes nothing in the simulation.
+				unsigned int seed = static_cast<unsigned int>(GetUniqueID()) * 2654435761u;
+				float own = static_cast<float>((seed >> 8) & 0xFFFF) / 65535.0F;
+				float other = static_cast<float>((seed >> 16) & 0xFFFF) / 65535.0F;
+				float waver = std::sin(static_cast<float>(update) * (0.5F + own * 0.9F) + other * 40.0F);
+				reach *= std::max(0.25F, 1.0F + randomness * ((own * 2.0F - 1.0F) * 0.8F + waver * 0.25F));
+				brightness *= std::max(0.1F, 1.0F + randomness * ((other * 2.0F - 1.0F) * 0.6F + waver * 0.3F));
+			}
+			if (m_JetpackExhaust) {
+				// A jetpack's flame fast enough to light as a tracer: its light follows the Jetpack light settings instead.
+				reach *= lightSettings.JetpackLightReach;
+				brightness *= lightSettings.JetpackLightBrightness;
+			}
+			if (brightness > 0.0F) {
+				g_PostProcessMan.RegisterLight(m_Pos, glm::vec3(trailColor.GetR(), trailColor.GetG(), trailColor.GetB()), reach, brightness, m_JetpackExhaust ? LightSource::Jetpacks : LightSource::Tracers);
+			}
+		}
+	}
+
+	// A shot that passes through a lamp of the scenery smashes it. Lamps are drawing only.
+	if (m_Sharpness > 0 && m_Vel.MagnitudeIsGreaterThan(25.0F)) {
+		if (SLTerrain* terrain = g_SceneMan.GetTerrain()) {
+			terrain->ShootLightsAlong(m_PrevPos, m_Pos);
+		}
+	}
 
 	// TODO: Rework this once we figure out how we want to handle it
 	if (m_HitsMOs && m_Sharpness > 0) {
