@@ -44,6 +44,33 @@ namespace RTE {
 				m_SimAccumulator = 0.0F;
 		}
 
+		/// Holds the simulation still for a tool (Mod Studio's inspector), apart from the pause the menus set and clear: while held, no real time
+		/// goes to the sim accumulator, and StepSim lets whole sim updates through.
+		/// @param hold Whether to hold the simulation.
+		void HoldSim(bool hold) {
+			m_SimHeld = hold;
+			m_SimStepsPending = 0;
+			if (hold) {
+				m_SimAccumulator = 0;
+			}
+		}
+
+		/// Tells whether the simulation is held by HoldSim.
+		/// @return Whether the simulation is held.
+		bool IsSimHeld() const { return m_SimHeld; }
+
+		/// Tells whether the simulation is paused, by PauseSim or HoldSim.
+		/// @return Whether the simulation is paused.
+		bool IsSimPaused() const { return m_SimPaused || m_SimHeld; }
+
+		/// Lets some sim updates through while the simulation is held, on the next Update. Does nothing when it isn't held.
+		/// @param updates How many sim updates to let through.
+		void StepSim(int updates = 1) {
+			if (m_SimHeld && updates > 0) {
+				m_SimStepsPending += updates;
+			}
+		}
+
 		/// Tells whether there is enough sim time accumulated to do at least one physics update.
 		/// @return Whether there is enough sim time to do a physics update.
 		bool TimeForSimUpdate() const { return m_SimAccumulator >= m_DeltaTime; }
@@ -164,6 +191,8 @@ namespace RTE {
 		float m_TimeScale; //!< The relationship between the real world actual time and the simulation time. A value of 2.0 means simulation runs twice as fast as normal, as perceived by a player.
 
 		bool m_SimPaused; //!< Simulation paused; no real time ticks will go to the sim accumulator.
+		bool m_SimHeld; //!< Simulation held by a tool (HoldSim); no real time ticks will go to the sim accumulator, only the steps StepSim lets through.
+		int m_SimStepsPending; //!< The sim updates StepSim let through, added to the sim accumulator on the next Update.
 
 	private:
 		/// Clears all the member variables of this TimerMan, effectively resetting the members of this abstraction level only.

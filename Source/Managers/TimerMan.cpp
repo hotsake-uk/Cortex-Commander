@@ -24,6 +24,8 @@ void TimerMan::Clear() {
 	m_SimSpeed = 1.0F;
 	m_TimeScale = 1.0F;
 	m_SimPaused = false;
+	m_SimHeld = false;
+	m_SimStepsPending = 0;
 }
 
 void TimerMan::Initialize() {
@@ -86,7 +88,7 @@ void TimerMan::Update() {
 	RTEAssert(timeIncrease > 0, "It seems your CPU is giving bad timing data to the game, this is known to happen on some multi-core processors. This may be fixed by downloading the latest CPU drivers from AMD or Intel.");
 
 	// If not paused, add the new time difference to the sim accumulator
-	if (!m_SimPaused) {
+	if (!m_SimPaused && !m_SimHeld) {
 		m_SimAccumulator += static_cast<long long>(static_cast<float>(timeIncrease) * m_TimeScale);
 	}
 
@@ -94,6 +96,12 @@ void TimerMan::Update() {
 
 	// Make sure we don't get runaway behind schedule
 	m_SimAccumulator = std::min(m_SimAccumulator, m_DeltaTime + static_cast<long long>(m_DeltaTime * maxPossibleSimSpeed));
+
+	// Steps let through while held all run this frame, so they're added after the cap.
+	if (m_SimHeld && !m_SimPaused && m_SimStepsPending > 0) {
+		m_SimAccumulator += m_DeltaTime * m_SimStepsPending;
+	}
+	m_SimStepsPending = 0;
 
 	RTEAssert(m_SimAccumulator >= 0, "Negative sim time accumulator?!");
 

@@ -114,6 +114,10 @@ namespace RTE {
 		/// @return Whether or not the script is on this MO.
 		bool HasScript(const std::string& scriptPath) const { return std::find(m_AllLoadedScripts.begin(), m_AllLoadedScripts.end(), scriptPath) != m_AllLoadedScripts.end(); }
 
+		/// Gets the paths of the scripts on this MO.
+		/// @return The scripts' paths, in the order they were added.
+		const std::vector<std::string>& GetLoadedScripts() const { return m_AllLoadedScripts; }
+
 		/// Checks if the script at the given path is one of the enabled scripts on this MO.
 		/// @param scriptPath The path to the script to check.
 		/// @return Whether or not the script is enabled on this MO.

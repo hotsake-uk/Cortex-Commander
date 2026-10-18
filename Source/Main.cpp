@@ -359,7 +359,7 @@ void RunGameLoop() {
 			g_LuaMan.ClearScriptTimings();
 			g_MovableMan.Update();
 			g_PerformanceMan.UpdateSortedScriptTimings(g_LuaMan.GetScriptTimings());
-			ModStudioLink::UpdateProfile();
+			ModStudioLink::UpdateAfterSim();
 
 			g_AudioMan.Update();
 			g_MusicMan.Update();

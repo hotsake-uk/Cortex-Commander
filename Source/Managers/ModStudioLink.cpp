@@ -1,17 +1,25 @@
 #include "ModStudioLink.h"
 
 #include "ActivityMan.h"
+#include "ACrab.h"
+#include "AEJetpack.h"
+#include "AHuman.h"
 #include "AudioMan.h"
+#include "CameraMan.h"
 #include "ConsoleMan.h"
 #include "ContentFile.h"
 #include "GAScripted.h"
+#include "HeldDevice.h"
 #include "LuaMan.h"
 #include "MovableMan.h"
 #include "PerformanceMan.h"
 #include "PresetMan.h"
+#include "PrimitiveMan.h"
 #include "System.h"
+#include "TimerMan.h"
 
 #include <algorithm>
+#include <cmath>
 #include <fstream>
 #include <iterator>
 #include <list>
@@ -28,6 +36,10 @@ std::chrono::steady_clock::time_point ModStudioLink::s_LastUpdate = {};
 bool ModStudioLink::s_ScriptsLookedAt = false;
 std::filesystem::file_time_type ModStudioLink::s_ScriptsWriteTime = {};
 std::chrono::steady_clock::time_point ModStudioLink::s_LastProfileWrite = {};
+bool ModStudioLink::s_Inspecting = false;
+long ModStudioLink::s_InspectSelected = 0;
+long ModStudioLink::s_InspectFollow = 0;
+long ModStudioLink::s_InspectSteps = -1;
 
 namespace {
 	std::filesystem::path LinkFolder() {
@@ -48,13 +60,17 @@ namespace {
 	}
 
 	/// A file the tool reads while the game runs, written to a temporary file and swapped in when it's done so the tool never reads half of one.
-	/// Where the swap can't be made (the tool has the file open just then, on Windows) it is written in place.
+	/// Where the swap can't be made (the tool has the file open just then, on Windows) it is written in place. With endMarker, the file ends
+	/// with "End = 1", so the tool can tell a whole one.
 	class LinkFileOut : public std::ostringstream {
 	public:
-		explicit LinkFileOut(std::filesystem::path path) :
-		    m_Path(std::move(path)) {}
+		explicit LinkFileOut(std::filesystem::path path, bool endMarker = false) :
+		    m_Path(std::move(path)), m_EndMarker(endMarker) {}
 
 		~LinkFileOut() override {
+			if (m_EndMarker) {
+				*this << "End = 1\n";
+			}
 			const std::string text = str();
 			std::error_code error;
 			std::filesystem::create_directories(m_Path.parent_path(), error);
@@ -74,6 +90,7 @@ namespace {
 
 	private:
 		std::filesystem::path m_Path;
+		bool m_EndMarker;
 	};
 
 	/// The values scripts watch. Scripts can run on other threads, so it has a lock; like the log, it is never freed.
@@ -86,6 +103,32 @@ namespace {
 	WatchedValues& Watched() {
 		static WatchedValues* watched = new WatchedValues();
 		return *watched;
+	}
+
+	/// A value for World.ini, which is split on tabs and lines.
+	std::string Clean(std::string text) {
+		std::replace_if(text.begin(), text.end(), [](char c) { return c == '\t' || c == '\n' || c == '\r'; }, ' ');
+		return text;
+	}
+
+	Actor* FindActor(long uniqueID) {
+		return uniqueID == 0 ? nullptr : dynamic_cast<Actor*>(g_MovableMan.FindObjectByUniqueID(uniqueID));
+	}
+
+	const char* MovementName(int state) {
+		static const char* names[] = {"Still", "Crouching", "Standing", "Walking", "Running", "Jumping", "Dislodged", "Prone", "Crawling", "Arm crawling", "Climbing"};
+		return state >= 0 && state < static_cast<int>(std::size(names)) ? names[state] : "?";
+	}
+
+	const char* StatusName(int status) {
+		switch (status) {
+			case Actor::STABLE: return "Stable";
+			case Actor::UNSTABLE: return "Unstable";
+			case Actor::INACTIVE: return "Inactive";
+			case Actor::DYING: return "Dying";
+			case Actor::DEAD: return "Dead";
+			default: return "?";
+		}
 	}
 
 	std::string TrimSpaces(const std::string& text) {
@@ -130,8 +173,20 @@ void ModStudioLink::OnConsoleLine(const std::string& line) {
 }
 
 void ModStudioLink::Update() {
+	if (!s_Enabled) {
+		return;
+	}
+	// The camera stays on the actor the inspector follows, every frame (the activity points it at the controlled actor each sim update, so a
+	// one-off move would be undone at once). It lets go when the actor is gone.
+	if (s_Inspecting && s_InspectFollow != 0) {
+		if (const Actor* followed = FindActor(s_InspectFollow)) {
+			g_CameraMan.SetScrollTarget(followed->GetPos(), 0.12F, 0);
+		} else {
+			s_InspectFollow = 0;
+		}
+	}
 	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-	if (!s_Enabled || now - s_LastUpdate < std::chrono::milliseconds(250)) {
+	if (now - s_LastUpdate < std::chrono::milliseconds(250)) {
 		return;
 	}
 	s_LastUpdate = now;
@@ -157,6 +212,7 @@ void ModStudioLink::Update() {
 		}
 	}
 	HandleScriptRequests();
+	HandleInspector();
 }
 
 void ModStudioLink::Watch(const std::string& name, const std::string& value) {
@@ -172,9 +228,18 @@ void ModStudioLink::Watch(const std::string& name, const std::string& value) {
 	}
 }
 
-void ModStudioLink::UpdateProfile() {
+void ModStudioLink::UpdateAfterSim() {
 	if (!s_Enabled || !g_ActivityMan.IsInActivity()) {
 		return;
+	}
+	// Primitives are cleared at the start of each sim update, so the outline is drawn again each one.
+	if (s_Inspecting) {
+		if (const Actor* selected = FindActor(s_InspectSelected)) {
+			const float radius = std::max(8.0F, selected->GetRadius());
+			g_PrimitiveMan.DrawCirclePrimitive(selected->GetPos(), static_cast<int>(radius) + 3, g_YellowGlowColor);
+			g_PrimitiveMan.DrawCirclePrimitive(selected->GetPos(), static_cast<int>(radius) + 4, g_YellowGlowColor);
+			g_PrimitiveMan.DrawTextPrimitive(selected->GetPos() + Vector(0, -radius - 18), selected->GetPresetName(), true, 1);
+		}
 	}
 	struct ScriptTotal {
 		long long Microseconds = 0;
@@ -321,6 +386,128 @@ void ModStudioLink::HandleScriptRequests() {
 		const std::string code((std::istreambuf_iterator<char>(codeFile)), std::istreambuf_iterator<char>());
 		if (!code.empty()) {
 			g_LuaMan.GetMasterScriptState().RunScriptString(code);
+		}
+	}
+}
+
+void ModStudioLink::HandleInspector() {
+	// Kept fresh by the tool while its inspector is open, so a tool that closes stops the inspector (and lets go of the hold).
+	const std::filesystem::path requestPath = LinkFolder() / "Inspect.ini";
+	std::error_code error;
+	const std::filesystem::file_time_type written = std::filesystem::last_write_time(requestPath, error);
+	const bool fresh = !error && std::filesystem::file_time_type::clock::now() - written < std::chrono::seconds(5);
+	bool pause = false;
+	long steps = s_InspectSteps;
+	if (fresh) {
+		std::ifstream requestFile(requestPath);
+		std::string line;
+		while (std::getline(requestFile, line)) {
+			const size_t equalsPos = line.find('=');
+			if (equalsPos == std::string::npos) {
+				continue;
+			}
+			const std::string key = TrimSpaces(line.substr(0, equalsPos));
+			const std::string value = TrimSpaces(line.substr(equalsPos + 1));
+			try {
+				if (key == "Selected") {
+					s_InspectSelected = std::stol(value);
+				} else if (key == "Follow") {
+					s_InspectFollow = std::stol(value);
+				} else if (key == "Pause") {
+					pause = value == "1";
+				} else if (key == "Step") {
+					steps = std::stol(value);
+				}
+			} catch (const std::exception&) {
+				// A line still being written; it's read again next time.
+			}
+		}
+	}
+	s_Inspecting = fresh;
+	if (!fresh) {
+		s_InspectFollow = 0;
+	}
+	// The hold is only kept in an activity, so it never stands in the way of the menus.
+	const bool hold = fresh && pause && g_ActivityMan.IsInActivity();
+	if (hold != g_TimerMan.IsSimHeld()) {
+		g_TimerMan.HoldSim(hold);
+	}
+	if (s_InspectSteps >= 0 && steps > s_InspectSteps && g_TimerMan.IsSimHeld()) {
+		g_TimerMan.StepSim(static_cast<int>(std::min(steps - s_InspectSteps, 60L)));
+	}
+	s_InspectSteps = steps;
+	if (!s_Inspecting || !g_ActivityMan.IsInActivity()) {
+		return;
+	}
+
+	LinkFileOut world(LinkFolder() / "World.ini", true);
+	world << "// Written by the game four times a second for Cortex Mod Studio's inspector.\n";
+	world << "Paused = " << (g_TimerMan.IsSimPaused() ? 1 : 0) << '\n';
+	world << "PausedByStudio = " << (g_TimerMan.IsSimHeld() ? 1 : 0) << '\n';
+	Activity* activity = g_ActivityMan.GetActivity();
+	const Actor* controlled = activity ? activity->GetControlledActor(0) : nullptr;
+	world << "Controlled = " << (controlled ? controlled->GetUniqueID() : 0) << '\n';
+	world << "Following = " << s_InspectFollow << '\n';
+	world << "Camera = " << g_CameraMan.GetScrollTarget(0).GetX() << '\t' << g_CameraMan.GetScrollTarget(0).GetY() << '\n';
+	// One line an actor: unique ID, preset, class, team, x, y, health, max health, status.
+	for (const Actor* actor: g_MovableMan.GetActors()) {
+		if (actor) {
+			world << "Actor = " << actor->GetUniqueID() << '\t' << Clean(actor->GetPresetName()) << '\t' << actor->GetClassName() << '\t' << actor->GetTeam() << '\t'
+			      << actor->GetPos().GetX() << '\t' << actor->GetPos().GetY() << '\t' << actor->GetHealth() << '\t' << actor->GetMaxHealth() << '\t' << StatusName(actor->GetStatus()) << '\n';
+		}
+	}
+	const Actor* actor = FindActor(s_InspectSelected);
+	if (!actor) {
+		return;
+	}
+	// The selected actor's values, "Value = name<TAB>value", in the order the tool shows them.
+	auto value = [&world](const std::string& name, const std::string& text) { world << "Value = " << name << '\t' << Clean(text) << '\n'; };
+	auto number = [](float v) {
+		std::ostringstream out;
+		out << std::round(v * 100.0F) / 100.0F;
+		return out.str();
+	};
+	auto vec = [&number](const Vector& v) { return "(" + number(v.GetX()) + ", " + number(v.GetY()) + ")"; };
+	world << "Selected = " << actor->GetUniqueID() << '\n';
+	value("Preset", actor->GetPresetName());
+	value("Class", actor->GetClassName());
+	value("Module", actor->GetModuleName());
+	value("Team", std::to_string(actor->GetTeam()));
+	value("Health", number(actor->GetHealth()) + " / " + number(actor->GetMaxHealth()));
+	value("Status", StatusName(actor->GetStatus()));
+	value("Position", vec(actor->GetPos()));
+	value("Velocity", vec(actor->GetVel()) + "  speed " + number(actor->GetVel().GetMagnitude()));
+	value("Rotation", number(actor->GetRotAngle() * 180.0F / c_PI) + "°  turning " + number(actor->GetAngularVel()));
+	value("Mass", number(actor->GetMass()) + " kg");
+	value("Wounds", std::to_string(actor->GetWoundCount()) + " of " + std::to_string(actor->GetGibWoundLimit()) + " to gib");
+	value("Gold carried", number(actor->GetGoldCarried()));
+	value("AI mode", std::to_string(actor->GetAIMode()));
+	value("Player controlled", actor->IsPlayerControlled() ? "yes" : "no");
+	value("Moving", MovementName(actor->GetMovementState()));
+	value("Aim", number(actor->GetAimAngle(false) * 180.0F / c_PI) + "°");
+	value("Age", number(static_cast<float>(actor->GetAge()) / 1000.0F) + " s");
+	const AEJetpack* jetpack = nullptr;
+	if (const AHuman* human = dynamic_cast<const AHuman*>(actor)) {
+		value("Holding", human->GetEquippedItem() ? human->GetEquippedItem()->GetPresetName() : "nothing");
+		jetpack = human->GetJetpack();
+	} else if (const ACrab* crab = dynamic_cast<const ACrab*>(actor)) {
+		jetpack = crab->GetJetpack();
+	}
+	if (jetpack && jetpack->GetJetTimeTotal() > 0) {
+		value("Jetpack fuel", number(100.0F * jetpack->GetJetTimeLeft() / jetpack->GetJetTimeTotal()) + "%");
+	}
+	for (const std::string& script: actor->GetLoadedScripts()) {
+		world << "Script = " << Clean(script) << '\n';
+	}
+	for (const MovableObject* item: *actor->GetInventory()) {
+		if (item) {
+			world << "Inventory = " << Clean(item->GetPresetName()) << '\n';
+		}
+	}
+	// Its parts: preset, class, wounds and the wounds that gib it.
+	for (const Attachable* part: actor->GetAttachableList()) {
+		if (part) {
+			world << "Part = " << Clean(part->GetPresetName()) << '\t' << part->GetClassName() << '\t' << part->GetWoundCount() << '\t' << part->GetGibWoundLimit() << '\n';
 		}
 	}
 }
