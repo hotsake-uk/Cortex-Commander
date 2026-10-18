@@ -1557,3 +1557,9 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* the settings menu's game options: a mod per line, ticked when switched off */
 .set-check { display: flex; align-items: center; gap: 6px; padding: 2px 0; cursor: pointer; }
 .set-mods { display: grid; grid-template-columns: repeat(auto-fill, minmax(170px, 1fr)); gap: 0 12px; max-height: 220px; overflow: auto; }
+/* the inspector's tables: the columns stay put as the values change (a fixed layout, digits all one width) */
+.insp-tables .watch-table, .insp-mindtable { table-layout: fixed; width: 100%; }
+.insp-tables .watch-table th, .insp-mindtable th { width: clamp(110px, 32%, 190px); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-tables .watch-table td, .insp-mindtable td { font-variant-numeric: tabular-nums; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.insp-tables .watch-table { width: calc(100% - 24px); }
+.insp-tables .watch-table td:first-child { width: clamp(110px, 32%, 190px); }

@@ -946,11 +946,25 @@ window.MS = window.MS || {};
 						a.toast('Pick the map it\'s played on first (Scene, above).', 'bad');
 						return;
 					}
-					if (MS.inspector && MS.inspector.live && (await MS.inspector.live())) {
-						MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(scenario.cls) + ', ' + JSON.stringify(scenario.name) + ')');
+					// A game that's open (started from Studio or not: the game hears Studio's first request and links up) is moved to this
+					// mission; with none answering after a moment, one is started straight into it.
+					const live = async () => !!(MS.inspector && MS.inspector.live && (await MS.inspector.live()));
+					const wasLive = await live();
+					MS.ide.runLua('ActivityMan:StartActivity(' + JSON.stringify(scenario.cls) + ', ' + JSON.stringify(scenario.name) + ')');
+					if (wasLive) {
 						a.status('Told the game to start ' + scenario.name + ' on ' + scene.name + '.');
-					} else if (MS.launcher && MS.launcher.launchScenario) {
-						MS.launcher.launchScenario(scenario.name); // no game from Studio running: one is started, straight into it
+						return;
+					}
+					a.status('Looking for an open game to start ' + scenario.name + ' in…');
+					for (let i = 0; i < 6; i++) {
+						await new Promise((r) => setTimeout(r, 500));
+						if (await live()) {
+							a.status('The open game is starting ' + scenario.name + ' on ' + scene.name + '.');
+							return;
+						}
+					}
+					if (MS.launcher && MS.launcher.launchScenario) {
+						MS.launcher.launchScenario(scenario.name); // no game open: one is started, straight into it
 					}
 				} }));
 			// the areas list: every area of the scene, what uses it, and (for the one picked) each use, to jump to
