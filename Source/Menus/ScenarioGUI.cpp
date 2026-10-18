@@ -224,6 +224,7 @@ void ScenarioGUI::FetchActivitiesAndScenesLists() {
 		}
 	}
 	AdjustSitePointOffsetsOnPlanet(filteredScenes);
+	const std::list<Entity*> scenePresets = presetList; // every map, for missions that name theirs
 
 	presetList.clear();
 	g_PresetMan.GetAllOfType(presetList, "Activity");
@@ -235,9 +236,23 @@ void ScenarioGUI::FetchActivitiesAndScenesLists() {
 				continue;
 			}
 			std::pair<Activity*, std::vector<Scene*>> activityAndCompatibleScenes(presetActivity, std::vector<Scene*>());
-			for (Scene* filteredScene: filteredScenes) {
-				if (presetActivity->SceneIsCompatible(filteredScene)) {
-					activityAndCompatibleScenes.second.emplace_back(filteredScene);
+			// A mission that names its map (SceneName) is played there and nowhere else: that map is its only site, so it's picked for you.
+			Scene* ownScene = nullptr;
+			if (const std::string& sceneName = presetActivity->GetSceneName(); !sceneName.empty()) {
+				for (Entity* sceneEntity: scenePresets) {
+					if (Scene* scene = dynamic_cast<Scene*>(sceneEntity); scene && scene->GetPresetName() == sceneName && !scene->IsMetagameInternal() && !scene->IsSavedGameInternal()) {
+						ownScene = scene;
+						break;
+					}
+				}
+			}
+			if (ownScene) {
+				activityAndCompatibleScenes.second.emplace_back(ownScene);
+			} else {
+				for (Scene* filteredScene: filteredScenes) {
+					if (presetActivity->SceneIsCompatible(filteredScene)) {
+						activityAndCompatibleScenes.second.emplace_back(filteredScene);
+					}
 				}
 			}
 			m_ScenarioActivities.insert(activityAndCompatibleScenes);
@@ -258,7 +273,8 @@ void ScenarioGUI::FetchActivitiesAndScenesLists() {
 	if (prevSelectedActivityIndex >= 0) {
 		m_ActivitySelectComboBox->SetSelectedIndex(prevSelectedActivityIndex);
 		SetSelectedActivity(dynamic_cast<const Activity*>(m_ActivitySelectComboBox->GetSelectedItem()->m_pEntity));
-		if (prevSelectedScene) {
+		// the map picked before, if this mission can still be played there (a mission with a map of its own keeps it)
+		if (prevSelectedScene && m_ActivityScenes && std::find(m_ActivityScenes->begin(), m_ActivityScenes->end(), prevSelectedScene) != m_ActivityScenes->end()) {
 			SetSelectedScene(prevSelectedScene);
 		}
 	}
