@@ -41,6 +41,8 @@
 #include "SettingsMan.h"
 #include "Controller.h"
 #include <chrono>
+#include <cstdio>
+#include <cstdlib>
 #include <string>
 #include <utility>
 #include <vector>
@@ -971,6 +973,13 @@ int main(int argc, char** argv) {
 	g_SettingsMan.UpdateSettingsFile();
 
 	DeterminismChecker::Stop();
+
+	// A headless run is only ever a test, with nothing left to save, and tearing down the graphics driver could hang it at exit on Linux (Mesa's llvmpipe threads),
+	// which the determinism test then reports as a run that never finished.
+	if (System::IsInHeadlessMode()) {
+		std::fflush(nullptr);
+		std::_Exit(DeterminismChecker::HasDiverged() ? EXIT_FAILURE : EXIT_SUCCESS);
+	}
 
 	DestroyManagers();
 
