@@ -664,7 +664,7 @@ namespace RTE {
 		float HeadlampReach = 40.0F; //!< How far the beams reach, in pixels.
 		float HeadlampWidth = 80.0F; //!< Half-angle of the beams, in degrees.
 		glm::vec3 HeadlampColor = {0.743056F, 0.939333F, 1.0F}; //!< Color of the beams (linear).
-		float HeadlampGlow = 0.04F; //!< Brightness of the small glow around the lamp itself.
+		float HeadlampGlow = 0.35F; //!< Brightness of the small glow around the lamp itself.
 		float HeadlampTeamTint = 0.0F; //!< How much each side's headlamps take its team color, 0 (none) to 1 (fully).
 		float SaberLightBrightness = 1.0F; //!< Brightness of the light lightsaber blades (energy blades) throw on what's around them.
 		float SaberLightReach = 0.8F; //!< Multiplier for how far that light reaches.
@@ -755,14 +755,14 @@ namespace RTE {
 		float BloomKnee = 0.40105F;
 		float BloomIntensity = 0.405F;
 
-		float Exposure = 2.089F;
+		float Exposure = 0.997F;
 		float AutoExposure = 0.48F; //!< How strongly exposure adapts when the scene is much brighter or darker than usual (flashes, pitch black caves), 0 to disable.
 		float AutoExposureLow = 0.021F; //!< Average scene luminance below which exposure starts to brighten. Ordinary scenes, night included, stay above it.
 		bool AutoExposureGameTime = true; //!< Exposure adapts in game time, so it holds while paused and captures are repeatable. Off: in real time, as before, still adapting while paused.
 		float AutoExposureHigh = 0.487F; //!< Average scene luminance above which exposure starts to darken, e.g. a big explosion filling the screen.
 		float ShoulderStart = 0.44F; //!< Linear brightness above which highlights are softly compressed.
 		float Vignette = 0.3F;
-		float Saturation = 1.21F;
+		float Saturation = 1.07F;
 
 		float Temperature = 0.0F; //!< Color grading white balance, -1 cool to 1 warm.
 		float Tint = 0.0F; //!< Color grading tint, -1 green to 1 magenta.
