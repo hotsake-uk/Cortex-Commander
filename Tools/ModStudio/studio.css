@@ -1620,6 +1620,12 @@ body.edition-community .brand b::after, body.edition-community .welcome-card h1:
 .snd-file { display: flex; align-items: center; gap: 4px; font-size: 12px; }
 .snd-file-name { flex: 1; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .snd-add { display: flex; gap: 6px; margin-top: 2px; }
+.snd-add .text { flex: 1; min-width: 0; }
+.snd-file-drop, .snd-detail { border-radius: 8px; transition: box-shadow .1s; }
+.snd-file-drop.drop-on, .snd-detail.drop-on { box-shadow: 0 0 0 2px var(--accent); }
+.snd-import { align-items: center; gap: 10px; margin: 8px 0 4px; }
+.ed-empty-cta { max-width: 420px; padding: 24px 4px; color: var(--dim); }
+.ed-empty-cta p { margin: 0 0 12px; }
 .snd-settings { display: grid; grid-template-columns: 1fr 1fr; gap: 4px 10px; margin-top: 4px; }
 .snd-settings label { display: flex; flex-direction: column; gap: 2px; font-size: 11px; color: var(--dim); }
 .snd-buttons { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }

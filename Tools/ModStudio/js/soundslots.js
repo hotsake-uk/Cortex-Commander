@@ -305,7 +305,7 @@ window.MS = window.MS || {};
 		}
 		if (!locked) {
 			const module = part.anchor.doc ? part.anchor.doc.module : '';
-			const input = el('input', { type: 'text', className: 'text', placeholder: module + '/Sounds/' + label(key).replace(/ /g, '') + '.flac' });
+			const input = el('input', { type: 'text', className: 'text', placeholder: 'or a file in the mod', title: 'A sound file already in a mod, e.g. ' + module + '/Sounds/' + label(key).replace(/ /g, '') + '.flac' });
 			const listId = 'sndFiles' + key;
 			const list = el('datalist', { id: listId });
 			input.setAttribute('list', listId);
@@ -341,7 +341,22 @@ window.MS = window.MS || {};
 					add();
 				}
 			};
-			box.append(el('div', { className: 'snd-add' }, input, list, el('button', { className: 'small-btn', textContent: 'Add file', onclick: add })));
+			const addFiles = async (picked) => {
+				const folder = (app().actor ? app().actor.name : part.name) + ' ' + label(key);
+				const paths = await MS.editors.importSounds(module, folder, picked);
+				if (paths.length) {
+					edit('Add ' + (paths.length === 1 ? paths[0].split('/').pop() : paths.length + ' sound files'), () => {
+						const node = ownSlot(part, key, true);
+						if (node) {
+							for (const path of paths) {
+								node.add('AddSound', 'ContentFile').add('FilePath', path);
+							}
+						}
+					});
+				}
+			};
+			box.append(el('div', { className: 'snd-add' }, el('button', { className: 'small-btn add', textContent: '+ Sound files…', title: 'Pick .wav, .ogg, .flac or .mp3 files from your computer (or drop them here): they are copied into ' + module + '/Sounds', onclick: () => addFiles() }), input, list, el('button', { className: 'small-btn', textContent: 'Add', title: 'Add a file already in the mod', onclick: add })));
+			MS.editors.soundDrop(box, (dropped) => addFiles(dropped));
 		}
 		if (s.entry) {
 			// how it plays

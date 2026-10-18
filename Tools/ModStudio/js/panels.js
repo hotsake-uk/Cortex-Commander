@@ -141,7 +141,8 @@ window.MS = window.MS || {};
 		},
 	});
 	register({
-		id: 'scenes', title: 'Scenes', icon: '▤', hint: 'Maps: terrain, backdrops and areas', match: byClass('Scene'), thumb: 'scene',
+		// Community Edition: nothing to do with a scene there yet (no map or mission editing), so the kind isn't shown
+		id: 'scenes', title: 'Scenes', icon: '▤', hint: 'Maps: terrain, backdrops and areas', match: byClass('Scene'), thumb: 'scene', when: () => !MS.target.classic(),
 		open: (p) => openInEditor('scenes', p), isOpen: (p) => editorShows('scenes', p), editors: [['Scenes', 'scenes']],
 		extra: (p) => {
 			if (!MS.missionEditor || !MS.missionEditor.sceneOf || MS.target.classic()) {
@@ -154,7 +155,16 @@ window.MS = window.MS || {};
 			return missions.length ? [['Missions on it', missions.map((m) => presetRow(m, m.module, () => MS.missionEditor.open(m)))]] : [];
 		},
 	});
-	register({ id: 'sounds', title: 'Sounds', icon: '♪', hint: 'Sound containers', match: byClass('SoundContainer'), open: (p) => openInEditor('sounds', p), isOpen: (p) => editorShows('sounds', p), editors: [['Sounds', 'sounds']] });
+	register({
+		id: 'sounds', title: 'Sounds', icon: '♪', hint: 'Sounds: their files and how they play', match: byClass('SoundContainer'), open: (p) => openInEditor('sounds', p), isOpen: (p) => editorShows('sounds', p), editors: [['Sounds editor', 'sounds']],
+		tools: () => [smallButton('+ New sound', 'A new sound in ' + (app.project || 'your mod') + ', from sound files on your computer', () => {
+			if (!app.project) {
+				app.toast('Pick a project first (the button at the top).', 'bad');
+				return;
+			}
+			MS.editors.newSound(app.project);
+		})],
+	});
 	register({ id: 'loadouts', title: 'Loadouts', icon: '⇣', hint: 'Sets of units and gear', match: byClass('Loadout'), open: (p) => openInEditor('loadouts', p), isOpen: (p) => editorShows('loadouts', p), editors: [['Loadouts', 'loadouts']] });
 	register({ id: 'materials', title: 'Materials', icon: '▦', hint: 'What terrain and objects are made of', match: byClass('Material'), open: (p) => openInEditor('materials', p), isOpen: (p) => editorShows('materials', p), editors: [['Materials', 'materials']] });
 	// everything else with a picture: open it, edit its settings and its sprite like any other
@@ -492,7 +502,7 @@ window.MS = window.MS || {};
 		const c = categoryOf(tab);
 		$('libSearch').placeholder = 'Search ' + c.title.toLowerCase() + '…';
 		const tools = $('libEditors');
-		tools.replaceChildren(...(c.editors || []).map(([label, id]) => smallButton(label, 'Open the ' + label + ' editor for ' + (app.project || 'the project'), () => {
+		tools.replaceChildren(...(c.tools ? c.tools() : []), ...(c.editors || []).map(([label, id]) => smallButton(label, 'Open the ' + label.replace(/ editor$/, '') + ' editor for ' + (app.project || 'the project'), () => {
 			const module = app.project || (inCategory(c)[0] || {}).module;
 			if (module) {
 				MS.editors.open(id, module);
