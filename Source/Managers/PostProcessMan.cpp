@@ -22,6 +22,7 @@
 
 #include "tracy/Tracy.hpp"
 #include "tracy/TracyOpenGL.hpp"
+#include "raylib/raylib.h"
 
 #include <array>
 
@@ -400,17 +401,17 @@ void PostProcessMan::DrawDotGlowEffects() {
 }
 
 void PostProcessMan::DrawPostScreenEffects() {
-	BITMAP* effectBitmap = nullptr;
-	float effectPosX = 0;
-	float effectPosY = 0;
+	int effectPosX = 0;
+	int effectPosY = 0;
 	unsigned char effectStrength = 0;
 
 	for (const PostEffect& postEffect: m_PostScreenEffects) {
 		if (postEffect.m_Bitmap) {
 			effectStrength = postEffect.m_Strength;
-			effectPosX = std::floor(postEffect.m_Pos.m_X - postEffect.m_Bitmap->GetDimensions().w / 2);
-			effectPosY = std::floor(postEffect.m_Pos.m_Y - postEffect.m_Bitmap->GetDimensions().h / 2);
-			Draw::DrawTexture(postEffect.m_Bitmap.get(), effectPosX, effectPosY, {effectStrength, effectStrength, effectStrength, 255})->m_Indexed = false;
+			effectPosX = postEffect.m_Pos.GetFloorIntX();
+			effectPosY = postEffect.m_Pos.GetFloorIntY();
+			glm::vec2 effectDims(postEffect.m_Bitmap->GetDimensions().w, postEffect.m_Bitmap->GetDimensions().h);
+			Draw::DrawTexture(postEffect.m_Bitmap.get(), glm::vec2(effectPosX, effectPosY), -effectDims / 2.0F, -postEffect.m_Angle, glm::vec2(1.0F), {effectStrength, effectStrength, effectStrength, 255})->m_Indexed = false;
 		}
 	}
 }
