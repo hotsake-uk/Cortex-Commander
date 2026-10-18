@@ -35,6 +35,7 @@
 
 #include "MenuMan.h"
 #include "ConsoleMan.h"
+#include "ModStudioLink.h"
 #include "SettingsMan.h"
 #include "PresetMan.h"
 #include "UInputMan.h"
@@ -181,6 +182,10 @@ void HandleMainArgs(int argCount, char** argValue) {
 			System::EnableExternalModuleValidationMode();
 		}
 
+		if (currentArg == "-modstudio") {
+			ModStudioLink::Enable();
+		}
+
 		if (!lastArg && !singleModuleSet && currentArg == "-module") {
 			std::string moduleToLoad = argValue[++i];
 			if (moduleToLoad.find(System::GetModulePackageExtension()) == moduleToLoad.length() - System::GetModulePackageExtension().length()) {
@@ -275,6 +280,7 @@ void RunMenuLoop() {
 		}
 
 		g_ConsoleMan.Update();
+		ModStudioLink::Update();
 
 		g_UInputMan.EndFrame();
 		g_WindowMan.GetScreenBuffer()->Begin();
@@ -387,6 +393,8 @@ void RunGameLoop() {
 				updateStartTime = g_TimerMan.GetAbsoluteTime();
 			}
 		}
+
+		ModStudioLink::Update();
 
 		updateEndAndDrawStartTime = g_TimerMan.GetAbsoluteTime();
 		updateTotalTime = updateEndAndDrawStartTime - updateStartTime;

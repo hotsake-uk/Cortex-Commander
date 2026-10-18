@@ -457,6 +457,9 @@
     <ClInclude Include="Source\System\Entity.h">
       <Filter>System</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Managers\ModStudioLink.h">
+      <Filter>Managers</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Managers\PerformanceMan.h">
       <Filter>Managers</Filter>
     </ClInclude>
@@ -1045,6 +1048,9 @@
     </ClCompile>
     <ClCompile Include="Source\System\Entity.cpp">
       <Filter>System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Managers\ModStudioLink.cpp">
+      <Filter>Managers</Filter>
     </ClCompile>
     <ClCompile Include="Source\Managers\PerformanceMan.cpp">
       <Filter>Managers</Filter>

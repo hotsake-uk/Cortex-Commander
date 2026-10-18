@@ -769,6 +769,7 @@
     <ClInclude Include="Source\Managers\GLResourceMan.h" />
     <ClInclude Include="Source\Managers\MusicMan.h" />
     <ClInclude Include="Source\Managers\MenuMan.h" />
+    <ClInclude Include="Source\Managers\ModStudioLink.h" />
     <ClInclude Include="Source\Managers\PerformanceMan.h" />
     <ClInclude Include="Source\Managers\PostProcessMan.h" />
     <ClInclude Include="Source\Managers\PrimitiveMan.h" />
@@ -1026,6 +1027,7 @@
     <ClCompile Include="Source\GUI\GUISound.cpp" />
     <ClCompile Include="Source\GUI\GUIWriter.cpp" />
     <ClCompile Include="Source\Managers\MenuMan.cpp" />
+    <ClCompile Include="Source\Managers\ModStudioLink.cpp" />
     <ClCompile Include="Source\Managers\PerformanceMan.cpp" />
     <ClCompile Include="Source\Managers\PostProcessMan.cpp" />
     <ClCompile Include="Source\Managers\PrimitiveMan.cpp" />

@@ -9,6 +9,7 @@ sources += files(
 'GLResourceMan.cpp',
 'MenuMan.cpp',
 'MetaMan.cpp',
+'ModStudioLink.cpp',
 'MovableMan.cpp',
 'MusicMan.cpp',
 #'NetworkClient.cpp',
