@@ -13,7 +13,7 @@ import sys
 from pathlib import Path
 
 sys.path.insert(0, str(Path(__file__).resolve().parent))
-from determinism_test import TEST_ENVIRONMENT, write_test_settings  # noqa: E402
+from determinism_test import TEST_ENVIRONMENT  # noqa: E402
 
 
 def main():
@@ -35,7 +35,9 @@ def main():
     processes = {}
     for name, lockstep_args in copies.items():
         settings = options.work_dir / f"{name}.Settings.ini"
-        write_test_settings(settings, options.base_settings)
+        # The base settings as they are: an online match sets up what the sim needs to run the same on both machines by itself.
+        base = Path(options.base_settings)
+        settings.write_text(base.read_text() if base.exists() else "SettingsMan\n")
         args = [exe, "-activity", *options.activity, "-seed", str(options.seed), "-sim-updates", str(options.updates), *lockstep_args]
         if not options.windowed:
             args.append("-headless")

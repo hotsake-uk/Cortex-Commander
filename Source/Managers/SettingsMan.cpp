@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include "Lockstep.h"
 #include "DeterminismChecker.h"
 #include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
@@ -494,6 +495,10 @@ void SettingsMan::SaveSettingsIfChanged() const {
 	if (SettingsText() != m_LastWrittenSettings) {
 		UpdateSettingsFile();
 	}
+}
+
+bool SettingsMan::GetForceImmediatePathingRequestCompletion() const {
+	return m_ForceImmediatePathingRequestCompletion || Lockstep::IsActive();
 }
 
 int SettingsMan::GetNumberOfLuaStatesOverride() const {

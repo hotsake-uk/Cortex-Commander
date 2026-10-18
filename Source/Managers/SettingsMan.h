@@ -183,8 +183,9 @@ namespace RTE {
 		int GetNumberOfLuaStatesOverride() const;
 
 		/// Gets whether pathing requests will be forced to immediately complete for the next frame, or if they can take multiple frames to calculate.
+		/// Always so in an online match, where every machine's AI has to get its paths on the same update.
 		/// @return Whether pathing requests will be forced to immediately complete for the next frame
-		bool GetForceImmediatePathingRequestCompletion() const { return m_ForceImmediatePathingRequestCompletion; }
+		bool GetForceImmediatePathingRequestCompletion() const;
 #pragma endregion
 
 #pragma region Gameplay Settings
