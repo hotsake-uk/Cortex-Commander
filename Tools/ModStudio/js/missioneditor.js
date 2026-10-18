@@ -643,12 +643,13 @@ window.MS = window.MS || {};
 			const scene = sceneOf(scenario);
 			const terrainFile = scene && MS.scenes.terrainPicture ? MS.scenes.terrainPicture(scene, a.lib.resolve(scene.node)) : null;
 			// the scene with its buildings and objects once they are read (the bare terrain until then)
+			// the scene as the game draws it (each material's texture), or its material map's own colours (Terrain, above the map)
 			let built = scene ? MS.scenes.picture(scene, (picture) => {
 				built = picture;
 				if (s.view) {
 					s.view.draw();
 				}
-			}) : null;
+			}, s.map.terrain || 'textured') : null;
 			const terrain = () => built || (terrainFile ? a.sprite(terrainFile, 1, 0) : null);
 			if (terrainFile && !terrain() && !s.asked) {
 				s.asked = true;
@@ -937,6 +938,14 @@ window.MS = window.MS || {};
 			const head = el('div', { className: 'me-head' },
 				el('h2', { textContent: scenario.name + (part === 'map' ? ': map' : part === 'logic' ? ': graph' : '') }),
 				part !== 'logic' ? el('label', { className: 'ed-check' }, 'Scene', sceneSelect) : null,
+				part !== 'logic' ? el('label', { className: 'ed-check', title: 'Textured: the ground as the game draws it. Materials: what each pixel is made of, in the material map\'s colours.' }, 'Terrain', (() => {
+					const pick = el('select', { className: 'ed-input' }, el('option', { value: 'textured', textContent: 'Textured', selected: (s.map.terrain || 'textured') === 'textured' }), el('option', { value: 'materials', textContent: 'Materials', selected: s.map.terrain === 'materials' }));
+					pick.onchange = () => {
+						s.map.terrain = pick.value;
+						MS.ide.refreshForm();
+					};
+					return pick;
+				})()) : null,
 				el('span', { className: 'spacer' }),
 				...partButtons,
 				part !== 'logic' ? el('button', { className: 'tb', textContent: 'Fit the map', onclick: () => view.fit() }) : null,

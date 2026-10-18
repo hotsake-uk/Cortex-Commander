@@ -100,6 +100,105 @@ window.MS = window.MS || {};
 		return found.get(cacheKey);
 	}
 
+	// Each material's look, by its index: its foreground and background textures (files) and its own colour, from the Material presets (the
+	// first of an index wins, as the game's own load first). Read once per library.
+	let materialMemo = null;
+	function materialLooks() {
+		const lib = app().lib;
+		if (materialMemo && materialMemo.lib === lib && materialMemo.gen === lib.generation) {
+			return materialMemo.looks;
+		}
+		const looks = [];
+		for (const p of lib.presets) {
+			if (p.cls !== 'Material') {
+				continue;
+			}
+			const r = lib.resolve(p.node);
+			const index = Math.round(r.num('Index', -1));
+			if (index < 0 || index > 255 || looks[index]) {
+				continue;
+			}
+			const color = r.last('Color');
+			const c = color ? [Number(color.node.childValue('R', '0')) || 0, Number(color.node.childValue('G', '0')) || 0, Number(color.node.childValue('B', '0')) || 0] : [128, 128, 128];
+			looks[index] = { fg: r.file('FGTextureFile'), bg: r.file('BGTextureFile'), color: c };
+		}
+		materialMemo = { lib, gen: lib.generation, looks };
+		return looks;
+	}
+
+	// The ground's foreground and background, from its material map: each material pixel takes its material's texture there (tiled), or its
+	// colour when it has none; behind the ground, the material's background texture or the terrain's own. Air is see-through in both.
+	function texturize(terrain, materials, loaded, groundBack) {
+		const w = terrain.width;
+		const h = terrain.height;
+		const pixels = new Map(); // file -> { data, w, h }
+		const pixelsOf = (file) => {
+			const img = file && loaded.get(file);
+			if (!img) {
+				return null;
+			}
+			if (!pixels.has(file)) {
+				const c = img.canvas.getContext('2d');
+				pixels.set(file, { data: c.getImageData(0, 0, img.width, img.height).data, w: img.width, h: img.height });
+			}
+			return pixels.get(file);
+		};
+		const back = groundBack ? pixelsOf([...loaded.entries()].find(([, v]) => v === groundBack)[0]) : null;
+		const fgOf = [];
+		const bgOf = [];
+		for (let i = 0; i < 256; i++) {
+			const m = materials[i];
+			fgOf[i] = m ? pixelsOf(m.fg) : null;
+			bgOf[i] = (m && pixelsOf(m.bg)) || back;
+		}
+		const fgCanvas = document.createElement('canvas');
+		const bgCanvas = document.createElement('canvas');
+		fgCanvas.width = bgCanvas.width = w;
+		fgCanvas.height = bgCanvas.height = h;
+		const fgCtx = fgCanvas.getContext('2d');
+		const bgCtx = bgCanvas.getContext('2d');
+		const fgOut = fgCtx.createImageData(w, h);
+		const bgOut = bgCtx.createImageData(w, h);
+		const f = fgOut.data;
+		const b = bgOut.data;
+		const idx = terrain.indices;
+		for (let y = 0; y < h; y++) {
+			for (let x = 0; x < w; x++) {
+				const i = y * w + x;
+				const m = idx[i];
+				if (m === 0) {
+					continue; // air: see-through
+				}
+				const o = i * 4;
+				const t = fgOf[m];
+				if (t) {
+					const s = ((y % t.h) * t.w + (x % t.w)) * 4;
+					f[o] = t.data[s];
+					f[o + 1] = t.data[s + 1];
+					f[o + 2] = t.data[s + 2];
+					f[o + 3] = 255;
+				} else {
+					const c = materials[m] ? materials[m].color : [128, 128, 128];
+					f[o] = c[0];
+					f[o + 1] = c[1];
+					f[o + 2] = c[2];
+					f[o + 3] = 255;
+				}
+				const g = bgOf[m];
+				if (g) {
+					const s = ((y % g.h) * g.w + (x % g.w)) * 4;
+					b[o] = g.data[s];
+					b[o + 1] = g.data[s + 1];
+					b[o + 2] = g.data[s + 2];
+					b[o + 3] = 255;
+				}
+			}
+		}
+		fgCtx.putImageData(fgOut, 0, 0);
+		bgCtx.putImageData(bgOut, 0, 0);
+		return { fg: fgCanvas, bg: bgCanvas };
+	}
+
 	// As the game does once a scene is built (SLTerrain::CleanAir): the material layer is the terrain's (its picture is the material map) with
 	// each piece's material stamped over it in turn (colour 0 is see-through), cavity (1) becomes air (0), and wherever there is air the
 	// foreground is wiped. That is how pieces carve rooms and shafts out of the ground. mats: [{ img (with indices), x, y }] in placing order.
@@ -159,13 +258,19 @@ window.MS = window.MS || {};
 
 	// The scene's picture with what is placed in it, or null until its pictures are read (onReady is called then). Built once per scene and
 	// built again when what is placed in it changes.
-	function picture(p, onReady) {
+	// mode: 'textured' (as the game draws it: each material's texture, the ground's background behind) or 'materials' (the material map's
+	// own colours)
+	function picture(p, onReady, mode) {
 		const a = app();
 		const ent = a.lib.resolve(p.node);
 		const terrainFile = terrainPicture(p, ent);
 		if (!terrainFile) {
 			return null;
 		}
+		const textured = mode !== 'materials';
+		const materials = textured ? materialLooks() : [];
+		const terrainEntry = ent.last('Terrain');
+		const groundBack = textured && terrainEntry ? a.lib.resolve(terrainEntry.node).file('BackgroundTexture') : null;
 		const placed = ent.all('PlaceSceneObject');
 		let hash = 0;
 		for (const e of placed) {
@@ -174,8 +279,8 @@ window.MS = window.MS || {};
 				hash = (hash * 31 + ch.charCodeAt(0)) | 0;
 			}
 		}
-		const sig = terrainFile + '|' + placed.length + '|' + hash;
-		const key = p.doc.path + '::' + p.name;
+		const sig = terrainFile + '|' + placed.length + '|' + hash + '|' + (textured ? 't' : 'm');
+		const key = p.doc.path + '::' + p.name + (textured ? '' : '::materials');
 		const known = pictures.get(key);
 		if (known && known.sig === sig) {
 			if (!known.picture && onReady) {
@@ -194,6 +299,12 @@ window.MS = window.MS || {};
 			}
 		}
 		const files = new Set([terrainFile]);
+		for (const m of materials) {
+			[m && m.fg, m && m.bg].forEach((f) => f && files.add(f));
+		}
+		if (groundBack) {
+			files.add(groundBack);
+		}
 		for (const { look } of items) {
 			[look.fg, look.bg, look.mat, look.sprite && MS.Images.framePaths(look.sprite, look.frames)[0]].forEach((f) => f && files.add(f));
 		}
@@ -235,6 +346,11 @@ window.MS = window.MS || {};
 				}
 				return look.offset;
 			};
+			// textured: the ground's two layers made from the material map, as the game makes them (SLTerrain::TexturizeTerrain)
+			const layers = textured && terrain.indices ? texturize(terrain, materials, loaded, groundBack && loaded.get(groundBack)) : null;
+			if (layers) {
+				ctx.drawImage(layers.bg, 0, 0);
+			}
 			for (const it of items) {
 				const img = it.look.bg && loaded.get(it.look.bg);
 				if (img) {
@@ -247,7 +363,7 @@ window.MS = window.MS || {};
 			fg.height = canvas.height;
 			const main = ctx;
 			ctx = fg.getContext('2d');
-			ctx.drawImage(terrain.canvas, 0, 0);
+			ctx.drawImage(layers ? layers.fg : terrain.canvas, 0, 0);
 			for (const it of items) {
 				const img = it.look.fg && loaded.get(it.look.fg);
 				if (img) {
