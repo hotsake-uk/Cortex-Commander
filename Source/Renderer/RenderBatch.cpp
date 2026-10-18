@@ -2,6 +2,7 @@
 #include "Constants.h"
 #include "GLStateMan.h"
 #include "RenderMan.h"
+#include "PerformanceMan.h"
 #include "Shader.h"
 #include "glad/gl.h"
 #include "glm/glm.hpp"
@@ -74,6 +75,7 @@ void RenderBatch::BeginFrame() {
 	ZoneScoped;
 	m_CurrentDepth = 0;
 	m_CurrentZ = c_DefaultDrawDepth;
+	m_OpenPixelDraw = nullptr;
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 	RecycleDrawCalls();
@@ -204,6 +206,7 @@ void RenderBatch::Render() {
 }
 
 void RenderBatch::RecycleDrawCalls() {
+	m_OpenPixelDraw = nullptr;
 	for (std::shared_ptr<DrawCall>& drawCall: m_DrawCalls) {
 		// Only reuse draw calls nobody else is holding on to.
 		if (drawCall.use_count() == 1) {

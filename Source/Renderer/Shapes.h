@@ -53,6 +53,11 @@ namespace RTE {
 	} // namespace Shape
 	namespace Draw {
 		std::shared_ptr<DrawCall> Pixel(glm::vec2 position, Color color);
+		/// Draws a single pixel like Pixel(), but pixels drawn one after another with nothing else in between share a draw call. For particles: thousands of them cost a few draw calls instead of thousands.
+		/// Each pixel still gets its own place in the draw order. Nothing is returned, because the draw call may be shared.
+		void PixelBatched(glm::vec2 position, Color color);
+		/// Draws several single pixels in one color, joining the same shared draw call as PixelBatched. For particle trails.
+		void PixelsBatched(const std::vector<std::pair<int, int>>& positions, Color color);
 		std::shared_ptr<DrawCall> Pixels(const std::vector<std::pair<int, int>>& positions, Color color);
 		std::shared_ptr<DrawCall> Line(glm::vec2 start, glm::vec2 end, Color color);
 		std::shared_ptr<DrawCall> Line(glm::vec2 start, glm::vec2 end, float thickness, Color color);

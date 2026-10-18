@@ -43,6 +43,7 @@ namespace RTE {
 		std::vector<std::shared_ptr<DrawCall>> m_FreeDrawCalls{}; //!< Finished draw calls kept for reuse, so drawing doesn't allocate every frame.
 		float m_CurrentDepth{0.0f};
 		float m_CurrentZ{0.0f};
+		const DrawCall* m_OpenPixelDraw{nullptr}; //!< The last draw call, if it is a run of single pixels that the next pixel can join (see Draw::PixelBatched). Any other draw closes it.
 		const Shader* m_CurrentShader{nullptr};
 		std::vector<std::shared_ptr<UniformValueType>> m_CurrentUniforms{};
 		glm::mat4 m_CurrentView{1.0f};

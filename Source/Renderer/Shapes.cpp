@@ -503,6 +503,47 @@ std::shared_ptr<DrawCall> Draw::Pixel(glm::vec2 position, Color color) {
 	return draw;
 }
 
+namespace {
+	/// The draw call that batched pixels go into: the run of pixels the batch's last draw call is, or a new one. Either way the depth steps on, as it would for a draw call of its own,
+	/// so pixels keep their order among themselves and with everything else.
+	DrawCall* OpenPixelRun() {
+		RenderBatch* batch = g_RenderMan.GetActiveBatch();
+		if (batch->m_OpenPixelDraw && !batch->m_DrawCalls.empty() && batch->m_DrawCalls.back().get() == batch->m_OpenPixelDraw && batch->m_OpenPixelDraw->m_Shader == batch->m_CurrentShader && batch->m_OpenPixelDraw->m_BlendMode == batch->m_CurrentBlendMode) {
+			batch->m_CurrentDepth += RenderBatch::c_DrawDepthIncrement;
+			return batch->m_DrawCalls.back().get();
+		}
+		std::shared_ptr<DrawCall> newDraw = g_RenderMan.BeginDraw();
+		newDraw->m_TextureId = g_RenderMan.GetShapeTexture();
+		newDraw->m_Indexed = false;
+		batch->m_OpenPixelDraw = newDraw.get();
+		return newDraw.get();
+	}
+
+	void AppendPixel(DrawCall& draw, glm::vec2 position, glm::u8vec4 vertexColor) {
+		int base = static_cast<int>(draw.m_Vertices.size());
+		draw.m_Vertices.emplace_back(position, glm::vec2(0.0f, 0.0f), vertexColor);
+		draw.m_Vertices.emplace_back(position + glm::vec2(1.0f, 1.0f), glm::vec2(1.0f, 1.0f), vertexColor);
+		draw.m_Vertices.emplace_back(position + glm::vec2(1.0f, 0.0f), glm::vec2(1.0f, 0.0f), vertexColor);
+		draw.m_Vertices.emplace_back(position + glm::vec2(0.0f, 1.0f), glm::vec2(0.0f, 1.0f), vertexColor);
+		draw.m_Indices.insert(draw.m_Indices.end(), {base, base + 1, base + 2, base, base + 3, base + 1});
+	}
+} // namespace
+
+void Draw::PixelBatched(glm::vec2 position, Color color) {
+	AppendPixel(*OpenPixelRun(), position, color);
+}
+
+void Draw::PixelsBatched(const std::vector<std::pair<int, int>>& positions, Color color) {
+	if (positions.empty()) {
+		return;
+	}
+	DrawCall* draw = OpenPixelRun();
+	glm::u8vec4 vertexColor = color;
+	for (const auto& [x, y]: positions) {
+		AppendPixel(*draw, glm::vec2(static_cast<float>(x), static_cast<float>(y)), vertexColor);
+	}
+}
+
 std::shared_ptr<DrawCall> Draw::Pixels(const std::vector<std::pair<int, int>>& positions, Color color) {
 	return Submit(Shape::Pixels(positions, color));
 }

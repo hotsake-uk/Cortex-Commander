@@ -1685,12 +1685,8 @@ void MovableMan::Update() {
 		UpdateDrawMOIDs();
 	});
 
-	////////////////////////////////////////////////////////////////////
-	// Draw the MO colors ONLY if this is a drawn update!
-
-	if (g_TimerMan.DrawnSimUpdate()) {
-		Draw(g_SceneMan.GetMOColorBitmap());
-	}
+	// The objects used to be drawn in software into the MO color layer here every drawn update. The GPU renderer draws them from their own Draw(camera),
+	// and the only thing that still looks at that layer is the world dump, which draws it when one is taken (FrameMan::DrawWorldDump). In a 500 unit battle this cost 7 to 8 ms an update.
 
 	// Sort team rosters if necessary
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
