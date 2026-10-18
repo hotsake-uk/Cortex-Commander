@@ -83,6 +83,7 @@ window.MS = window.MS || {};
 	kind('unitArrives', 'event', 'A unit arrives', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['area', 'area', 'in area (optional)', '']], EVENT, { relevant: relevantWho, optional: ['area'] });
 	kind('hurt', 'event', 'A unit is badly hurt', [['team', 'team', 'whose', -1], ...WHO_UNITS, ['below', 'number', 'health below', 30]], EVENT, { relevant: relevantWho });
 	kind('brainDeployed', 'event', 'A player deploys their brain', [['who', 'player', 'whose', 'all']], EVENT);
+	kind('brainLost', 'event', 'A player\'s brain is lost', [['who', 'player', 'whose', 'all']], EVENT);
 	kind('brainPlaced', 'event', 'A player\'s brain is placed', [['who', 'player', 'whose', 'all']], EVENT);
 	kind('holdArea', 'event', 'A team holds an area', [['area', 'area', 'area', ''], ['team', 'team', 'team', 0], ['seconds', 'number', 'with nobody else in it for seconds', 10], ['again', 'bool', 'run again every moment it still holds', false]], EVENT);
 	kind('controls', 'event', 'A player takes control of a unit', [['who', 'player', 'player', 'all'], ...WHO_UNITS], EVENT, { relevant: relevantWho });
@@ -159,19 +160,33 @@ window.MS = window.MS || {};
 		['goTo', 'area', 'going to', ''],
 		['tag', 'text', 'put in the group', ''],
 		['arm', 'choice', 'arm them with', 'light', ARMS],
+		['brainOf', 'choice', 'the first one becomes the brain of', 'none', [['none', 'nobody'], ['0', 'player 1'], ['1', 'player 2'], ['2', 'player 3'], ['3', 'player 4']]],
 	], STEP, {
 		optional: ['goTo', 'tag'],
-		relevant: (p, key) => (key === 'preset' ? (p.source || 'preset') === 'preset' : key === 'group' || key === 'arm' ? p.source === 'group' : key === 'loadout' ? p.source === 'loadout' : key === 'goTo' ? p.ai === 'goto' : key === 'count' ? !p.perBox : true),
+		relevant: (p, key) => (key === 'brainOf' ? p.arrive !== 'dropship' && p.arrive !== 'rocket' : key === 'preset' ? (p.source || 'preset') === 'preset' : key === 'group' || key === 'arm' ? p.source === 'group' : key === 'loadout' ? p.source === 'loadout' : key === 'goTo' ? p.ai === 'goto' : key === 'count' ? !p.perBox : true),
 	});
 	// The players' start, as the game's own missions do it in their scripts: each human player gets a brain (the team's Infantry Brain
 	// loadout, or a brain of its tech) that is made theirs, with the camera on it, and a squad beside it, all standing on the ground in an area.
 	kind('playerStart', 'action', 'Start the players: a brain each and a squad', [
 		['team', 'team', 'team', 0],
 		['area', 'area', 'in area', ''],
+		['brain', 'choice', 'each brain is', 'loadout', [['loadout', 'the team\'s brain'], ['preset', 'this unit'], ['group', 'a unit of a group']]],
+		['brainPreset', 'preset', 'brain unit', ''],
+		['brainGroup', 'text', 'brain from group (of the team\'s tech)', 'Actors - Heavy'],
 		['squad', 'value', 'units with each brain', V(4)],
 		['group', 'text', 'squad from group (of the team\'s tech)', 'Actors - Light'],
 		['arm', 'choice', 'squad armed with', 'light', ARMS],
-	], STEP);
+	], STEP, { relevant: (p, key) => (key === 'brainPreset' ? p.brain === 'preset' : key === 'brainGroup' ? p.brain === 'group' : true) });
+	// Any unit as a player's brain: if it dies, the player has lost their brain (the game shows DEAD; "A player's brain is lost" and the brain
+	// goals follow it). Counted as a brain too, so the AI hunts it.
+	kind('setBrain', 'action', 'Make a unit a player\'s brain', [
+		['player', 'choice', 'the brain of', '0', [['0', 'player 1'], ['1', 'player 2'], ['2', 'player 3'], ['3', 'player 4']]],
+		['unit', 'choice', 'the unit', 'actor', [['actor', 'that set this chain off'], ['controlled', 'the player is controlling'], ['group', 'the first of a group'], ['named', 'the first called']]],
+		['group', 'text', 'group', ''],
+		['named', 'text', 'called', ''],
+		['team', 'team', 'of team', 0],
+		['mark', 'bool', 'count it as a brain (the AI hunts it, brain goals count it)', true],
+	], STEP, { relevant: (p, key) => (key === 'group' ? p.unit === 'group' : key === 'named' ? p.unit === 'named' : key === 'team' ? p.unit === 'group' || p.unit === 'named' : true) });
 	kind('order', 'action', 'Give orders', [
 		['who', 'choice', 'who', 'group', [['group', 'a group'], ['team', 'a whole team'], ['area', 'a team in an area']]],
 		['group', 'text', 'group', ''],

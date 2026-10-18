@@ -173,6 +173,13 @@ window.MS = window.MS || {};
 				return ['st.deploy = { on = true, area = ' + luaStr(a.area || '') + ', case = ' + luaStr((parts[1] || 'Brain Case') + '|' + (parts[2] || 'Base.rte')) + ', buy = ' + (a.buy === false ? 'false' : 'true') +
 					', swap = ' + (a.swap === false ? 'false' : 'true') + ', allies = ' + luaStr(a.allies || '') + ', team = ' + luaNum(a.team) + ' }'];
 			}
+			case 'setBrain': {
+				const player = Number(a.player) || 0;
+				const find = a.unit === 'controlled' ? ['local unit = self:GetControlledActor(' + player + ')']
+					: a.unit === 'group' || a.unit === 'named' ? ['local unit = nil', 'for one in MovableMan.Actors do', '\tif one.Health > 0 and one.Team == ' + luaNum(a.team) + ' and ' + (a.unit === 'group' ? 'one:IsInGroup(' + luaStr(a.group) + ')' : 'one.PresetName == ' + luaStr(a.named)) + ' then unit = one break end', 'end']
+					: ['local unit = actor'];
+				return [...find, 'studioMakeBrain(self, unit, ' + player + ', ' + (a.mark === false ? 'false' : 'true') + ')'];
+			}
 			case 'buyMenu': return ['self.BuyMenuEnabled = ' + (a.on ? 'true' : 'false')];
 			case 'setFunds': return ['self:SetTeamFunds(' + valueLua(a.amount) + ', ' + luaNum(a.team) + ')'];
 			case 'income': return ['st.income[' + luaNum(a.team) + '] = ' + valueLua(a.amount)];
@@ -246,8 +253,7 @@ window.MS = window.MS || {};
 				'local zone = ' + area(a.area), 'local team = ' + luaNum(a.team), 'local tech = studioTech(self, team)',
 				'local x = zone and zone.Center.X or 0', 'local top = zone and (zone.Center.Y - 40) or 0',
 				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) then',
-				'\t\tlocal brain = PresetMan:GetLoadout("Infantry Brain", tech, false)',
-				'\t\tif brain then', '\t\t\tbrain:RemoveInventoryItem("Constructor")', '\t\telse', '\t\t\tbrain = studioUnit("Brains", tech)', '\t\t\tif brain then studioArm(brain, "light", tech) end', '\t\tend',
+				...playerBrainLua(a),
 				'\t\tif brain then',
 				'\t\t\tbrain.Team = team', '\t\t\tbrain.AIMode = Actor.AIMODE_SENTRY', '\t\t\tbrain.Pos = studioGround(x, top, 12)', '\t\t\tbrain:AddToGroup("Brain " .. player)',
 				'\t\t\tMovableMan:AddActor(brain)', '\t\t\tself:SetPlayerBrain(brain, player)', '\t\t\tself:SwitchToActor(brain, player, team)', '\t\t\tself:SetObservationTarget(brain.Pos, player)',
@@ -289,6 +295,20 @@ window.MS = window.MS || {};
 
 	// Spawning: a unit picked, a random one of a group (in the team's tech) or a loadout; in the area at random, or one in each of its boxes; there
 	// and then, or brought in by a craft; facing a way; set to an AI mode (going to an area); and put in a group for later orders.
+	// The brain a player starts with: the team's brain (its Infantry Brain loadout, or a brain of its tech), a unit picked, or a unit of a group.
+	function playerBrainLua(a) {
+		if (a.brain === 'preset') {
+			const parts = String(a.brainPreset || '').split('|');
+			const cls = ['ACrab', 'Actor', 'AHuman'].includes(parts[0]) ? parts[0] : 'AHuman';
+			return ['\t\tlocal brain = Create' + cls + '(' + luaStr(parts[1] || '') + ', ' + luaStr(parts[2] || 'Base.rte') + ')', '\t\tif brain then brain:AddToGroup("Brains") end'];
+		}
+		if (a.brain === 'group') {
+			return ['\t\tlocal brain = studioUnit(' + luaStr(a.brainGroup || 'Actors - Heavy') + ', tech)', '\t\tif brain then studioArm(brain, "light", tech); brain:AddToGroup("Brains") end'];
+		}
+		return ['\t\tlocal brain = PresetMan:GetLoadout("Infantry Brain", tech, false)',
+			'\t\tif brain then', '\t\t\tbrain:RemoveInventoryItem("Constructor")', '\t\telse', '\t\t\tbrain = studioUnit("Brains", tech)', '\t\t\tif brain then studioArm(brain, "light", tech) end', '\t\tend'];
+	}
+
 	function spawnLua(a) {
 		const source = a.source || 'preset';
 		const parts = String(a.preset || '').split('|');
@@ -315,6 +335,10 @@ window.MS = window.MS || {};
 			L.push('\tlocal craft = ' + kind + '("Craft", tech) or ' + kind + '("Craft", "Base.rte")', '\tif craft then', '\t\tcraft.Team = ' + luaNum(a.team), '\t\tcraft.Pos = Vector(where.Center.X, -50)', '\t\tcraft.AIMode = Actor.AIMODE_DELIVER');
 		}
 		const pre = ship ? '\t\t' : '\t';
+		const brainOf = !ship && a.brainOf !== undefined && a.brainOf !== 'none' ? Number(a.brainOf) : -1;
+		if (brainOf >= 0) {
+			L.push(pre + 'local madeBrain = false');
+		}
 		L.push(pre + 'for _, spot in ipairs(spots) do', pre + '\tlocal unit = ' + make, pre + '\tif unit then', pre + '\t\tunit.Team = ' + luaNum(a.team), pre + '\t\tunit.AIMode = ' + aiMode(mode));
 		if (source === 'group' && (a.arm || 'light') !== 'none') {
 			L.push(pre + '\t\tstudioArm(unit, ' + luaStr(a.arm || 'light') + ', tech)');
@@ -329,6 +353,9 @@ window.MS = window.MS || {};
 		}
 		if (a.tag) {
 			L.push(pre + '\t\tunit:AddToGroup(' + luaStr(a.tag) + ')');
+		}
+		if (brainOf >= 0) {
+			L.push(pre + '\t\tif not madeBrain then madeBrain = true; studioMakeBrain(self, unit, ' + brainOf + ', true) end');
 		}
 		L.push(...(ship ? [pre + '\t\tcraft:AddInventoryItem(unit)'] : door ? [pre + '\t\tn = n + 1', pre + '\t\tlocal d = doors[(n - 1) % #doors + 1]', pre + '\t\ttable.insert(d.units, unit)'] : [pre + '\t\tunit.Pos = spot', pre + '\t\tMovableMan:AddActor(unit)']), pre + '\tend', pre + 'end');
 		if (ship) {
@@ -462,6 +489,11 @@ window.MS = window.MS || {};
 				'for actor in MovableMan.Actors do', '\tif actor.Health > 0 and actor.Health < ' + luaNum(a.below) + ' and (' + team + ' < 0 or actor.Team == ' + team + ') and not st.marks[' + k + '][actor.UniqueID] and studioMatch(actor, ' + whoArgs(a) + ') then',
 				'\t\tst.marks[' + k + '][actor.UniqueID] = true', '\t\tfire = true', '\t\tst.who[' + k + '] = actor', '\tend', 'end'];
 			case 'brainDeployed': return ['for _, player in ipairs(st.deployedNow or {}) do', '\tif ' + playerTest(a.who) + ' then fire = true; st.who[' + k + '] = self:GetPlayerBrain(player) end', 'end'];
+			case 'brainLost': return [
+				'st.marks[' + k + '] = st.marks[' + k + '] or {}',
+				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') then',
+				'\t\tlocal brain = self:GetPlayerBrain(player)', '\t\tlocal has = brain ~= nil and MovableMan:IsActor(brain) and brain.Health > 0',
+				'\t\tif not has and st.marks[' + k + '][player] then fire = true end', '\t\tst.marks[' + k + '][player] = has', '\tend', 'end'];
 			case 'brainPlaced': return [
 				'st.marks[' + k + '] = st.marks[' + k + '] or {}',
 				'for player = 0, 3 do', '\tif self:PlayerActive(player) and self:PlayerHuman(player) and (' + playerTest(a.who) + ') then',
@@ -864,6 +896,10 @@ local function studioScreenText(act, st, objective)
 	end
 end
 `.split('\n'),
+			'-- Any unit made a player\'s brain: if it dies the player has lost it. mark: counted as a brain too (the Brains group: the AI hunts it, the',
+			'-- brain goals count it).',
+			'local function studioMakeBrain(act, unit, player, mark)', '\tif not unit then return end', '\tact:SetPlayerBrain(unit, player)',
+			'\tunit:AddToGroup("Brain " .. player)', '\tif mark then unit:AddToGroup("Brains") end', 'end', '',
 			'local function studioItemIn(areaName, itemName)', '\tlocal region = studioArea(areaName)', '\tif not region then return false end', '\tfor item in MovableMan.Items do', '\t\tif item.PresetName == itemName and region:IsInside(item.Pos) then return true end', '\tend', '\tfor actor in MovableMan.Actors do', '\t\tif actor.Health > 0 and region:IsInside(actor.Pos) then', '\t\t\tlocal held = actor.EquippedItem', '\t\t\tif held and held.PresetName == itemName then return true end', '\t\t\tfor item in actor.Inventory do', '\t\t\t\tif item.PresetName == itemName then return true end', '\t\t\tend', '\t\tend', '\tend', '\treturn false', 'end', '',
 		];
 	}
