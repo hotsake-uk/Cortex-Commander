@@ -15,11 +15,24 @@ window.MS = window.MS || {};
 		{ id: 'ce-nightly', name: 'Community Edition nightly', short: 'CE nightly', classic: true, data: 'data/targets/ce-nightly/', supportedGameVersion: '7.0.0' },
 	];
 	const byId = (id) => TARGETS.find((t) => t.id === id);
+
+	// Which Cortex Studio this is (src-tauri/src/edition.rs, served on the page's <html>): "commander" only ever makes mods for this
+	// game, "community" (Cortex Studio CE) only for Community Edition, and "dev" (a debug build, or the page served some other way)
+	// does both, picked in Settings.
+	const edition = ['commander', 'community'].includes(document.documentElement.dataset.edition) ? document.documentElement.dataset.edition : 'dev';
+	document.body.classList.add('edition-' + edition);
+	document.body.classList.toggle('classic', edition === 'community');
+	if (edition === 'community') {
+		document.title = 'Cortex Studio CE';
+	}
+	const offered = () => TARGETS.filter((t) => (edition === 'commander' ? !t.classic : edition === 'community' ? t.classic : true));
 	const listeners = [];
 
 	const T = {
+		edition,
 		list: TARGETS,
-		current: TARGETS[0],
+		// until a game folder is read: the CE edition is Classic from the start (its first start downloads the game before there is one)
+		current: edition === 'community' ? byId('ce-6.2.2') : TARGETS[0],
 		detected: TARGETS[0],
 		surface: null, // the target's INI classes: {cls: {parent, properties}}
 		commanderSurface: null,
@@ -51,8 +64,12 @@ window.MS = window.MS || {};
 		} else {
 			T.detected = byId((await has('Base.rte/AI/SharedBehaviors.lua')) ? 'ce-nightly' : 'ce-6.2.2');
 		}
+		// The release editions make mods for one game only: CE treats a Commander folder as the nightly, its nearest engine.
+		if (!offered().includes(T.detected)) {
+			T.detected = edition === 'commander' ? byId('commander') : byId('ce-nightly');
+		}
 		T.folder = fs.name || '';
-		const chosen = byId(MS.settings.get('target.' + T.folder, ''));
+		const chosen = offered().find((t) => t.id === MS.settings.get('target.' + T.folder, ''));
 		await T.use(chosen || T.detected);
 		T.settle(T.current);
 	};
@@ -132,6 +149,8 @@ window.MS = window.MS || {};
 		id: 'target',
 		title: 'Game the mods are for',
 		first: true,
+		// the Commander edition makes mods for this game only
+		when: () => edition !== 'commander',
 		render(body, redraw) {
 			const el = (tag, props, ...children) => {
 				const e = document.createElement(tag);
@@ -150,7 +169,7 @@ window.MS = window.MS || {};
 				return el('label', { className: 'set-choice' }, input, el('span', {}, el('b', { textContent: label }), note ? el('small', { textContent: note }) : null));
 			};
 			body.append(choice('', 'Found in the game folder', 'Now: ' + T.detected.name));
-			for (const t of TARGETS) {
+			for (const t of offered()) {
 				body.append(choice(t.id, t.name, t.classic ? 'Classic: a release build of Community Edition, no live link to the game' : 'This game, with everything Studio does'));
 			}
 			// In the app, Studio can download Community Edition itself (the Game screen's Community Edition tab, launcher.js).

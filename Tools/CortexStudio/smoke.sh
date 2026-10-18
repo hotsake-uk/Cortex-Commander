@@ -53,6 +53,14 @@ case "$body" in
 	*) echo "Unexpected answer from /api/info: $body" >&2; exit 1 ;;
 esac
 
+# The edition it was built as (src-tauri/src/edition.rs), when the build said one.
+if [ -n "${CORTEX_STUDIO_EDITION:-}" ]; then
+	case "$body" in
+		*"\"edition\":\"$CORTEX_STUDIO_EDITION\""*) echo "OK: the $CORTEX_STUDIO_EDITION edition." ;;
+		*) echo "Built as the $CORTEX_STUDIO_EDITION edition, but /api/info says: $body" >&2; exit 1 ;;
+	esac
+fi
+
 # The page itself must come from the folder we pointed it at.
 curl -fsS "${base}" >/dev/null || { echo "The Mod Studio page didn't load from $page." >&2; exit 1; }
 echo "OK: the page loads."

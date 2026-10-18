@@ -170,6 +170,12 @@ fn page(studio: &Studio, path: &str) -> Response<std::io::Cursor<Vec<u8>>> {
 		Some(dir) => fs::read(dir.join(relative)).ok(),
 		None => PAGE.get_file(relative).map(|f| f.contents().to_vec()),
 	};
+	// The page learns which edition this is (edition.rs) from its <html> tag.
+	let body = if relative == "ModStudio.html" {
+		body.map(|b| String::from_utf8_lossy(&b).replacen("<html lang=\"en\">", &format!("<html lang=\"en\" data-edition=\"{}\">", crate::edition::edition()), 1).into_bytes())
+	} else {
+		body
+	};
 	match body {
 		Some(body) => bytes(body, content_type(relative)).with_header(header("Cache-Control", "no-cache")),
 		None => text(404, "Not found."),
@@ -463,7 +469,7 @@ fn api(studio: &Studio, request: &mut Request, action: &str, query: &str) -> Res
 			// game: false when the folder is waiting for a Community Edition download (the first start, with no game), which the page then gets
 			let game = root.join("Data").join("Base.rte").is_dir();
 			let wants = crate::community::release_for(root).filter(|_| !game).unwrap_or("");
-			let body = format!("{{\"name\":{},\"path\":{},\"app\":\"Cortex Studio\",\"game\":{game},\"download\":{}}}", json_string(&name), json_string(&root.to_string_lossy()), json_string(wants));
+			let body = format!("{{\"name\":{},\"path\":{},\"app\":\"Cortex Studio\",\"edition\":\"{}\",\"game\":{game},\"download\":{}}}", json_string(&name), json_string(&root.to_string_lossy()), crate::edition::edition(), json_string(wants));
 			bytes(body.into_bytes(), "application/json")
 		}
 		"inis" | "luas" => {

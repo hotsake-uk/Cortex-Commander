@@ -55,6 +55,22 @@ the one you pick. Getting a newer build replaces the program and `Data` and keep
 Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn the first time it's opened ("More info",
 "Run anyway" on Windows; right-click, Open on macOS).
 
+## Editions
+
+Studio is built as one of three editions (`CORTEX_STUDIO_EDITION` when it is built, `src-tauri/src/edition.rs`):
+
+- **commander** (a release build's default): makes mods for Cortex Commander only. Nothing about Community Edition shows: no
+  "Game the mods are for" setting, no Community Edition tab, no download offer on the first start.
+- **community**: **Cortex Studio CE**, the release for Community Edition modders. It makes mods for Community Edition 6.2.2 or the
+  nightly only (a Cortex Commander folder is treated as the nightly), with nothing only Commander's engine does, and the Game screen
+  only gets and switches releases. Build it with `tauri.community.conf.json` too, which gives it its own name and app id; it keeps
+  its settings in `CortexStudioCE` rather than `CortexStudio`, so both can be installed side by side.
+- **dev** (a debug build's default, and the page served by `Start-ModStudio.ps1`): both, picked in Settings. A debug build also reads
+  `CORTEX_STUDIO_EDITION` when it starts, so `CORTEX_STUDIO_EDITION=community ./dev.sh` tries the CE edition without a release build.
+
+The Cortex Studio workflow builds both release editions for every platform (artefacts `CortexStudio-<platform>` and
+`CortexStudioCE-<platform>`).
+
 ## How it works
 
 - `src-tauri/src/server.rs`: a small server on 127.0.0.1 answering the same requests as `Tools/ModStudio/Start-ModStudio.ps1`
@@ -96,6 +112,7 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
   - `"Run Cortex Studio.bat" -Bridge` runs only the file bridge, with no window, and prints Studio's address.
 - **Build Cortex Studio.bat** builds the release app with the page built in, plus the `.msi` and setup `.exe` installers, and
   opens the folder they're in (`src-tauri\target\release\bundle`). The app on its own is `src-tauri\target\release\cortex-studio.exe`.
+  `"Build Cortex Studio.bat" ce` builds **Cortex Studio CE** instead (see Editions below).
 
 ### macOS and Linux
 
@@ -109,6 +126,7 @@ Then run Studio from source, in this folder:
 
     ./dev.sh [game folder] [--bridge]      # run from source, like Run Cortex Studio.bat
     npx @tauri-apps/cli@2 build            # the release app and its installers, in src-tauri/target/release/bundle
+    CORTEX_STUDIO_EDITION=community npx @tauri-apps/cli@2 build --config src-tauri/tauri.community.conf.json   # Cortex Studio CE
 
 On macOS you can double-click **Run Cortex Studio.command** instead (the first build takes a few minutes; later ones take seconds).
 `dev.sh` checks that Rust, Xcode's tools (macOS) and a game folder with `Data/Base.rte` are there, and says what to install if not.

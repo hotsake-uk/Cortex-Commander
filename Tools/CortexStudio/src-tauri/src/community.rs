@@ -46,16 +46,19 @@ fn release(id: &str) -> Option<&'static Release> {
 	RELEASES.iter().find(|r| r.id == id)
 }
 
-/// The release's zip for this computer, as the Community Edition's release workflow names them.
-fn asset_name() -> Option<&'static str> {
+/// The release's zips for this computer, as the Community Edition's release workflows name them, best first. Builds since mid-2026 (the
+/// nightly) have a zip for each kind of Mac; 6.2.2 has one for both.
+fn asset_names() -> &'static [&'static str] {
 	if cfg!(windows) {
-		Some("CortexCommand.windows.zip")
+		&["CortexCommand.windows.zip"]
+	} else if cfg!(all(target_os = "macos", target_arch = "aarch64")) {
+		&["CortexCommand.macos-arm64.zip", "CortexCommand.macos.zip"]
 	} else if cfg!(target_os = "macos") {
-		Some("CortexCommand.macos.zip")
+		&["CortexCommand.macos-x86_64.zip", "CortexCommand.macos.zip"]
 	} else if cfg!(all(target_os = "linux", target_arch = "x86_64")) {
-		Some("CortexCommand.linux.zip")
+		&["CortexCommand.linux.zip"]
 	} else {
-		None
+		&[]
 	}
 }
 
@@ -105,12 +108,15 @@ pub fn overview(base: &str, game_dir: &Path) -> Value {
 			})
 		})
 		.collect();
-	json!({ "releases": list, "base": if base.trim().is_empty() { default_base() } else { PathBuf::from(base.trim()) }, "defaultBase": default_base(), "supported": asset_name().is_some(), "platform": std::env::consts::OS })
+	json!({ "releases": list, "base": if base.trim().is_empty() { default_base() } else { PathBuf::from(base.trim()) }, "defaultBase": default_base(), "supported": !asset_names().is_empty(), "platform": std::env::consts::OS })
 }
 
 /// The release's asset on GitHub: its address, size and when it was uploaded (the nightly's changes with each build).
 fn latest_asset(r: &Release) -> Result<Value, String> {
-	let asset = asset_name().ok_or("Community Edition has no release for this computer.")?;
+	let names = asset_names();
+	if names.is_empty() {
+		return Err("Community Edition has no release for this computer.".into());
+	}
 	let url = format!("https://api.github.com/repos/{REPO}/releases/tags/{}", r.tag);
 	let answer: Value = agent()
 		.get(&url)
@@ -120,8 +126,11 @@ fn latest_asset(r: &Release) -> Result<Value, String> {
 		.map_err(|e| say(e, &format!("the newest build of {}", r.name)))?
 		.into_json()
 		.map_err(|e| format!("GitHub's answer about {} couldn't be read: {e}", r.name))?;
-	let found = answer.get("assets").and_then(|a| a.as_array()).and_then(|a| a.iter().find(|x| x.get("name").and_then(|n| n.as_str()) == Some(asset)));
-	let found = found.ok_or_else(|| format!("{} has no {asset}.", r.name))?;
+	let assets = answer.get("assets").and_then(|a| a.as_array()).cloned().unwrap_or_default();
+	let (asset, found) = names
+		.iter()
+		.find_map(|name| assets.iter().find(|x| x.get("name").and_then(|n| n.as_str()) == Some(*name)).map(|x| (*name, x)))
+		.ok_or_else(|| format!("{} has no {}.", r.name, names[0]))?;
 	Ok(json!({
 		"tag": r.tag,
 		"asset": asset,
@@ -158,21 +167,31 @@ pub fn get(ctx: &JobCtx, id: &str, dir: &Path) -> Result<(), String> {
 	let r = release(id).ok_or("Studio doesn't know that release.")?;
 	fs::create_dir_all(dir).map_err(|e| format!("Couldn't make {}: {e}", dir.display()))?;
 	ctx.log(format!("Asking GitHub for {}…", r.name));
-	let (url, size, updated) = match latest_asset(r) {
-		Ok(a) => (a["url"].as_str().unwrap_or_default().to_string(), a["size"].as_u64(), a["updatedAt"].clone()),
-		// GitHub's API allows a few requests an hour without signing in: the release's own address works without it.
+	let zip_path = dir.join(".download.zip");
+	let (asset, updated) = match latest_asset(r) {
+		Ok(a) => {
+			download(ctx, a["url"].as_str().unwrap_or_default(), &zip_path, a["size"].as_u64())?;
+			(a["asset"].as_str().map(String::from), a["updatedAt"].clone())
+		}
+		// GitHub's API allows a few requests an hour without signing in: the release's own addresses work without it.
 		Err(e) => {
 			ctx.log(format!("{e} Trying the release's download address."));
-			(format!("https://github.com/{REPO}/releases/download/{}/{}", r.tag, asset_name().ok_or("Community Edition has no release for this computer.")?), None, Value::Null)
+			let names = asset_names();
+			let mut result = Err("Community Edition has no release for this computer.".to_string());
+			for name in names {
+				result = download(ctx, &format!("https://github.com/{REPO}/releases/download/{}/{name}", r.tag), &zip_path, None).map(|_| name.to_string());
+				if result.is_ok() {
+					break;
+				}
+			}
+			(Some(result?), Value::Null)
 		}
 	};
-	let zip_path = dir.join(".download.zip");
-	download(ctx, &url, &zip_path, size)?;
 	ctx.log("Unpacking…");
 	let result = unpack(ctx, &zip_path, dir);
 	let _ = fs::remove_file(&zip_path);
 	result?;
-	let note = json!({ "id": r.id, "tag": r.tag, "asset": asset_name(), "updatedAt": updated, "downloaded": chrono::Local::now().to_rfc3339() });
+	let note = json!({ "id": r.id, "tag": r.tag, "asset": asset, "updatedAt": updated, "downloaded": chrono::Local::now().to_rfc3339() });
 	let _ = fs::write(dir.join(MARKER), serde_json::to_string_pretty(&note).unwrap());
 	ctx.log(format!("{} is in {}.", r.name, dir.display()));
 	Ok(())
@@ -269,18 +288,25 @@ fn unpack(ctx: &JobCtx, zip_path: &Path, dir: &Path) -> Result<(), String> {
 	finish_for_platform(ctx, dir)
 }
 
-/// macOS: the app comes as a tar inside the zip (to keep its links and permissions). Linux: the AppImage must be runnable.
+/// macOS: the app comes as a tar inside the zip (to keep its links and permissions), CortexCommand.tar in 6.2.2 and
+/// CortexCommand-<arm64|x86_64>.tar since. Linux: the AppImage must be runnable.
 fn finish_for_platform(ctx: &JobCtx, dir: &Path) -> Result<(), String> {
 	if cfg!(target_os = "macos") {
-		let tar = dir.join("CortexCommand.tar");
-		if tar.is_file() {
+		let tars: Vec<PathBuf> = fs::read_dir(dir)
+			.map_err(|e| e.to_string())?
+			.filter_map(|e| e.ok())
+			.map(|e| e.path())
+			.filter(|p| p.is_file() && p.extension().is_some_and(|x| x == "tar") && p.file_name().is_some_and(|n| n.to_string_lossy().starts_with("CortexCommand")))
+			.collect();
+		for tar in &tars {
 			for entry in fs::read_dir(dir).map_err(|e| e.to_string())?.filter_map(|e| e.ok()) {
 				if entry.path().extension().is_some_and(|x| x == "app") {
 					let _ = fs::remove_dir_all(entry.path());
 				}
 			}
-			ctx.run("tar", &["-xf", "CortexCommand.tar"], dir, &[])?;
-			let _ = fs::remove_file(&tar);
+			let name = tar.file_name().unwrap().to_string_lossy().into_owned();
+			ctx.run("tar", &["-xf", &name], dir, &[])?;
+			let _ = fs::remove_file(tar);
 		}
 		// a game downloaded by a browser is quarantined; one Studio downloaded isn't, but a folder copied in may be
 		let _ = std::process::Command::new("xattr").args(["-dr", "com.apple.quarantine"]).arg(dir).status();

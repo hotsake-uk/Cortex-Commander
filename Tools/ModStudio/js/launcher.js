@@ -309,7 +309,7 @@ window.MS = window.MS || {};
 				advanced ? ['versions', 'Versions'] : null,
 				['settings', 'Launch settings'],
 				['runs', 'Run configurations'],
-				['community', 'Community Edition'],
+				MS.target.edition !== 'commander' ? ['community', 'Community Edition'] : null,
 				['setup', 'Setup'],
 			]).filter(Boolean);
 		for (const [id, label] of list) {

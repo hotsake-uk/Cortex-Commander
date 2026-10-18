@@ -1567,3 +1567,5 @@ label.has-help { text-decoration: underline dotted var(--faint); text-underline-
 /* Classic mode (target.js): a Community Edition game. What only Commander's engine does is hidden; the badge says which game it is. */
 body.classic .commander-only { display: none !important; }
 .target-badge { border: 1px solid var(--warn-line); background: var(--warn-bg); color: var(--warn-text); border-radius: 99px; padding: 2px 10px; font-size: 12px; white-space: nowrap; }
+/* Cortex Studio CE, the Community Edition build (js/target.js) */
+body.edition-community .brand b::after, body.edition-community .welcome-card h1::after { content: ' CE'; }
