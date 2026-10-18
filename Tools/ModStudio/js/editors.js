@@ -312,6 +312,68 @@ window.MS = window.MS || {};
 		return out;
 	}
 
+	// Asks for sound files from the computer (several at once); resolves with them, or none when the picker is closed.
+	function pickSoundFiles() {
+		return new Promise((resolve) => {
+			const input = el('input', { type: 'file', accept: 'audio/*,.wav,.ogg,.flac,.mp3', multiple: true });
+			input.onchange = () => resolve([...input.files]);
+			input.addEventListener('cancel', () => resolve([]));
+			input.click();
+		});
+	}
+
+	// Copies sound files (picked, or dropped) into the mod, in <module>/Sounds/<folder>/, and gives back their paths in it. A file
+	// already there by that name is kept: the new one gets a number.
+	async function importSounds(module, folder, files) {
+		const a = app();
+		const list = files || (await pickSoundFiles());
+		const out = [];
+		const skipped = [];
+		const dir = module + '/Sounds' + (folder ? '/' + folder.replace(/[^A-Za-z0-9 _-]/g, '').trim() : '');
+		for (const f of list) {
+			if (!SOUND_EXT.test(f.name)) {
+				skipped.push(f.name);
+				continue;
+			}
+			const dot = f.name.lastIndexOf('.');
+			const stem = f.name.slice(0, dot).replace(/[^A-Za-z0-9 _-]/g, '_').trim() || 'Sound';
+			const ext = f.name.slice(dot).toLowerCase();
+			let path = dir + '/' + stem + ext;
+			for (let n = 2; await a.fs.exists(path); n++) {
+				path = dir + '/' + stem + ' ' + n + ext;
+			}
+			await a.fs.writeFile(path, new Uint8Array(await f.arrayBuffer()));
+			out.push(path);
+		}
+		if (skipped.length) {
+			a.toast('Left out ' + skipped.join(', ') + ': the game plays .wav, .ogg, .flac and .mp3.', 'bad');
+		}
+		return out;
+	}
+
+	// Lets sound files be dropped on an element: onFiles gets the dropped files.
+	function soundDrop(target, onFiles) {
+		target.addEventListener('dragover', (e) => {
+			if (e.dataTransfer && [...e.dataTransfer.items].some((i) => i.kind === 'file')) {
+				e.preventDefault();
+				target.classList.add('drop-on');
+			}
+		});
+		target.addEventListener('dragleave', (e) => {
+			if (!target.contains(e.relatedTarget)) {
+				target.classList.remove('drop-on');
+			}
+		});
+		target.addEventListener('drop', (e) => {
+			target.classList.remove('drop-on');
+			const files = [...((e.dataTransfer && e.dataTransfer.files) || [])];
+			if (files.length) {
+				e.preventDefault();
+				onFiles(files);
+			}
+		});
+	}
+
 	async function play(path, entity) {
 		try {
 			const audio = new Audio(URL.createObjectURL(await app().fs.readFile(path)));
@@ -352,7 +414,9 @@ window.MS = window.MS || {};
 				lockBanner(all[0] && all[0].doc, module),
 				el('div', { className: 'ed-panes' },
 					el('div', { className: 'ed-list' }, filter, ...(items.length ? items : [el('p', { className: 'ed-empty', textContent: 'No sounds' + (q ? ' match.' : ' yet.') })])),
-					el('div', { className: 'ed-detail' }, selected ? soundDetail(selected, module) : null))));
+					el('div', { className: 'ed-detail' }, selected ? soundDetail(selected, module) : el('div', { className: 'ed-empty-cta' },
+						el('p', { textContent: 'Sounds are what units, guns and scripts play: one or more sound files, and how loud, how high and how far they carry.' }),
+						ro ? null : el('button', { className: 'tb primary', textContent: '+ New sound from files…', onclick: () => newSound(module, tab) }))))));
 		});
 	}
 
@@ -366,7 +430,18 @@ window.MS = window.MS || {};
 			el('span', { className: 'ed-filename', textContent: f.path.split('/').pop(), title: f.path + (f.own ? '' : ' (from what it copies)') }),
 			el('small', { textContent: f.path.split('/').slice(0, -1).join('/') }),
 			f.own && !ro ? el('button', { className: 'ico-btn', textContent: '×', title: 'Take it out', onclick: () => change('Take ' + f.path.split('/').pop() + ' out of ' + p.name, () => f.node.remove()) }) : null));
-		const addInput = el('input', { type: 'text', placeholder: module + '/Sounds/MySound.flac', className: 'ed-input', disabled: ro });
+		const addFiles = async (picked) => {
+			const paths = await importSounds(module, p.name, picked);
+			if (paths.length) {
+				change('Add ' + (paths.length === 1 ? paths[0].split('/').pop() : paths.length + ' files') + ' to ' + p.name, () => {
+					for (const path of paths) {
+						p.node.add('AddSound', 'ContentFile').add('FilePath', path);
+					}
+				});
+			}
+		};
+		const importBtn = el('button', { className: 'tb primary', textContent: '+ Add sound files…', title: 'Pick .wav, .ogg, .flac or .mp3 files from your computer: they are copied into ' + module + '/Sounds', disabled: ro, onclick: () => addFiles() });
+		const addInput = el('input', { type: 'text', placeholder: 'or a file already in the mod: ' + module + '/Sounds/MySound.flac', className: 'ed-input', disabled: ro });
 		addInput.dataset.fk = 'addsound';
 		const list = el('datalist', { id: 'edSoundFiles' });
 		addInput.setAttribute('list', 'edSoundFiles');
@@ -375,7 +450,7 @@ window.MS = window.MS || {};
 				list.append(el('option', { value: f }));
 			}
 		}).catch(() => {});
-		const addBtn = el('button', { className: 'tb', textContent: 'Add file', disabled: ro, onclick: async () => {
+		const addBtn = el('button', { className: 'tb', textContent: 'Add', disabled: ro, onclick: async () => {
 			const path = addInput.value.trim().replace(/\\/g, '/').replace(/^(Data|Mods)\//i, '');
 			if (!SOUND_EXT.test(path)) {
 				a.toast('Pick a .wav, .ogg, .flac or .mp3 file.', 'bad');
@@ -413,19 +488,39 @@ window.MS = window.MS || {};
 			input.dataset.fk = 'set:' + st.key;
 			return el('label', { className: 'ed-setting', title: st.help }, el('span', { textContent: st.label }), input, el('small', { textContent: st.help }));
 		});
-		return el('div', {},
+		const box = el('div', { className: 'snd-file-drop' },
 			el('div', { className: 'ed-card-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }),
 				el('button', { className: 'tb', textContent: '▶ Play', title: 'Play one of its files, as the game would', disabled: !files.length, onclick: () => files.length && play(files[Math.floor(Math.random() * files.length)].path, e) }),
 				el('button', { className: 'ico-btn', textContent: 'Its lines', onclick: () => MS.ide.openFile(p.doc.path, p.node.line) })),
 			el('div', { className: 'ed-label', textContent: 'Files (' + files.length + '): the game picks one each time' }), ...fileRows,
+			files.length ? null : el('p', { className: 'ed-empty', textContent: ro ? 'No files.' : 'No files yet: add some, or drop them here.' }),
+			ro ? null : el('div', { className: 'ed-row snd-import' }, importBtn, el('span', { className: 'ed-note', textContent: 'or drop files here' })),
 			ro ? null : el('div', { className: 'ed-row' }, addInput, list, addBtn),
 			el('div', { className: 'ed-label', textContent: 'How it plays' }), el('div', { className: 'ed-settings' }, ...settings));
+		if (!ro) {
+			soundDrop(box, (dropped) => addFiles(dropped));
+		}
+		return box;
 	}
 
+	// A new sound preset in the module, with files from the computer if some are picked. From the Library there is no Sounds tab yet:
+	// one is opened on the new sound.
 	function newSound(module, tab) {
 		const { field } = MS.dialogs.parts;
 		const name = el('input', { type: 'text', placeholder: 'My Sound' });
-		MS.dialogs.open('New sound', field('Name', name, 'Units, guns and scripts use it by this name.'), [
+		let picked = [];
+		const chosen = el('span', { className: 'ed-note', textContent: 'None yet: you can add them later too.' });
+		const choose = el('button', { className: 'tb', textContent: 'Choose files…', onclick: async () => {
+			picked = (await pickSoundFiles()).filter((f) => SOUND_EXT.test(f.name));
+			chosen.textContent = picked.length ? picked.map((f) => f.name).join(', ') : 'None yet: you can add them later too.';
+			if (picked.length && !name.value.trim()) {
+				name.value = picked[0].name.replace(/\.[^.]+$/, '').replace(/[_-]+/g, ' ').replace(/\s*\d+$/, '').trim();
+			}
+		} });
+		const body = el('div', {}, field('Name', name, 'Units, guns and scripts use it by this name.'),
+			el('div', { className: 'field' }, el('label', { textContent: 'Sound files' }), el('div', { className: 'ed-row' }, choose, chosen),
+				el('div', { className: 'note', textContent: 'Pick several and the game plays one of them at random each time. They are copied into ' + module + '/Sounds.' })));
+		MS.dialogs.open('New sound', body, [
 			{ text: 'Cancel' },
 			{
 				text: 'Make it',
@@ -435,11 +530,19 @@ window.MS = window.MS || {};
 					if (!n) {
 						return false;
 					}
+					const paths = picked.length ? await importSounds(module, n, picked) : [];
 					const doc = await docFor(module, 'SoundContainer', 'Sounds.ini');
-					change('New sound ' + n, () => doc.addTopLevel('AddSoundContainer', 'SoundContainer').add('PresetName', n));
+					change('New sound ' + n, () => {
+						const node = doc.addTopLevel('AddSoundContainer', 'SoundContainer');
+						node.add('PresetName', n);
+						for (const path of paths) {
+							node.add('AddSound', 'ContentFile').add('FilePath', path);
+						}
+					});
 					const made = app().lib.presets.find((p) => p.doc === doc && p.name === n);
-					if (made) {
-						tab.state = Object.assign(tab.state || {}, { selected: made.doc.path + ':' + made.name, filter: '' });
+					const into = tab || openEditor('sounds', module);
+					if (made && into) {
+						into.state = Object.assign(into.state || {}, { selected: made.doc.path + ':' + made.name, filter: '' });
 					}
 					MS.ide.refreshForm();
 				},
@@ -497,5 +600,5 @@ window.MS = window.MS || {};
 	}
 
 	// Editors in their own files join the list: [id, title, what it is, icon, render(module), count(module)].
-	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry), docFor, play, soundFiles, open: openEditor };
+	MS.editors = { renderSide, renderBuyMenu, renderLoadouts, renderSounds, register: (entry) => EDITORS.push(entry), docFor, play, soundFiles, importSounds, soundDrop, newSound, open: openEditor };
 })();
