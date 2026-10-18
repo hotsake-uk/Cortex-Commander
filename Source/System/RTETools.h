@@ -137,6 +137,9 @@ namespace RTE {
 	/// @param seedOffset The number to add to the seed. With 0, the simulation gets its usual random numbers.
 	void SetRNGSeedOffset(uint32_t seedOffset);
 
+	/// Gets what the -seed launch argument added to the simulation's seed.
+	uint32_t GetRNGSeedOffset();
+
 	/// The random number generator for the calling thread: g_RandomGenerator on the simulation thread, and one of its own on any other (the
 	/// sight-ray workers, the threaded AI scripts, the Lua collector). A std::mt19937 shared between threads with no lock hands out duplicate
 	/// numbers and can run its index past its state; and draws from the workers, in whatever order they ran, made the sim's own stream depend

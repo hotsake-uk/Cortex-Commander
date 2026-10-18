@@ -97,6 +97,9 @@
     <ClInclude Include="Source\System\DeterminismChecker.h">
       <Filter>System</Filter>
     </ClInclude>
+    <ClInclude Include="Source\System\Lockstep.h">
+      <Filter>System</Filter>
+    </ClInclude>
     <ClInclude Include="Source\System\DetMath.h">
       <Filter>System</Filter>
     </ClInclude>
@@ -887,6 +890,9 @@
       <Filter>System</Filter>
     </ClCompile>
     <ClCompile Include="Source\System\DeterminismChecker.cpp">
+      <Filter>System</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\System\Lockstep.cpp">
       <Filter>System</Filter>
     </ClCompile>
     <ClCompile Include="Source\System\DetMath.cpp">

@@ -1,4 +1,5 @@
 #include "ActivityMan.h"
+#include "Lockstep.h"
 #include "TerrainFire.h"
 #include "TerrainCandle.h"
 #include "RopeSim.h"
@@ -714,6 +715,14 @@ bool ActivityMan::SetStartActivitySetToLaunchInto() {
 		// Activities come set up with just player one, so give them the CPU to play against, unless the Activity decides that by itself.
 		if (gameActivityToStart->GetCPUTeam() == Activity::Teams::NoTeam) {
 			gameActivityToStart->SetCPUTeam(Activity::Teams::TeamTwo);
+		}
+		// Online, the two players face each other: the host on team one and the one who joined on team two, with no CPU.
+		if (Lockstep::IsActive()) {
+			const float gold = static_cast<float>(gameActivityToStart->GetStartingGold());
+			gameActivityToStart->ClearPlayers(false);
+			gameActivityToStart->AddPlayer(Players::PlayerOne, true, Activity::Teams::TeamOne, gold);
+			gameActivityToStart->AddPlayer(Players::PlayerTwo, true, Activity::Teams::TeamTwo, gold);
+			gameActivityToStart->SetCPUTeam(Activity::Teams::NoTeam);
 		}
 	}
 	SetStartActivity(activityToStart);

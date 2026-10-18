@@ -44,6 +44,8 @@ std::string DeterminismChecker::s_TraceFilePath;
 std::fstream DeterminismChecker::s_TraceFile;
 std::thread::id DeterminismChecker::s_MainThreadID;
 
+uint64_t DeterminismChecker::s_RunningHash = 14695981039346656037ULL;
+
 void DeterminismChecker::StartRecording(const std::string& traceFilePath) {
 	OpenTraceFile(traceFilePath, std::ios::out | std::ios::trunc);
 	s_Mode = Mode::Recording;
@@ -87,6 +89,7 @@ void DeterminismChecker::SubmitCheckpoint(std::string_view label, uint64_t hash)
 	RTEAssert(std::this_thread::get_id() == s_MainThreadID, "Determinism checkpoints can only be made from the main thread, as there's no telling which order they would get made in otherwise!");
 
 	std::string checkpoint = std::format("{} {:016x} {}", g_TimerMan.GetSimUpdateCount(), hash, label);
+	s_RunningHash = (s_RunningHash ^ hash) * 1099511628211ULL;
 
 	if (s_Mode == Mode::Recording) {
 		s_TraceFile << checkpoint << "\n";

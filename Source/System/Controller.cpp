@@ -1,4 +1,5 @@
 #include "Controller.h"
+#include "DeterminismChecker.h"
 #include "UInputMan.h"
 #include "ConsoleMan.h"
 #include "SettingsMan.h"
@@ -112,21 +113,21 @@ bool Controller::RelativeCursorMovement(Vector& cursorPos, float moveScale) cons
 }
 
 float Controller::GetDigitalAimSpeed() const {
-	return m_Player != Players::NoPlayer ? g_UInputMan.GetControlScheme(m_Player)->GetDigitalAimSpeed() : 1.0F;
+	return m_Player != Players::NoPlayer ? g_UInputMan.GetPlayerDigitalAimSpeed(m_Player) : 1.0F;
 }
 
 bool Controller::IsMouseControlled() const {
-	return m_Player != Players::NoPlayer && g_UInputMan.GetControlScheme(m_Player)->GetDevice() == InputDevice::DEVICE_MOUSE_KEYB;
+	return m_Player != Players::NoPlayer && g_UInputMan.GetPlayerDevice(m_Player) == InputDevice::DEVICE_MOUSE_KEYB;
 }
 
 bool Controller::IsKeyboardOnlyControlled() const {
-	return m_Player != Players::NoPlayer && g_UInputMan.GetControlScheme(m_Player)->GetDevice() == InputDevice::DEVICE_KEYB_ONLY;
+	return m_Player != Players::NoPlayer && g_UInputMan.GetPlayerDevice(m_Player) == InputDevice::DEVICE_KEYB_ONLY;
 }
 
 bool Controller::IsGamepadControlled() const {
 	bool isGamepadControlled = false;
 	if (m_Player != Players::NoPlayer) {
-		InputDevice inputDevice = g_UInputMan.GetControlScheme(m_Player)->GetDevice();
+		InputDevice inputDevice = g_UInputMan.GetPlayerDevice(m_Player);
 		if (inputDevice >= InputDevice::DEVICE_GAMEPAD_1 && inputDevice <= InputDevice::DEVICE_GAMEPAD_4) {
 			isGamepadControlled = true;
 		}
@@ -196,11 +197,17 @@ void Controller::GetInputFromPlayer() {
 	std::array<bool, ControlState::CONTROLSTATECOUNT> lastControlStates = m_ControlStates;
 	ResetCommandState();
 
-	if ((g_ConsoleMan.IsEnabled() && !g_ConsoleMan.IsReadOnly()) || m_Player < 0) {
+	// (Typing in the console is this machine's own business: in an online match the input comes from the match, the same on every machine.)
+	if ((g_ConsoleMan.IsEnabled() && !g_ConsoleMan.IsReadOnly() && !g_UInputMan.IsLockstepInput(m_Player)) || m_Player < 0) {
 		return;
 	}
 
 	UpdatePlayerInput(lastControlStates);
+}
+
+bool Controller::ReleaseDelayPassed() {
+	// (In sim time when the run has to be the same everywhere: real time passes differently on every machine and every run.)
+	return DeterminismChecker::IsActive() ? m_ReleaseTimer.IsPastSimMS(m_ReleaseDelay) : m_ReleaseTimer.IsPastRealMS(m_ReleaseDelay);
 }
 
 bool Controller::s_AIPaused = false;
@@ -304,7 +311,7 @@ void Controller::UpdatePlayerPieMenuInput(std::array<bool, ControlState::CONTROL
 		m_ControlStates[ControlState::ACTOR_PREV_PREP] = true;
 		m_ReleaseTimer.Reset();
 		// No actions can be performed while switching actors, and short time thereafter
-	} else if (m_ReleaseTimer.IsPastRealMS(m_ReleaseDelay)) {
+	} else if (ReleaseDelayPassed()) {
 		m_ControlStates[ControlState::WEAPON_FIRE] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_FIRE);
 		m_ControlStates[ControlState::AIM_SHARP] = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_AIM);
 		m_ControlStates[ControlState::BODY_JUMPSTART] = g_UInputMan.ElementPressed(m_Player, InputElements::INPUT_JUMP);
@@ -392,7 +399,7 @@ void Controller::UpdatePlayerPieMenuInput(std::array<bool, ControlState::CONTROL
 
 	// PIE MENU ACTIVE
 	// (Also while the unit menu stays up with the right button let go: it is the first mouse player's.)
-	const bool unitMenuHeldOpen = s_UnitMenuHeldOpen && m_Player == Players::PlayerOne && IsMouseControlled();
+	const bool unitMenuHeldOpen = s_UnitMenuHeldOpen && m_Player == Players::PlayerOne && IsMouseControlled() && !g_UInputMan.IsLockstepInput(m_Player);
 	const bool activeAnalog = unitMenuHeldOpen || g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_PIEMENU_ANALOG) || g_UInputMan.ElementReleased(m_Player, InputElements::INPUT_PIEMENU_ANALOG);
 	const bool activeDigital = g_UInputMan.ElementHeld(m_Player, InputElements::INPUT_PIEMENU_DIGITAL) || g_UInputMan.ElementReleased(m_Player, InputElements::INPUT_PIEMENU_DIGITAL);
 	if (activeAnalog || activeDigital) {
@@ -430,7 +437,7 @@ void Controller::UpdatePlayerAnalogInput() {
 	bool pieMenuActive = m_ControlStates[ControlState::PIE_MENU_ACTIVE];
 
 	// Only change aim and move if not holding actor switch buttons - don't want to mess up AI's aim
-	if (!m_ControlStates[ControlState::ACTOR_PREV_PREP] && !m_ControlStates[ControlState::ACTOR_NEXT_PREP] && m_ReleaseTimer.IsPastRealMS(m_ReleaseDelay)) {
+	if (!m_ControlStates[ControlState::ACTOR_PREV_PREP] && !m_ControlStates[ControlState::ACTOR_NEXT_PREP] && ReleaseDelayPassed()) {
 		m_AnalogMove = move;
 	}
 

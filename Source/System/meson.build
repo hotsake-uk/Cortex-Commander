@@ -24,6 +24,7 @@ sources += files(
 'RTETools.cpp',
 'System.cpp',
 'DeterminismChecker.cpp',
+'Lockstep.cpp',
 'InputMapping.cpp',
 'PathFinder.cpp',
 'AirRoute.cpp',

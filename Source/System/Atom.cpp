@@ -1175,11 +1175,13 @@ int Atom::Travel(float travelTime, bool autoTravel) {
 
 	// RTEAssert(hitCount < 100, "Atom travel resulted in more than 100 segments!!");
 
-	// Keep the trail for the renderer to draw.
+	// Keep the trail for the renderer to draw. (Its length varies by a number that isn't the sim's: which updates get drawn depends on how fast
+	// each machine runs, so taking it from the sim's generator would make the sim differ from one machine and run to the next.)
 	if (g_TimerMan.DrawnSimUpdate() && m_TrailLength) {
 		m_DrawnTrail.clear();
 		if (!trailPoints.empty()) {
-			int length = static_cast<int>(static_cast<float>(m_TrailLength) * RandomNum(1.0F - m_TrailLengthVariation, 1.0F));
+			thread_local RandomGenerator trailRandom;
+			int length = static_cast<int>(static_cast<float>(m_TrailLength) * trailRandom.RandomNum(1.0F - m_TrailLengthVariation, 1.0F));
 			m_DrawnTrail.assign(trailPoints.end() - std::min(length, static_cast<int>(trailPoints.size())), trailPoints.end());
 		}
 	}

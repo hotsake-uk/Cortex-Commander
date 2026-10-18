@@ -166,6 +166,9 @@ void UInputMan::LoadDeviceIcons() {
 }
 
 Vector UInputMan::AnalogMoveValues(int whichPlayer) {
+	if (const LockstepInput* lockstep = LockstepInputOf(whichPlayer)) {
+		return lockstep->Move;
+	}
 	Vector moveValues(0, 0);
 	InputDevice device = m_ControlScheme.at(whichPlayer).GetDevice();
 	if (device >= InputDevice::DEVICE_GAMEPAD_1) {
@@ -184,6 +187,9 @@ Vector UInputMan::AnalogMoveValues(int whichPlayer) {
 }
 
 Vector UInputMan::AnalogAimValues(int whichPlayer) {
+	if (const LockstepInput* lockstep = LockstepInputOf(whichPlayer)) {
+		return lockstep->Aim;
+	}
 	InputDevice device = m_ControlScheme.at(whichPlayer).GetDevice();
 
 	Vector aimValues(0, 0);
@@ -426,6 +432,9 @@ void UInputMan::SetAbsoluteMousePosition(const Vector& pos, int whichPlayer) {
 }
 
 Vector UInputMan::GetMouseMovement(int whichPlayer) const {
+	if (const LockstepInput* lockstep = LockstepInputOf(whichPlayer)) {
+		return lockstep->MouseMovement;
+	}
 	if (whichPlayer == Players::NoPlayer || (m_ControlScheme.at(whichPlayer).GetDevice() == InputDevice::DEVICE_MOUSE_KEYB && !m_EnableMultiMouseKeyboard)) {
 		return m_MouseStates.at(0).relativeMotion;
 	} else if (m_ControlScheme.at(whichPlayer).GetDevice() == InputDevice::DEVICE_MOUSE_KEYB) {
@@ -437,6 +446,12 @@ Vector UInputMan::GetMouseMovement(int whichPlayer) const {
 }
 
 void UInputMan::SetMouseValueMagnitude(float magCap, int whichPlayer) {
+	if (whichPlayer >= Players::PlayerOne && whichPlayer < Players::MaxPlayerCount) {
+		whichPlayer = MouseSchemeOf(whichPlayer);
+		if (whichPlayer < 0) {
+			return;
+		}
+	}
 	if (whichPlayer != Players::NoPlayer && m_ControlScheme.at(whichPlayer).GetDevice() == InputDevice::DEVICE_MOUSE_KEYB) {
 		if (!m_EnableMultiMouseKeyboard) {
 			m_MouseStates[0].analogAim.SetMagnitude(m_MouseTrapRadius * magCap);
@@ -449,6 +464,12 @@ void UInputMan::SetMouseValueMagnitude(float magCap, int whichPlayer) {
 }
 
 void UInputMan::SetMouseValueAngle(float angle, int whichPlayer) {
+	if (whichPlayer >= Players::PlayerOne && whichPlayer < Players::MaxPlayerCount) {
+		whichPlayer = MouseSchemeOf(whichPlayer);
+		if (whichPlayer < 0) {
+			return;
+		}
+	}
 	if (whichPlayer != Players::NoPlayer && m_ControlScheme.at(whichPlayer).GetDevice() == InputDevice::DEVICE_MOUSE_KEYB) {
 		if (!m_EnableMultiMouseKeyboard) {
 			m_MouseStates[0].analogAim.SetAbsRadAngle(angle);
@@ -504,6 +525,9 @@ void UInputMan::ClearMouseButtons() {
 }
 
 int UInputMan::MouseWheelMovedByPlayer(int player) const {
+	if (const LockstepInput* lockstep = LockstepInputOf(player)) {
+		return lockstep->Wheel;
+	}
 	if (player == Players::NoPlayer || player < Players::PlayerOne || player >= Players::MaxPlayerCount || !m_EnableMultiMouseKeyboard) {
 		return m_MouseStates.at(0).wheelChange;
 	}
@@ -724,6 +748,9 @@ bool UInputMan::AnyJoyButtonPress(int whichJoy) const {
 }
 
 bool UInputMan::GetInputElementState(int whichPlayer, int whichElement, InputState whichState) {
+	if (const LockstepInput* lockstep = LockstepInputOf(whichPlayer)) {
+		return whichElement >= 0 && whichElement < InputElements::INPUT_COUNT && (lockstep->Elements[whichElement] & (1 << whichState)) != 0;
+	}
 	bool elementState = false;
 	InputDevice device = m_ControlScheme.at(whichPlayer).GetDevice();
 	const InputMapping* element = &(m_ControlScheme.at(whichPlayer).GetInputMappings()->at(whichElement));
@@ -820,6 +847,9 @@ bool UInputMan::GetKeyboardButtonState(SDL_Scancode scancodeToTest, InputState w
 bool UInputMan::GetMouseButtonState(int whichPlayer, int whichButton, InputState whichState, SDL_MouseID mouseID) const {
 	if (whichButton < MouseButtons::MOUSE_LEFT || whichButton >= MouseButtons::MAX_MOUSE_BUTTONS) {
 		return false;
+	}
+	if (const LockstepInput* lockstep = LockstepInputOf(whichPlayer); lockstep && mouseID == 0) {
+		return (lockstep->Mouse[whichButton] & (1 << whichState)) != 0;
 	}
 
 	InputDevice playerDevice = InputDevice::DEVICE_COUNT;
@@ -1409,4 +1439,43 @@ void UInputMan::HandleGamepadHotPlug(SDL_JoystickID joystickID) {
 		s_ChangedJoystickStates[controllerIndex] = Gamepad(controllerIndex, joystickID, numAxis, numButtons);
 		m_NumJoysticks++;
 	}
+}
+
+UInputMan::LockstepInput UInputMan::SampleLockstepInput(int schemePlayer) {
+	LockstepInput input;
+	m_BypassLockstepInput = true;
+	for (int element = 0; element < InputElements::INPUT_COUNT; ++element) {
+		for (InputState state: {InputState::Held, InputState::Pressed, InputState::Released}) {
+			if (GetInputElementState(schemePlayer, element, state)) {
+				input.Elements[element] |= 1 << state;
+			}
+		}
+	}
+	const bool usesMouse = m_ControlScheme.at(schemePlayer).GetDevice() == InputDevice::DEVICE_MOUSE_KEYB;
+	for (int button = MouseButtons::MOUSE_LEFT; usesMouse && button < MouseButtons::MAX_MOUSE_BUTTONS; ++button) {
+		for (InputState state: {InputState::Held, InputState::Pressed, InputState::Released}) {
+			if (GetMouseButtonState(schemePlayer, button, state)) {
+				input.Mouse[button] |= 1 << state;
+			}
+		}
+	}
+	input.Move = AnalogMoveValues(schemePlayer);
+	input.Aim = AnalogAimValues(schemePlayer);
+	input.MouseMovement = GetMouseMovement(schemePlayer);
+	input.Wheel = usesMouse ? MouseWheelMovedByPlayer(schemePlayer) : 0;
+	input.Device = m_ControlScheme.at(schemePlayer).GetDevice();
+	input.DigitalAimSpeed = m_ControlScheme.at(schemePlayer).GetDigitalAimSpeed();
+	m_BypassLockstepInput = false;
+	return input;
+}
+
+void UInputMan::SetLockstepInput(int player, const LockstepInput* input, int localScheme) {
+	if (player < Players::PlayerOne || player >= Players::MaxPlayerCount) {
+		return;
+	}
+	m_LockstepInputSet[player] = input != nullptr;
+	if (input) {
+		m_LockstepInput[player] = *input;
+	}
+	m_LockstepLocalScheme[player] = localScheme;
 }

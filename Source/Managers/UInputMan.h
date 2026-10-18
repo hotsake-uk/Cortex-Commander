@@ -473,6 +473,42 @@ namespace RTE {
 		bool AnyJoyButtonPress(int whichJoy) const;
 #pragma endregion
 
+#pragma region Lockstep Input
+		/// One player's input for one sim update in an online (lockstep) match: everything the simulation asks the input manager about a player.
+		/// Sent to every machine, so each runs the update from the same input.
+		struct LockstepInput {
+			std::array<uint8_t, InputElements::INPUT_COUNT> Elements{}; //!< Per input element: bit 0 held, bit 1 pressed, bit 2 released.
+			std::array<uint8_t, MouseButtons::MAX_MOUSE_BUTTONS> Mouse{}; //!< Per mouse button, the same bits.
+			Vector Move; //!< AnalogMoveValues.
+			Vector Aim; //!< AnalogAimValues.
+			Vector MouseMovement; //!< GetMouseMovement.
+			int Wheel = 0; //!< MouseWheelMovedByPlayer.
+			int Device = InputDevice::DEVICE_KEYB_ONLY; //!< The player's device, which changes how their unit aims and moves.
+			float DigitalAimSpeed = 1.0F; //!< The player's scheme's digital aim speed.
+		};
+
+		/// Reads a player's input as it is on this machine, from their control scheme, for sending to the others.
+		/// @param schemePlayer The local control scheme to read (this machine's player one for the one playing on it).
+		/// @return The input.
+		LockstepInput SampleLockstepInput(int schemePlayer);
+
+		/// Makes the simulation's questions about a player answered by the given input instead of the devices, until set to nullptr.
+		/// @param player The player in the match.
+		/// @param input The input to answer with (copied), or nullptr to go back to the devices.
+		/// @param localScheme The local control scheme the player is played from on this machine, or -1 for a player on another machine. What the
+		/// simulation does to a player's mouse (as when the pie menu centres it) goes to this scheme, and is dropped for players elsewhere.
+		void SetLockstepInput(int player, const LockstepInput* input, int localScheme = -1);
+
+		/// Gets whether a player's input comes from a lockstep match's input instead of the devices.
+		bool IsLockstepInput(int player) const { return player >= Players::PlayerOne && player < Players::MaxPlayerCount && m_LockstepInputSet[player]; }
+
+		/// Gets a player's input device, as the simulation sees it: from their lockstep input in an online match.
+		InputDevice GetPlayerDevice(int player) const { return IsLockstepInput(player) ? static_cast<InputDevice>(m_LockstepInput[player].Device) : m_ControlScheme.at(player).GetDevice(); }
+
+		/// Gets a player's digital aim speed, as the simulation sees it.
+		float GetPlayerDigitalAimSpeed(int player) const { return IsLockstepInput(player) ? m_LockstepInput[player].DigitalAimSpeed : m_ControlScheme.at(player).GetDigitalAimSpeed(); }
+#pragma endregion
+
 	private:
 		/// Enumeration for the different states an input element or button can be in.
 		enum InputState {
@@ -513,6 +549,16 @@ namespace RTE {
 		std::string m_TextInput; //!< Buffer for passing text input from SDL event handling to the GUI.
 
 		bool m_OverrideInput; //!< If true then this instance operates in multiplayer mode and the input is overridden by network input.
+		std::array<LockstepInput, Players::MaxPlayerCount> m_LockstepInput; //!< Each player's input this sim update in a lockstep match (SetLockstepInput).
+		std::array<bool, Players::MaxPlayerCount> m_LockstepInputSet{}; //!< Which players' input comes from m_LockstepInput.
+		std::array<int, Players::MaxPlayerCount> m_LockstepLocalScheme{-1, -1, -1, -1}; //!< The local scheme each lockstep player is played from here, or -1.
+		bool m_BypassLockstepInput = false; //!< Set while sampling, so the devices are read even for players answered from lockstep input.
+
+		/// Gets the lockstep input answering for a player, or nullptr when the devices answer.
+		const LockstepInput* LockstepInputOf(int player) const { return !m_BypassLockstepInput && IsLockstepInput(player) ? &m_LockstepInput[player] : nullptr; }
+		/// Gets the local scheme what the simulation does to a player's mouse goes to: the player's own, the local one they're played from in a
+		/// lockstep match, or -1 for a lockstep player on another machine.
+		int MouseSchemeOf(int player) const { return !m_BypassLockstepInput && IsLockstepInput(player) ? m_LockstepLocalScheme[player] : player; }
 
 		std::array<InputScheme, Players::MaxPlayerCount> m_ControlScheme; //!< Which control scheme is being used by each player.
 		const Icon* m_DeviceIcons[InputDevice::DEVICE_COUNT]; //!< The Icons representing all different devices.

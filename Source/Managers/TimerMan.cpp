@@ -4,6 +4,7 @@
 #include "PerformanceMan.h"
 #include "SettingsMan.h"
 #include "System.h"
+#include "Lockstep.h"
 
 #include <algorithm>
 #include <limits>
@@ -14,6 +15,7 @@ void TimerMan::Clear() {
 	m_StartTime = std::chrono::steady_clock::now();
 	m_TicksPerSecond = 1000000;
 	m_RealTimeTicks = 0;
+	m_WallTimeTicks = 0;
 	m_SimTimeTicks = 0;
 	m_SimUpdateCount = 0;
 	m_SimAccumulator = 0;
@@ -54,6 +56,7 @@ void TimerMan::ResetTime() {
 	m_StartTime = std::chrono::steady_clock::now();
 
 	m_RealTimeTicks = 0;
+	m_WallTimeTicks = 0;
 	m_SimAccumulator = 0;
 	m_SimTimeTicks = 0;
 	m_SimUpdateCount = 0;
@@ -70,6 +73,9 @@ void TimerMan::UpdateSim() {
 
 		++m_SimUpdateCount;
 		++m_SimUpdatesSinceDrawn;
+		if (Lockstep::IsActive()) {
+			m_RealTimeTicks += m_DeltaTime;
+		}
 
 		// If after deducting the DeltaTime from the accumulator, there is not enough time for another DeltaTime, then flag this as the last sim update before the frame is drawn.
 		m_DrawnSimUpdate = !TimeForSimUpdate();
@@ -79,16 +85,21 @@ void TimerMan::UpdateSim() {
 }
 
 void TimerMan::Update() {
-	long long prevTime = m_RealTimeTicks;
+	long long prevTime = m_WallTimeTicks;
 	if (System::IsInHeadlessMode()) {
 		// With nothing being presented there's no point in waiting on real time, so act as if exactly one sim update's worth of it passes between each update.
-		m_RealTimeTicks += m_DeltaTime;
+		m_WallTimeTicks += m_DeltaTime;
 	} else {
-		m_RealTimeTicks = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - m_StartTime).count();
+		m_WallTimeTicks = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - m_StartTime).count();
+	}
+	// In an online match the real time timers read goes on with the sim instead (in UpdateSim): the sim's code reads real time here and there,
+	// and every machine has to see the same, however long each one waited for the other's input.
+	if (!Lockstep::IsActive()) {
+		m_RealTimeTicks = m_WallTimeTicks;
 	}
 
 	// Cap timeIncrease if too long (as when the app went out of focus), to c_RealToSimCap.
-	long long timeIncrease = std::min(m_RealTimeTicks - prevTime, static_cast<long long>(c_RealToSimCap * m_TicksPerSecond));
+	long long timeIncrease = std::min(m_WallTimeTicks - prevTime, static_cast<long long>(c_RealToSimCap * m_TicksPerSecond));
 
 	RTEAssert(timeIncrease > 0, "It seems your CPU is giving bad timing data to the game, this is known to happen on some multi-core processors. This may be fixed by downloading the latest CPU drivers from AMD or Intel.");
 

@@ -91,6 +91,9 @@ namespace RTE {
 		/// @return Whether this run diverged from the recorded one.
 		static bool HasDiverged() { return s_Diverged; }
 
+		/// Gets a hash of every checkpoint made so far, for comparing a run with another one as it goes (as the machines of an online match do).
+		static uint64_t GetRunningHash() { return s_RunningHash; }
+
 		/// Makes a checkpoint out of the passed in values. Can only be done from the main thread, since the checkpoints have to be made in the same order each run.
 		/// @param label A description of what is being checked, to tell the checkpoints apart.
 		/// @param values The values to check. See the StateHasher for which types can be used.
@@ -123,6 +126,7 @@ namespace RTE {
 		static int GetSceneCheckInterval();
 
 		static Mode s_Mode; //!< Whether checkpoints are being recorded, verified or neither.
+		static uint64_t s_RunningHash; //!< A hash of every checkpoint made so far (GetRunningHash).
 		static bool s_Diverged; //!< Whether a checkpoint that didn't match the trace being verified against was found.
 		static std::string s_TraceFilePath; //!< The path of the trace file being recorded to or verified against.
 		static std::fstream s_TraceFile; //!< The trace file being recorded to or verified against.

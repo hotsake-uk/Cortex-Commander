@@ -87,6 +87,7 @@
 #include "MusicMan.h"
 #include "System.h"
 #include "DeterminismChecker.h"
+#include "Lockstep.h"
 
 #include "RenderTarget.h"
 #include "tracy/Tracy.hpp"
@@ -294,7 +295,16 @@ void HandleEarlyMainArgs(int argCount, char** argValue) {
 			DeterminismChecker::StartVerifying(argValue[++i]);
 		} else if (!lastArg && currentArg == "-seed") {
 			SetRNGSeedOffset(static_cast<uint32_t>(std::atoll(argValue[++i])));
+		} else if (!lastArg && currentArg == "-lockstep-host") {
+			Lockstep::Host(std::atoi(argValue[++i]));
+		} else if (!lastArg && currentArg == "-lockstep-join") {
+			Lockstep::Join(argValue[++i]);
 		}
+	}
+	// An online match runs the simulation as the determinism checks do (path searches answered at a fixed point and so on), and keeps a trace
+	// of it, which shows where the machines went apart if they do.
+	if (Lockstep::IsActive() && !DeterminismChecker::IsActive()) {
+		DeterminismChecker::StartRecording(System::InstanceFile("LockstepPlayer" + std::to_string(Lockstep::GetLocalPlayer() + 1) + ".trace"));
 	}
 }
 
@@ -661,6 +671,7 @@ void RunGameLoop() {
 		updateStartTime = g_TimerMan.GetAbsoluteTime();
 
 		PollSDLEvents();
+		Lockstep::Update();
 		g_WindowMan.Update();
 		FitToWindowResolution();
 		TestResolutionChange();
@@ -671,6 +682,10 @@ void RunGameLoop() {
 		// Simulation update, as many times as the fixed update step allows in the span since last frame draw.
 		while (g_TimerMan.TimeForSimUpdate()) {
 			ZoneScopedN("Simulation Update");
+			// In an online match an update runs only once every player's input for it is here.
+			if (!Lockstep::ReadyForSimUpdate()) {
+				break;
+			}
 
 			serverUpdated = false;
 
@@ -691,6 +706,7 @@ void RunGameLoop() {
 			g_LuaMan.Update();
 
 			g_UInputMan.Update();
+			Lockstep::BeginSimUpdate();
 
 			g_FrameMan.Update();
 
@@ -815,6 +831,7 @@ void RunGameLoop() {
 			g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::SimTotal);
 			ActionMenu::Update(); // (Before the update's input is let go of: its clicks and the right button's release are this update's.)
 			g_UInputMan.EndFrame();
+			Lockstep::EndSimUpdate();
 
 			if (s_SimUpdatesToQuitAfter >= 0 && g_TimerMan.GetSimUpdateCount() >= s_SimUpdatesToQuitAfter) {
 				System::SetQuit();
@@ -973,6 +990,7 @@ int main(int argc, char** argv) {
 	g_SettingsMan.UpdateSettingsFile();
 
 	DeterminismChecker::Stop();
+	Lockstep::Shutdown();
 
 	// A headless run is only ever a test, with nothing left to save, and tearing down the graphics driver could hang it at exit on Linux (Mesa's llvmpipe threads),
 	// which the determinism test then reports as a run that never finished.

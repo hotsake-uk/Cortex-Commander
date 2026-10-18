@@ -52,6 +52,10 @@ namespace RTE {
 		s_SeedOffset = seedOffset;
 	}
 
+	uint32_t GetRNGSeedOffset() {
+		return s_SeedOffset;
+	}
+
 	RandomGenerator& ThisThreadsRandomGenerator() {
 		if (s_ThreadRandomGenerator) {
 			return *s_ThreadRandomGenerator;

@@ -315,6 +315,9 @@ namespace RTE {
 
 		/// Gets whether this controller's actor is held still by the paused AI.
 		bool IsHeldByPausedAI() const;
+
+		/// Gets whether the short delay after letting go of an actor switch button, during which nothing else is taken, has passed.
+		bool ReleaseDelayPassed();
 #pragma endregion
 
 #pragma region Virtual Override Methods
