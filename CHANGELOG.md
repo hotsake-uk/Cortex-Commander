@@ -148,6 +148,14 @@ The format is based on [Keep a Changelog](https://keepachangelog.com/en/1.0.0/),
 
 - New `Settings.ini` property `LaunchMinimised = 0/1` to have the game window start out minimised, so that launching the game doesn't take input focus or cover other windows. Disabled by default.
 
+- New `-modstudio` launch argument, for live modding tools such as Cortex Mod Studio. With it, the game talks to the tool through a few plain files in a `ModStudio` folder next to the game. Without it, nothing changes.  
+	Every line the console prints also goes to `ModStudio/Console.log` as it's printed.  
+	The tool can ask, through `ModStudio/Scripts.ini`, for INI files or images it saved to be read again, for one script to be reloaded in the presets and objects using it (other objects keep their state), for every script to be reloaded, or for a Lua file to be run.  
+	New Lua function `StudioWatch(name, value)` shows a value in the tool's Watch panel (`ModStudio/Watch.ini`). It does nothing without `-modstudio`.  
+	Twice a second in an activity, the game writes `ModStudio/Profile.ini`: frame, update and draw times, object counts, the performance counters and each script's time per sim update.  
+	While the tool's inspector is open (`ModStudio/Inspect.ini`), the selected actor is outlined, the camera can follow an actor, and the simulation can be held still and stepped one update at a time. The game writes the actors and the selected actor's values to `ModStudio/World.ini`.  
+	The Actor Editor loads the actor the tool asks for in `ModStudio/Preview.ini`.
+
 </details>
 
 <details><summary><b>Changed</b></summary>

@@ -122,12 +122,18 @@ namespace {
 
 	const char* StatusName(int status) {
 		switch (status) {
-			case Actor::STABLE: return "Stable";
-			case Actor::UNSTABLE: return "Unstable";
-			case Actor::INACTIVE: return "Inactive";
-			case Actor::DYING: return "Dying";
-			case Actor::DEAD: return "Dead";
-			default: return "?";
+			case Actor::STABLE:
+				return "Stable";
+			case Actor::UNSTABLE:
+				return "Unstable";
+			case Actor::INACTIVE:
+				return "Inactive";
+			case Actor::DYING:
+				return "Dying";
+			case Actor::DEAD:
+				return "Dead";
+			default:
+				return "?";
 		}
 	}
 
