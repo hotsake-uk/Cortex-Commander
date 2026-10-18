@@ -125,6 +125,20 @@ namespace RTE {
 			m_LaunchIntoActivity = true;
 		}
 
+		/// Sets the saved game to launch directly into (the -save launch argument).
+		/// @param saveGameName The file name of the saved game, without its extension.
+		void SetSaveGameToLaunch(const std::string_view& saveGameName) { m_SaveGameToLaunch = saveGameName; }
+
+		/// Sets the Activity and Scene to launch directly into (the -activity launch argument).
+		/// @param activityType The type name of the Activity.
+		/// @param activityName The preset name of the Activity.
+		/// @param sceneName The preset name of the Scene.
+		void SetActivityToLaunch(const std::string_view& activityType, const std::string_view& activityName, const std::string_view& sceneName) {
+			m_ActivityTypeToLaunch = activityType;
+			m_ActivityNameToLaunch = activityName;
+			m_SceneNameToLaunch = sceneName;
+		}
+
 		void SetEditorToLaunch(const std::string_view& editorName) {
 			if (!editorName.empty()) {
 				m_EditorToLaunch = editorName;
@@ -193,6 +207,10 @@ namespace RTE {
 		/// @return Whether it exists, names a map that exists, and was set to start.
 		bool SetStartScenarioActivity(const std::string& activityName);
 
+		/// Launch Activity and Scene specified in command-line argument, as player one against the CPU.
+		/// @return Whether a valid Activity and Scene were passed in and set to be launched next time ResetActivity is called.
+		bool SetStartActivitySetToLaunchInto();
+
 		/// Loads "Editor Scene" and starts the given editor Activity.
 		/// @param editorToLaunch The editor name to put into effect next time ResetActivity is called.
 		void SetStartEditorActivity(const std::string_view& editorToLaunch);
@@ -255,6 +273,10 @@ namespace RTE {
 		bool m_LaunchIntoSandbox = false; //!< Whether that Activity is the sandbox, started by SetStartSandboxActivity.
 		bool m_LaunchIntoScenario = false; //!< Whether that Activity is a scenario started by SetStartScenarioActivity (-scenario).
 		std::string m_ScenarioToLaunch; //!< The scenario -scenario starts, by its preset name.
+		std::string m_SaveGameToLaunch; //!< The file name of the saved game -save launches directly into, if any.
+		std::string m_ActivityTypeToLaunch; //!< The type name of the Activity -activity launches directly into, if any.
+		std::string m_ActivityNameToLaunch; //!< The preset name of the Activity -activity launches directly into, if any.
+		std::string m_SceneNameToLaunch; //!< The preset name of the Scene to launch the above Activity in.
 		std::string m_SandboxSceneToLaunch; //!< The map the sandbox opens on, or empty for its own.
 		std::string m_SandboxActivityToLaunch = "Sandbox"; //!< The game mode started that way: the sandbox, or Mod Studio's test (-test).
 		bool m_LaunchIntoEditor; //!< Whether to skip the intro and main menu and launch directly into the set editor Activity instead.

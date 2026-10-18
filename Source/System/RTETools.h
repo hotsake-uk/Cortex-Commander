@@ -23,6 +23,10 @@ namespace RTE {
 		/// Seed the random number generator.
 		void Seed(uint64_t seed) { m_RNG.seed(seed); };
 
+		/// Gets the next raw number the generator will produce, without advancing it. This can be used to check whether two generators are in the same state.
+		/// @return The next raw number the generator will produce.
+		uint32_t PeekNext() const { return static_cast<uint32_t>(std::mt19937(m_RNG)()); }
+
 		/// Function template which returns a uniformly distributed random number in the range [-1, 1].
 		/// @return Uniformly distributed random number in the range [-1, 1].
 		template <typename floatType = float>
@@ -80,6 +84,10 @@ namespace RTE {
 
 	/// Seed global the global random number generators. The thread that calls it is taken as the simulation thread (see ThisThreadsRandomGenerator).
 	void SeedRNG();
+
+	/// Sets a number that SeedRNG adds to the seed of the simulation's random number generator, so that the simulation gets a different stream of random numbers.
+	/// @param seedOffset The number to add to the seed. With 0, the simulation gets its usual random numbers.
+	void SetRNGSeedOffset(uint32_t seedOffset);
 
 	/// The random number generator for the calling thread: g_RandomGenerator on the simulation thread, and one of its own on any other (the
 	/// sight-ray workers, the threaded AI scripts, the Lua collector). A std::mt19937 shared between threads with no lock hands out duplicate

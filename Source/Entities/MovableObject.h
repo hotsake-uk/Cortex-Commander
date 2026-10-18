@@ -1203,6 +1203,10 @@ namespace RTE {
 		/// @return Returns the next unique id.
 		static long GetNextUniqueID() { return ++m_UniqueIDCounter; }
 
+		/// Gets the last unique ID handed out, without handing out a new one. For checking whether two runs of the simulation match.
+		/// @return The last unique ID handed out.
+		static long GetUniqueIDCounter() { return m_UniqueIDCounter.load(); }
+
 		/// Returns this MO's unique persistent ID
 		/// @return Returns this MO's unique persistent ID
 		long GetUniqueID() const { return m_UniqueID; }

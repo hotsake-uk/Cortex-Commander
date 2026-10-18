@@ -1,6 +1,7 @@
 #pragma once
 
 namespace RTE {
+	class StateHasher;
 	class Vector;
 
 	/// Air pressure and wind (SB-5). A blast is a wave of pressure in a coarse grid over the scene: it spreads through air and liquid, stops
@@ -112,6 +113,10 @@ namespace RTE {
 
 		/// Advances the waves and the wind one simulation step. Call once per sim update, from the main thread, before the liquids' update.
 		static void Update();
+
+		/// Adds the state of this to a hash, for checking whether two runs of the simulation match.
+		/// @param hasher The StateHasher to add the state to.
+		static void HashState(StateHasher& hasher);
 
 		/// Forgets every wave, e.g. when the scene changes.
 		static void Clear();

@@ -1,6 +1,7 @@
 #pragma once
 
 namespace RTE {
+	class StateHasher;
 	class Vector;
 
 	/// A coarse map of how thick smoke is across the scene, rebuilt every simulation update from the smoke particles, so units can't see through smoke.
@@ -16,6 +17,10 @@ namespace RTE {
 
 		/// Rebuilds the map from the current smoke particles. Call once per sim update, from the main thread, before units look around.
 		static void Update();
+
+		/// Adds the state of this to a hash, for checking whether two runs of the simulation match.
+		/// @param hasher The StateHasher to add the state to.
+		static void HashState(StateHasher& hasher);
 
 		/// Gets whether thick enough smoke lies between two points to hide one from the other. Safe to call from any thread during the sim update.
 		static bool BlocksSight(const Vector& from, const Vector& to);

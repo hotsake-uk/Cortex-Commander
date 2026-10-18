@@ -23,6 +23,7 @@ sources += files(
 'InputScheme.cpp',
 'RTETools.cpp',
 'System.cpp',
+'DeterminismChecker.cpp',
 'InputMapping.cpp',
 'PathFinder.cpp',
 'AirRoute.cpp',

@@ -1,5 +1,6 @@
 #include "EffectsParticles.h"
 #include "ActorFire.h"
+#include "DeterminismChecker.h"
 #include "Activity.h"
 #include "ADoor.h"
 #include "AVehicle.h"
@@ -384,4 +385,13 @@ void ActorFire::Clear() {
 	s_IgniteQueue.clear();
 	s_DouseQueue.clear();
 	s_AreaQueue.clear();
+}
+
+void ActorFire::HashState(StateHasher& hasher) {
+	hasher.Add(s_Random);
+	for (const Burner& burner: s_Burners) {
+		hasher.Add(burner.ID);
+		hasher.Add(burner.TicksLeft);
+		hasher.Add(burner.PanicTicks);
+	}
 }

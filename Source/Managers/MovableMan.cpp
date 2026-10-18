@@ -1,4 +1,5 @@
 #include "MovableMan.h"
+#include "DeterminismChecker.h"
 #include "Colony.h"
 
 #include <optional>
@@ -723,6 +724,31 @@ Actor* MovableMan::GetUnassignedBrain(int team) const {
 	}
 
 	return 0;
+}
+
+void MovableMan::HashState(StateHasher& hasher) const {
+	auto hashMovableObject = [&hasher](const MovableObject* movableObject) {
+		hasher.Add(movableObject->GetUniqueID());
+		hasher.Add(movableObject->GetPos());
+		hasher.Add(movableObject->GetVel());
+		hasher.Add(movableObject->GetRotAngle());
+		hasher.Add(movableObject->GetAngularVel());
+		hasher.Add(movableObject->IsHFlipped());
+	};
+
+	for (const std::deque<Actor*>* actors: {&m_Actors, &m_AddedActors}) {
+		for (const Actor* actor: *actors) {
+			hashMovableObject(actor);
+			hasher.Add(actor->GetTeam());
+			hasher.Add(actor->GetStatus());
+			hasher.Add(actor->GetHealth());
+		}
+	}
+	for (const std::deque<MovableObject*>* movableObjects: {&m_Items, &m_AddedItems, &m_Particles, &m_AddedParticles}) {
+		for (const MovableObject* movableObject: *movableObjects) {
+			hashMovableObject(movableObject);
+		}
+	}
 }
 
 bool MovableMan::AddMO(MovableObject* movableObjectToAdd) {
@@ -1607,6 +1633,9 @@ void MovableMan::Update() {
 
 	// Finish our Seeing rays from last frame before anything here moves actors or changes m_Actors (the workers index it by position and read actor state).
 	m_ActorsSeeFuture.wait();
+
+	DeterminismCheckSimState("MOs travelled");
+
 	// Nothing else runs now, and the AI threads read the ladders below.
 	AHuman::RefreshLadderNodes();
 	// Nor any script: the units' values as they stand, for the AI scripts on other threads to read this update (GetPublishedNumberValue) while
@@ -1678,6 +1707,8 @@ void MovableMan::Update() {
 
 	// Updates AI/user input
 	UpdateControllers();
+
+	DeterminismCheckSimState("Controllers updated");
 
 	// Will use some common iterators
 	std::deque<Actor*>::iterator aIt;
@@ -1764,6 +1795,8 @@ void MovableMan::Update() {
 		}
 	}
 	g_PerformanceMan.StopPerformanceMeasurement(PerformanceMan::ScriptsUpdate);
+
+	DeterminismCheckSimState("Threaded scripts updated");
 
 	{
 		{
@@ -1933,6 +1966,8 @@ void MovableMan::Update() {
 			}
 		}
 	} // namespace RTE
+
+	DeterminismCheckSimState("MOs updated");
 
 	//////////////////////////////////////////////////////////////////////
 	// TRANSFER ALL MOs ADDED THIS FRAME
@@ -2162,6 +2197,8 @@ void MovableMan::Update() {
 	}
 
 	RebuildDoorList();
+
+	DeterminismCheckSimState("MOs added and removed");
 
 	// Run seeing rays for all actors
 	m_ActorsSeeFuture = g_ThreadMan.GetPriorityThreadPool().parallelize_loop(m_Actors.size(),

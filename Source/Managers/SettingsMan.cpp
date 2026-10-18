@@ -1,6 +1,7 @@
 #include "ControlLink.h"
 #include "Actor.h"
 #include "SettingsMan.h"
+#include "DeterminismChecker.h"
 #include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
 #include <algorithm>
@@ -493,6 +494,14 @@ void SettingsMan::SaveSettingsIfChanged() const {
 	if (SettingsText() != m_LastWrittenSettings) {
 		UpdateSettingsFile();
 	}
+}
+
+int SettingsMan::GetNumberOfLuaStatesOverride() const {
+	constexpr int luaStatesWhenCheckingDeterminism = 4;
+	if (m_NumberOfLuaStatesOverride == -1 && DeterminismChecker::IsActive()) {
+		return luaStatesWhenCheckingDeterminism;
+	}
+	return m_NumberOfLuaStatesOverride;
 }
 
 int SettingsMan::ReadProperty(const std::string_view& propName, Reader& reader) {

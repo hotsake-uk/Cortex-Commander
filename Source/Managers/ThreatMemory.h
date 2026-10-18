@@ -3,6 +3,7 @@
 #include "Vector.h"
 
 namespace RTE {
+	class StateHasher;
 	class Actor;
 
 	/// What each team knows of its enemies (AC-2): where each enemy was last seen, by whom and when. A unit that notices an enemy reports it;
@@ -55,6 +56,10 @@ namespace RTE {
 		/// Forgets enemies that are gone and memories over a minute old, and has every craft and vehicle with anyone inside look out for its
 		/// riders (LookOutFromCarriers). Call once per sim update, from the main thread.
 		static void Update();
+
+		/// Adds the state of this to a hash, for checking whether two runs of the simulation match.
+		/// @param hasher The StateHasher to add the state to.
+		static void HashState(StateHasher& hasher);
 
 		/// Forgets everything, e.g. when the scene changes.
 		static void Clear();

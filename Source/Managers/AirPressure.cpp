@@ -1,4 +1,5 @@
 #include "AirPressure.h"
+#include "DeterminismChecker.h"
 #include "ADoor.h"
 #include "Actor.h"
 #include "Atom.h"
@@ -630,4 +631,16 @@ void AirPressure::Update() {
 		ThrowLiquid(update);
 	}
 	FollowWaves();
+}
+
+void AirPressure::HashState(StateHasher& hasher) {
+	hasher.Add(s_GridWidth);
+	hasher.Add(s_GridHeight);
+	hasher.Add(s_Left);
+	hasher.Add(s_Right);
+	hasher.Add(s_Top);
+	hasher.Add(s_Bottom);
+	hasher.AddBytes(s_Pressure.data(), s_Pressure.size() * sizeof(float));
+	hasher.AddBytes(s_FlowX.data(), s_FlowX.size() * sizeof(float));
+	hasher.AddBytes(s_FlowY.data(), s_FlowY.size() * sizeof(float));
 }

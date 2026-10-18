@@ -15,6 +15,7 @@ namespace RTE {
 	namespace {
 		std::atomic<std::thread::id> s_SimThread{}; //!< The thread SeedRNG was last called on.
 		std::atomic<uint32_t> s_OtherThreadGenerators{0}; //!< How many other threads have made their own generator, to seed each one differently.
+		uint32_t s_SeedOffset = 0; //!< Added to the simulation's seed, set by the -seed launch argument.
 	} // namespace
 
 	void SeedRNG() {
@@ -35,8 +36,12 @@ namespace RTE {
 			return static_cast<uint32_t>(seedResult);
 		}();
 
-		g_RandomGenerator.Seed(constSeed);
+		g_RandomGenerator.Seed(constSeed + s_SeedOffset);
 		s_SimThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
+	}
+
+	void SetRNGSeedOffset(uint32_t seedOffset) {
+		s_SeedOffset = seedOffset;
 	}
 
 	RandomGenerator& ThisThreadsRandomGenerator() {

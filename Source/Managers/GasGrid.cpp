@@ -1,4 +1,5 @@
 #include "GasGrid.h"
+#include "DeterminismChecker.h"
 #include "AirPressure.h"
 #include "ACraft.h"
 #include "ADoor.h"
@@ -687,4 +688,17 @@ void GasGrid::Update() {
 	}
 	Show(update);
 	FollowGas(materialBitmap);
+}
+
+void GasGrid::HashState(StateHasher& hasher) {
+	hasher.Add(s_GridWidth);
+	hasher.Add(s_GridHeight);
+	hasher.Add(s_Left);
+	hasher.Add(s_Right);
+	hasher.Add(s_Top);
+	hasher.Add(s_Bottom);
+	hasher.Add(s_Random);
+	for (const std::vector<float>& gas: s_Gas) {
+		hasher.AddBytes(gas.data(), gas.size() * sizeof(float));
+	}
 }
