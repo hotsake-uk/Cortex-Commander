@@ -71,6 +71,7 @@ namespace RTE {
 			SandboxScreen,
 			MapBrowserScreen,
 			CampaignScreen,
+			StudioScenariosScreen,
 			CreditsScreen,
 			QuitScreen,
 			ScreenCount
@@ -81,6 +82,7 @@ namespace RTE {
 			MetaGameButton,
 			ScenarioButton,
 			SandboxButton,
+			StudioScenariosButton,
 			BattleCommandButton,
 			QuickBattleButton,
 			SaveOrLoadGameButton,

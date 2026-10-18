@@ -65,6 +65,7 @@ sources += files(
 'CampaignModel.cpp',
 'CampaignSave.cpp',
 'CampaignScreen.cpp',
+'StudioScenarios.cpp',
 'Colony.cpp',
 'CommanderBar.cpp',
 'SpawnOrders.cpp',

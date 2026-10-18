@@ -13,6 +13,7 @@
 #include "GameActivity.h"
 #include "Entity.h"
 #include "Scene.h"
+#include "StudioScenarios.h"
 
 #include "GUI.h"
 #include "AllegroBitmap.h"
@@ -114,7 +115,18 @@ void ScenarioGUI::SetEnabled(const Vector& center, float radius) {
 		CalculateLinesToSitePoint();
 	}
 
+	// A scenario picked on the Studio Scenarios screen: selected (with its own map), and its setup opened.
+	if (std::string pending = StudioScenarios::TakePending(); !pending.empty()) {
+		m_ActivityToSelect = pending;
+		m_OpenSetupWhenSelected = true;
+	}
 	FetchActivitiesAndScenesLists();
+	if (m_OpenSetupWhenSelected) {
+		m_OpenSetupWhenSelected = false;
+		if (m_SelectedActivity && m_SelectedScene) {
+			m_ActivityConfigBox->SetEnabled(true, m_SelectedActivity, m_SelectedScene);
+		}
+	}
 
 	// Only show the resume button if the current Activity is a GameActivity. Editor or Multiplayer Activities are resumed from the main menu, so the resume button shouldn't show for them.
 	const GameActivity* currentActivity = dynamic_cast<GameActivity*>(g_ActivityMan.GetActivity());

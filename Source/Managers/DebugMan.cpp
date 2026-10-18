@@ -35,6 +35,7 @@
 #include "Controller.h"
 #include "Sandbox.h"
 #include "MapBrowser.h"
+#include "StudioScenarios.h"
 #include "Campaign.h"
 #include "ModernHUD.h"
 #include "AIAwareness.h"
@@ -501,6 +502,7 @@ void DebugMan::DrawImGui() {
 	Sandbox::DrawGUI();
 	MapBrowser::DrawGUI();
 	Campaign::DrawGUI();
+	StudioScenarios::DrawGUI();
 	UpdateFreeze();
 
 	if (m_ShowPhotoMode) {

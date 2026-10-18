@@ -897,6 +897,7 @@
     <ClInclude Include="Source\Managers\MapBrowser.h" />
     <ClInclude Include="Source\Managers\MapGen.h" />
     <ClInclude Include="Source\Managers\Campaign.h" />
+    <ClInclude Include="Source\Managers\StudioScenarios.h" />
     <ClInclude Include="Source\Managers\CampaignModel.h" />
     <ClInclude Include="Source\Managers\SandboxInternal.h" />
     <ClInclude Include="Source\Managers\Colony.h" />
@@ -1538,6 +1539,7 @@
     <ClCompile Include="Source\Managers\CampaignModel.cpp" />
     <ClCompile Include="Source\Managers\CampaignSave.cpp" />
     <ClCompile Include="Source\Managers\CampaignScreen.cpp" />
+    <ClCompile Include="Source\Managers\StudioScenarios.cpp" />
     <ClCompile Include="Source\Managers\SandboxWorld.cpp" />
     <ClCompile Include="Source\Managers\SandboxLoadouts.cpp" />
     <ClCompile Include="Source\Managers\SandboxPlayer.cpp" />
