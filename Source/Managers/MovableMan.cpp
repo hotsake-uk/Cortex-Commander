@@ -91,6 +91,7 @@ MovableMan::~MovableMan() {
 }
 
 void MovableMan::Clear() {
+	m_SimUpdateFrameNumber = 0;
 	m_Actors.clear();
 	m_PublishedThreats.reset();
 	m_PublishedLifts.reset();

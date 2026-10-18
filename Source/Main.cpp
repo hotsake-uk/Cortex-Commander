@@ -596,8 +596,11 @@ void RunMenuLoop() {
 
 		g_UInputMan.EndFrame();
 		g_WindowMan.GetScreenBuffer()->Begin();
-		g_MenuMan.Draw();
-		g_ConsoleMan.Draw(g_FrameMan.GetBackBuffer32());
+		{
+			ScopedDrawRandomGenerator drawRandomGenerator;
+			g_MenuMan.Draw();
+			g_ConsoleMan.Draw(g_FrameMan.GetBackBuffer32());
+		}
 		g_WindowMan.GetScreenBuffer()->End();
 		g_WindowMan.UploadFrame();
 		s_StartupTiming.Report("the first menu frame");
@@ -850,6 +853,8 @@ void RunGameLoop() {
 
 		// Nothing is presented when headless, so there's no drawing to do.
 		if (!System::IsInHeadlessMode()) {
+			// Drawing runs however many times the frame rate allows, so what it does randomly mustn't use up the simulation's random numbers.
+			ScopedDrawRandomGenerator drawRandomGenerator;
 			{
 				PerformanceMan::LogScope logScope("Draw: FrameMan::Draw total", true);
 				g_FrameMan.Draw();

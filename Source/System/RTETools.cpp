@@ -11,6 +11,7 @@
 namespace RTE {
 
 	RandomGenerator g_RandomGenerator;
+	RandomGenerator g_DrawRandomGenerator;
 
 	namespace {
 		std::atomic<std::thread::id> s_SimThread{}; //!< The thread SeedRNG was last called on.
@@ -42,6 +43,7 @@ namespace RTE {
 		}();
 
 		g_RandomGenerator.Seed(constSeed + s_SeedOffset);
+		g_DrawRandomGenerator.Seed(constSeed);
 		s_SimThread.store(std::this_thread::get_id(), std::memory_order_relaxed);
 	}
 

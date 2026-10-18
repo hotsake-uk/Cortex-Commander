@@ -374,7 +374,7 @@ function BrainvsBrain:UpdateActivity()
 				end
 			end
 		else
-			if self.winTimer:IsPastRealMS(2000) then
+			if self.winTimer:IsPastSimMS(2000) then
 				-- Check win conditions
 				self.winTimer:Reset();
 

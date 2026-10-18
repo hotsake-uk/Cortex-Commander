@@ -587,6 +587,9 @@ namespace RTE {
 		/// @return Current sim update frame number.
 		unsigned int GetSimUpdateFrameNumber() const { return m_SimUpdateFrameNumber; }
 
+		/// Starts the count of sim updates GetSimUpdateFrameNumber gives over, as is done when an Activity starts, so what's scheduled by it plays out the same however much was played before.
+		void ResetSimUpdateFrameNumber() { m_SimUpdateFrameNumber = 0; }
+
 		/// Gets where every team's units stood when last published (see PublishThreats), for a route search to keep its searcher clear of its
 		/// enemies. The field is never changed once published: hold the pointer for as long as it's read, on any thread.
 		/// @return The field, or none before the first.

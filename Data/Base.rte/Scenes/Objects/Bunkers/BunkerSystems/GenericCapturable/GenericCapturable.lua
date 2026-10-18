@@ -62,7 +62,7 @@ function Create(self)
 	self.dominantTeam = self:NumberValueExists("dominantTeam") and self:GetNumberValue("dominantTeam") or self.Team;
 	
 	if self.dominantTeam ~= self.Team then -- if we are loaded after saving
-		self.actorCheckTimer.ElapsedRealTimeMS = self.actorCheckDelay * 10; -- just make sure we insta-check the actors asap to avoid funny stuff
+		self.actorCheckTimer.ElapsedSimTimeMS = self.actorCheckDelay * 10; -- just make sure we insta-check the actors asap to avoid funny stuff
 	end
 	
 	self.deactivateOnCapture = self:GetNumberValue("DeactivateOnCapture") == 1 and true or false;

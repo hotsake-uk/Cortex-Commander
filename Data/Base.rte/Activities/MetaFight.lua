@@ -659,7 +659,7 @@ function MetaFight:UpdateActivity()
 		end
 		messageBlink = 0;
 --			self:SetObservationTarget(Vector(0, 0), player);
-		if self.ScanTimer[Activity.TEAM_1]:IsPastRealMS(2000) then
+		if self.ScanTimer[Activity.TEAM_1]:IsPastSimMS(2000) then
 			self.CurrentScanStage = self.ScanStage.SCANNING;
 		end
 	-- Do actual scanning process for those teams that have scheduled it
@@ -668,7 +668,7 @@ function MetaFight:UpdateActivity()
 		for team = Activity.TEAM_1, Activity.MAXTEAMCOUNT - 1 do
 			if self:TeamActive(team) and SceneMan.Scene:IsScanScheduled(team) then
 				-- Time to do a scan step?
-				if self.ScanTimer[team]:IsPastRealMS(SceneMan:GetUnseenResolution(team).X) then
+				if self.ScanTimer[team]:IsPastSimMS(SceneMan:GetUnseenResolution(team).X) then
 					-- Scan the column, find the end where the ray is blocked
 					SceneMan:CastSeeRay(team, Vector(self.ScanPosX[team], 0), Vector(0, SceneMan.Scene.Height), self.ScanEndPos, 50, SceneMan:GetUnseenResolution(team).Y / 2);
 					-- Adjust up a bit so one sees more of the sky than blackness
@@ -715,7 +715,7 @@ function MetaFight:UpdateActivity()
 		end
 	-- After scan, pause for a second before moving on to gameplay
 	elseif self.CurrentScanStage == self.ScanStage.POSTSCAN then
-		if self.ScanTimer[Activity.TEAM_1]:IsPastRealMS(2500) then
+		if self.ScanTimer[Activity.TEAM_1]:IsPastSimMS(2500) then
 			for player = Activity.PLAYER_1, Activity.MAXPLAYERCOUNT - 1 do
 				if self:PlayerActive(player) and self:PlayerHuman(player) and SceneMan.Scene:IsScanScheduled(self:GetTeamOfPlayer(player)) then
 					FrameMan:ClearScreenText(self:ScreenOfPlayer(player));
@@ -873,7 +873,7 @@ function MetaFight:UpdateActivity()
 		-- Tactical AI team management
 		for team = Activity.TEAM_1, Activity.MAXTEAMCOUNT - 1 do
 			-- Only allow three orders per second, per AI team
-			if self:TeamActive(team) and self.TeamAIActive[team] and self.AIModeTimer[team]:IsPastRealMS(330) then
+			if self:TeamActive(team) and self.TeamAIActive[team] and self.AIModeTimer[team]:IsPastSimMS(330) then
 				self.AIModeTimer[team]:Reset();
 
 				-- Check if this team have selected a target to attack

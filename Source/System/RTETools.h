@@ -81,6 +81,7 @@ namespace RTE {
 	};
 
 	extern RandomGenerator g_RandomGenerator; //!< The global random number generator used in our simulation thread.
+	extern RandomGenerator g_DrawRandomGenerator; //!< The random number generator for drawing and audio, which must never take numbers from the simulation's, as how often they run differs from one machine and run to the next.
 
 	/// Seed global the global random number generators. The thread that calls it is taken as the simulation thread (see ThisThreadsRandomGenerator).
 	void SeedRNG();
@@ -99,6 +100,16 @@ namespace RTE {
 	/// The Lua states set their own while their threaded updates and AI run, so which worker thread happens to run which state doesn't change the numbers anything gets.
 	/// @param randomGenerator The random number generator to use, or nullptr to go back to the usual one. Ownership is NOT transferred!
 	void SetThreadRandomGenerator(RandomGenerator* randomGenerator);
+
+	/// While one of these exists, the global random functions called from this thread use g_DrawRandomGenerator instead of the simulation's.
+	/// Made around drawing, which runs a different number of times per sim update depending on frame rate, so whatever it draws randomly doesn't use up the simulation's numbers.
+	class ScopedDrawRandomGenerator {
+	public:
+		ScopedDrawRandomGenerator() { SetThreadRandomGenerator(&g_DrawRandomGenerator); }
+		~ScopedDrawRandomGenerator() { SetThreadRandomGenerator(nullptr); }
+		ScopedDrawRandomGenerator(const ScopedDrawRandomGenerator&) = delete;
+		ScopedDrawRandomGenerator& operator=(const ScopedDrawRandomGenerator&) = delete;
+	};
 
 	// TODO: Maybe remove these passthrough functions and force the user to manually specify if they want the simulation thread random,
 	// Or, in future, a render-thread random, as right now determinism isn't viable because framerate affects sim updates per draw

@@ -23,6 +23,7 @@
 #include "Activity.h"
 #include "Scene.h"
 #include "SLTerrain.h"
+#include "MovableObject.h"
 
 #include "RTEError.h"
 #include "RTETools.h"

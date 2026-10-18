@@ -299,6 +299,7 @@ int Activity::Start() {
 	// Reseed the RNG for determinism
 	SeedRNG();
 	g_LuaMan.ResetForActivityStart();
+	g_MovableMan.ResetSimUpdateFrameNumber();
 
 	if (m_ActivityState != ActivityState::Editing) {
 		m_ActivityState = ActivityState::Running;

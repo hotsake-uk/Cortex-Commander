@@ -2705,6 +2705,10 @@ void Scene::UpdatePathFinding() {
 	// The node costs can't change under a path that is being worked out, so wait for requests in flight; but not for ever: with units asking for paths
 	// every frame the grid never got updated at all, so after a moment the requests are waited out instead.
 	static Timer starvedTimer;
+	// With requests set to complete immediately (as for determinism), which of them are still running here is down to thread timing, and so whether the grid gets updated: wait for them.
+	if (g_SettingsMan.GetForceImmediatePathingRequestCompletion()) {
+		BlockUntilAllPathingRequestsComplete();
+	}
 	bool requestsInFlight = false;
 	for (int team = Activity::Teams::NoTeam; team < Activity::Teams::MaxTeamCount; ++team) {
 		if (GetPathFinder(static_cast<Activity::Teams>(team)).GetCurrentPathingRequests() != 0) {
@@ -3012,7 +3016,8 @@ void Scene::Update() {
 	}
 
 	// Often: the grid should take in a change to the terrain within a few frames.
-	if (m_PartialPathUpdateTimer.IsPastRealMS(33)) {
+	// (By sim time: by real time, how often it ran depended on the frame rate, and the grid with it.)
+	if (m_PartialPathUpdateTimer.IsPastSimMS(33)) {
 		UpdatePathFinding();
 	}
 }
