@@ -204,6 +204,8 @@ namespace RTE {
 			Vector ScreenOcclusion; //!< The amount a screen is occluded or covered by GUI, etc.
 
 			float ScreenShakeMagnitude = 0; //!< The magnitude of screen shake that is currently being applied.
+			float ScreenShakeTime = 0; //!< Real seconds of shaking so far, driving the shake's smooth noise.
+			Vector ScreenShakeOffset; //!< The shake currently added to Offset, taken back out before the next update so shake never drifts the view.
 
 			std::vector<Camera> Cameras;
 		};
