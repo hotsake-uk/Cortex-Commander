@@ -12,6 +12,8 @@
 
 #include "tracy/Tracy.hpp"
 
+#include <map>
+
 using namespace RTE;
 
 namespace {
@@ -371,7 +373,8 @@ float AtomGroup::Travel(Vector& position, Vector& velocity, Matrix& rotation, fl
 	HitData hitData;
 
 	// Thread locals for performance (avoid memory allocs)
-	thread_local std::unordered_map<MOID, std::vector<Atom*>> hitMOAtoms;
+	// Ordered by MOID, as the hits on each MO are worked out and added up in this order, and an unordered map's order is up to the standard library, which differs between platforms.
+	thread_local std::map<MOID, std::vector<Atom*>> hitMOAtoms;
 	hitMOAtoms.clear();
 	thread_local std::vector<Atom*> hitTerrAtoms;
 	hitTerrAtoms.clear();
@@ -817,7 +820,8 @@ Vector AtomGroup::PushTravel(Vector& position, const Vector& velocity, float pus
 	// Thread locals for performance reasons (avoid memory allocs)
 	thread_local std::unordered_map<MOID, std::unordered_set<Atom*>> MOIgnoreMap;
 	MOIgnoreMap.clear();
-	thread_local std::unordered_map<MOID, std::vector<std::pair<Atom*, Vector>>> hitMOAtoms;
+	// Ordered by MOID for the same reason as in Travel.
+	thread_local std::map<MOID, std::vector<std::pair<Atom*, Vector>>> hitMOAtoms;
 	hitMOAtoms.clear();
 	thread_local std::deque<std::pair<Atom*, Vector>> hitTerrAtoms;
 	hitTerrAtoms.clear();
