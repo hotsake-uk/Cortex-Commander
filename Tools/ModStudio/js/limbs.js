@@ -46,7 +46,7 @@ window.MS = window.MS || {};
 			start: { x: start.x, y: start.y },
 			segments: sub.all('AddSegment').map((e) => MS.readVector(e.node)).map((v) => ({ x: v.x, y: v.y })),
 			startSegCount: Math.round(sub.num('StartSegCount', 0)),
-			speed: sub.num('TravelSpeed', sub.num('NormalTravelSpeed', 1)),
+			speed: MS.target.get().legacyLimbs ? sub.num('NormalTravelSpeed', 1) : sub.num('TravelSpeed', sub.num('NormalTravelSpeed', 1)),
 			shared: !!(part.ent.sourceOf(key) && part.ent.sourceOf(key).child('CopyOf')),
 			sub,
 		};
@@ -76,7 +76,8 @@ window.MS = window.MS || {};
 				seg.add('X', MS.formatNumber(s.x));
 				seg.add('Y', MS.formatNumber(s.y));
 			}
-			node.add('TravelSpeed', MS.formatNumber(model.speed));
+			// 6.2.2's paths take NormalTravelSpeed (with Slow and Fast); later games take TravelSpeed
+			node.add(MS.target.commanderOnly('LimbPath', 'TravelSpeed') ? 'NormalTravelSpeed' : 'TravelSpeed', MS.formatNumber(model.speed));
 			for (const k of keep) {
 				const n = node.add(k.key, k.value);
 				const copy = (src, dst) => {
@@ -269,7 +270,8 @@ window.MS = window.MS || {};
 		};
 
 		const kinds = () => {
-			list.replaceChildren(...KINDS.map(([key, label, help]) => {
+			// the walk paths the target game reads (6.2.2 has no running path, only Commander walks crouched)
+			list.replaceChildren(...KINDS.filter(([key]) => !MS.target.commanderOnly(body().ent.cls, key)).map(([key, label, help]) => {
 				const present = !!body().ent.sub(key);
 				return el('button', { className: 'limb-kind' + (state.key === key ? ' sel' : '') + (present ? '' : ' none'), title: help, onclick: () => { state.key = key; state.time = 0; reload(); refresh(); } },
 					el('span', { textContent: label }), el('small', { textContent: present ? readModel(body(), key).segments.length + ' steps' : 'not set' }));

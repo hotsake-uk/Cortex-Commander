@@ -1,0 +1,7 @@
+{
+	"id": "ce-nightly",
+	"name": "Community Edition nightly",
+	"version": "7.0.0",
+	"ref": "nightly",
+	"commit": "20dfb3ea57c916e94fdeb94a5cf871c80fd5fc36"
+}

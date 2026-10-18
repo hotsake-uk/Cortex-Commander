@@ -54,8 +54,9 @@
 			<button data-mode="deep">Script</button>
 		</div>
 		<button class="tb" id="btnNew" title="Make a new unit, craft, gun, grenade or mod, starting from one in the game">+ New…</button>
-		<button class="tb" id="btnMissions" title="Missions: draw a scenario's areas on its map, and build what happens in it">⚑ Missions</button>
+		<button class="tb commander-only" id="btnMissions" title="Missions: draw a scenario's areas on its map, and build what happens in it">⚑ Missions</button>
 		<button class="tb ghost scope-btn" id="btnScope" title="The mod you are working on (your project). The lists, files and search show just this mod; the Library shows everything.">Choose a project ▾</button>
+		<button class="tb ghost target-badge" id="targetBadge" hidden></button>
 		<div class="doc-title" id="docTitle"></div>
 		<button class="tb ghost" id="btnCopy" title="Make your own unit from this one, in your mod" disabled><span class="wide">Make my own copy</span><span class="narrow">My copy</span></button>
 		<div class="spacer"></div>
@@ -71,14 +72,14 @@
 			<button id="btnHistory" title="Back up a whole mod, and put a backup back" hidden>Backups…</button>
 		</div>
 		<span class="sep"></span>
-		<button class="tb" id="btnLive" title="Live: send every change to the game as you make it. Open one of your own units to use it." disabled>● Live</button>
-		<button class="tb" id="btnPreview" title="Save, then show this unit in the game's Actor Editor. Open one of your own units to use it." disabled>Preview<span class="wide"> in game</span></button>
-		<button class="tb" id="btnSpawn" title="Put the open unit or item into the game that is running from Studio, next to the unit you control" disabled>Spawn</button><button class="tb" id="btnGive" title="Put the open item in the inventory of the unit you control in the running game" hidden disabled>Give</button>
+		<button class="tb commander-only" id="btnLive" title="Live: send every change to the game as you make it. Open one of your own units to use it." disabled>● Live</button>
+		<button class="tb commander-only" id="btnPreview" title="Save, then show this unit in the game's Actor Editor. Open one of your own units to use it." disabled>Preview<span class="wide"> in game</span></button>
+		<button class="tb commander-only" id="btnSpawn" title="Put the open unit or item into the game that is running from Studio, next to the unit you control" disabled>Spawn</button><button class="tb commander-only" id="btnGive" title="Put the open item in the inventory of the unit you control in the running game" hidden disabled>Give</button>
 		<span class="sep"></span>
 		<div class="split-btn" id="runSplit" hidden>
 			<button class="tb primary" id="btnRun"></button><button class="tb primary caret" id="btnRunMenu" title="Other ways to start the game">▾</button>
 		</div>
-		<button class="tb" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
+		<button class="tb commander-only" id="btnGame" title="The Game screen: versions, builds, launch settings and the setup (Cortex Studio)" hidden>Game</button>
 		<button class="tb icon" id="btnHelp" title="How to use Studio">?</button>
 	</header>
 
@@ -243,13 +244,13 @@
 	<section id="bottom">
 		<div id="panelResize" title="Drag to resize"></div>
 		<div id="bottomTabs">
-			<button data-panel="console" class="sel">Console <span class="badge-n bad" id="consoleBadge" hidden></span></button>
+			<button data-panel="console" class="sel commander-only">Console <span class="badge-n bad" id="consoleBadge" hidden></span></button>
 			<button data-panel="problems">Problems <span class="badge-n" id="problemsBadge" hidden></span></button>
-			<button data-panel="watch">Watch</button>
-			<button data-panel="profiler" title="How fast the game started from Studio runs, and what takes the time">Profiler</button>
-			<button data-panel="inspector" title="Look inside the game started from Studio: every actor, the one you pick in detail, pause and step">Inspector</button>
+			<button data-panel="watch" class="commander-only">Watch</button>
+			<button data-panel="profiler" class="commander-only" title="How fast the game started from Studio runs, and what takes the time">Profiler</button>
+			<button data-panel="inspector" class="commander-only" title="Look inside the game started from Studio: every actor, the one you pick in detail, pause and step">Inspector</button>
 			<span class="spacer"></span>
-			<button class="ico-btn" id="btnReloadScripts" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
+			<button class="ico-btn commander-only" id="btnReloadScripts" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
 			<button class="ico-btn" id="btnConsoleClear" title="Clear the console">Clear</button>
 			<button class="ico-btn" id="btnPanelToggle" title="Hide the panel (Ctrl+J)">▾</button>
 		</div>
@@ -275,7 +276,7 @@
 		<button class="layout-btn" id="btnView" title="Hide or show the unit view, to give the properties the room while the game shows the unit (V)">◧ Hide view</button>
 		<span id="statusText">Open the game folder to begin.</span>
 		<span class="spacer"></span>
-		<button class="status-btn" id="btnStatusReload" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
+		<button class="status-btn commander-only" id="btnStatusReload" title="Reload every script in the game, which restarts every scripted object (saving a script reloads only that one)">↻ Reload scripts</button>
 		<button class="status-btn" id="btnStatusPanel" title="Show the console, problems and watch panel (Ctrl+J)">▴ Console <span class="badge-n bad" id="statusConsoleBadge" hidden></span></button>
 		<span id="statusCursor"></span>
 		<span id="statusLang"></span>

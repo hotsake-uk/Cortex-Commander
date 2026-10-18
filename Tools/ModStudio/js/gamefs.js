@@ -289,6 +289,11 @@ window.MS = window.MS || {};
 
 		// Writes a file by its path from the game folder ("ModStudio/Preview.ini").
 		async writeDisk(disk, data) {
+			// Studio's requests to a game linked to it (ModStudio/Preview.ini...): a Community Edition game never reads them, so its
+			// folder isn't given them
+			if (MS.target && MS.target.classic() && /^modstudio\//i.test(disk)) {
+				return;
+			}
 			const bytes = typeof data === 'string' ? new TextEncoder().encode(data) : data;
 			if (this.server) {
 				await this.api('PUT', 'file', disk, bytes);

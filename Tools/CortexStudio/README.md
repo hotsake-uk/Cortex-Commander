@@ -46,6 +46,9 @@ Then:
   then checks the version out at that commit again (new files in `Data` go too) and makes your mods folder the backup again.
   **Lock again** keeps your changes. Update & build waits while it's unlocked, since it moves the version to another commit.
 
+A Community Edition release folder (6.2.2 or the nightly) opens in Classic mode (see `Tools/ModStudio/README.md`): there is no Game
+screen, **▶ Play** starts the release where it is (`launch_release` in `launcher.rs`), and its ▾ has the game's editors.
+
 Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper warn the first time it's opened ("More info",
 "Run anyway" on Windows; right-click, Open on macOS).
 
@@ -59,10 +62,8 @@ Installers aren't code-signed yet, so Windows SmartScreen and macOS Gatekeeper w
 - `src-tauri/src/watcher.rs`: the file bridge. A `.lua` or `.ini` saved outside Studio in `Data` or `Mods` is written to
   `ModStudio/Scripts.ini` as `ReloadScript` or `ReloadFile` for a game started with `-modstudio`, and listed for the page.
   Studio's own saves are left alone.
-- `src-tauri/src/history.rs`: each mod's history, with libgit2 built in (the `git2` crate, vendored), so nobody needs git for it.
-  A git folder per mod in `CortexStudio/History/<mod>.git`, with the mod's folder as its work tree: the mod as it was before Studio
-  first changed it, then a commit per save or delete. Restores are written by the page as normal saves (in place, so the hard links
-  between your mods folder and the versions stay one file).
+- `src-tauri/src/backup.rs`: backups of a whole mod, a copy of its folder taken when you ask, in `CortexStudio/Backups/<mod>/` in your
+  config folder. A restore puts the folder back as it was (after backing up how it is now).
 - `src-tauri/src/launcher.rs`: the Game screen's work (setup check, versions, builds, launching), ported from `Tools/Launcher`,
   answering the server's `launcher/...` requests. The screen itself is `Tools/ModStudio/js/launcher.js`.
 - `src-tauri/src/main.rs`: finds the game folder (remembered in `CortexStudio/settings.json` in the user's config folder),

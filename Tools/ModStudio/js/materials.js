@@ -200,6 +200,11 @@ window.MS = window.MS || {};
 		const indexInput = el('input', { type: 'number', min: 0, max: 255, className: 'ed-input num', value: index, disabled: ro });
 		indexInput.onchange = () => set('number', 'Index', Math.max(0, Math.min(255, Math.round(Number(indexInput.value) || 0))));
 		const groups = GROUPS.map(([title, fields]) => {
+			// only what the target game's materials have (Community Edition's don't flow, burn or shine)
+			fields = fields.filter(([key]) => !MS.target.commanderOnly('Material', key));
+			if (!fields.length) {
+				return [];
+			}
 			const rows = fields.map(([key, label, help, kind]) => {
 				const own = p.node.child(key);
 				const now = e.str(key, '');

@@ -477,7 +477,8 @@ window.MS = window.MS || {};
 			const index = new MS.IniDoc(moduleName + '/Index.ini');
 			const dm = index.root.add('DataModule', '');
 			dm.add('ModuleName', module.title);
-			dm.add('SupportedGameVersion', '6.0.0');
+			// the game the mod is for: a version it loads for (Community Edition refuses a mod made for another major version)
+			dm.add('SupportedGameVersion', MS.target.get().supportedGameVersion);
 			dm.add('Version', '1');
 			dm.add('Description', 'Made with Cortex Mod Studio.');
 			this.adoptDoc(index);

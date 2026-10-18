@@ -979,7 +979,7 @@ window.MS = window.MS || {};
 			row('On the planet', 'x', numberField(loc.x, '0', ro, (v) => own('Move it on the planet', () => p.node.setVector('LocationOnPlanet', Number(v) || 0, loc.y))), 'y', numberField(loc.y, '0', ro, (v) => own('Move it on the planet', () => p.node.setVector('LocationOnPlanet', loc.x, Number(v) || 0)))),
 			row('Gravity (down)', numberField(gravity.y, '20', ro, (v) => own('Change gravity', () => p.node.setVector('GlobalAcceleration', gravity.x, Number(v) || 0))), el('small', { textContent: '20 is the usual, 0 floats' })),
 			row('', el('label', { className: 'ed-check' }, playable, 'Campaigns can use this scene')),
-			el('div', { className: 'ed-label', textContent: 'Sky and weather' }), ...atmosphere(p, info.ent, ro),
+			MS.target.classic() ? null : el('div', { className: 'ed-label', textContent: 'Sky and weather' }), ...(MS.target.classic() ? [] : atmosphere(p, info.ent, ro)),
 			el('div', { className: 'ed-label', textContent: 'Backdrops, nearest first (' + info.layers.length + ')' }), ...layerRows, el('div', { className: 'ed-row' }, addLayer),
 			el('div', { className: 'ed-label', textContent: 'Areas (' + info.areas.length + ')' }), ...areaRows, el('div', { className: 'ed-row' }, addArea));
 	}
