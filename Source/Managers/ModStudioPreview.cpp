@@ -711,7 +711,32 @@ void ModStudioPreview::RecordHit(const Actor* victim, const MovableObject* hitor
 
 void ModStudioPreview::UpdateScripts() {
 	const std::chrono::steady_clock::time_point now = std::chrono::steady_clock::now();
-	if (!s_InGame || now - s_LastScriptCheck < std::chrono::milliseconds(250)) {
+	bool justLinked = false;
+	if (!s_InGame) {
+		// A game not started from Mod Studio still hears it, cheaply: twice a second it looks whether Studio has asked for something (Play in
+		// the game, run this Lua) since the game started, and the first such request switches the whole link on and is handled at once.
+		if (now - s_LastScriptCheck < std::chrono::milliseconds(500)) {
+			return;
+		}
+		s_LastScriptCheck = now;
+		std::error_code requestError;
+		std::filesystem::file_time_type requestTime = std::filesystem::last_write_time(StudioFolder() / "Scripts.ini", requestError);
+		if (requestError) {
+			requestTime = std::filesystem::file_time_type();
+		}
+		if (!s_ScriptsLookedAt) {
+			s_ScriptsLookedAt = true;
+			s_ScriptsWriteTime = requestTime;
+			return;
+		}
+		if (requestError || requestTime == s_ScriptsWriteTime) {
+			return;
+		}
+		EnableInGame();
+		justLinked = true;
+		g_ConsoleMan.PrintString("SYSTEM: Mod Studio asked for something, so this game is linked to it now.");
+	}
+	if (!justLinked && now - s_LastScriptCheck < std::chrono::milliseconds(250)) {
 		return;
 	}
 	s_LastScriptCheck = now;

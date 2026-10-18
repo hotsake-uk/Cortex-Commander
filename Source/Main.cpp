@@ -531,6 +531,14 @@ void RunMenuLoop() {
 			break;
 		}
 
+		// Mod Studio heard in the menus too: a request it sends (Play in the game) that starts a game takes the menus away for it.
+		const Activity* activityBefore = g_ActivityMan.GetActivity();
+		ModStudioPreview::UpdateScripts();
+		if (g_ActivityMan.IsInActivity() && g_ActivityMan.GetActivity() != activityBefore) {
+			g_UInputMan.EndFrame();
+			break;
+		}
+
 		g_ConsoleMan.Update();
 
 		g_UInputMan.EndFrame();
