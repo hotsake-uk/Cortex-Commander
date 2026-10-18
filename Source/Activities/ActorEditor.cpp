@@ -16,6 +16,7 @@
 #include "HeldDevice.h"
 #include "Scene.h"
 #include "DataModule.h"
+#include "ModStudioLink.h"
 
 #include "ObjectPickerGUI.h"
 
@@ -34,6 +35,7 @@ ActorEditor::~ActorEditor() {
 void ActorEditor::Clear() {
 	m_pEditedActor = 0;
 	m_pPicker = 0;
+	m_ModStudioPreviewTime = {};
 }
 
 int ActorEditor::Create() {
@@ -111,6 +113,11 @@ void ActorEditor::End() {
 }
 
 void ActorEditor::Update() {
+	if (ModStudioLink::IsEnabled() && m_ModStudioPreviewTimer.IsPastRealMS(400)) {
+		m_ModStudioPreviewTimer.Reset();
+		CheckModStudioPreview();
+	}
+
 	// And object hasn't been loaded yet, so get the loading picker going
 	if (!m_pEditedActor) {
 		m_NeedSave = false;
@@ -202,6 +209,18 @@ void ActorEditor::DrawGUI(BITMAP* pTargetBitmap, const Vector& targetPos, int wh
 
 void ActorEditor::Draw(BITMAP* pTargetBitmap, const Vector& targetPos) {
 	EditorActivity::Draw(pTargetBitmap, targetPos);
+}
+
+void ActorEditor::CheckModStudioPreview() {
+	Actor* actor = ModStudioLink::TakePreviewRequest(m_ModStudioPreviewTime);
+	if (!actor) {
+		return;
+	}
+	const bool loaded = LoadActor(actor);
+	delete actor; // LoadActor keeps a copy of its own.
+	if (loaded) {
+		m_pPicker->SetEnabled(false);
+	}
 }
 
 bool ActorEditor::LoadActor(const Entity* pActorToLoad) {

@@ -7,6 +7,9 @@
 /// Inclusions of header files
 #include "RTETools.h"
 #include "EditorActivity.h"
+#include "Timer.h"
+
+#include <filesystem>
 
 namespace RTE {
 
@@ -112,6 +115,9 @@ namespace RTE {
 		/// @return Whether the data file was successfully read.
 		bool ReloadActorData();
 
+		/// In a game started with -modstudio, loads the actor Cortex Mod Studio asks for in ModStudio/Preview.ini, if it asked since last time.
+		void CheckModStudioPreview();
+
 		// Member variables
 		static Entity::ClassInfo m_sClass;
 
@@ -119,6 +125,10 @@ namespace RTE {
 		Actor* m_pEditedActor;
 		// The picker for selecting which object to load
 		ObjectPickerGUI* m_pPicker;
+		// How often to look for a Mod Studio preview request.
+		Timer m_ModStudioPreviewTimer;
+		// When the last Mod Studio preview request handled was written.
+		std::filesystem::file_time_type m_ModStudioPreviewTime;
 
 		/// Private member variable and method declarations
 	private:

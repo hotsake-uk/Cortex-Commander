@@ -215,6 +215,83 @@ void ModStudioLink::Update() {
 	HandleInspector();
 }
 
+Actor* ModStudioLink::TakePreviewRequest(std::filesystem::file_time_type& lastWriteTime) {
+	if (!s_Enabled) {
+		return nullptr;
+	}
+	const std::filesystem::path requestPath = LinkFolder() / "Preview.ini";
+	std::error_code error;
+	const std::filesystem::file_time_type writeTime = std::filesystem::last_write_time(requestPath, error);
+	if (error || writeTime == lastWriteTime) {
+		return nullptr;
+	}
+	std::ifstream requestFile(requestPath);
+	if (!requestFile.good()) {
+		return nullptr; // Still being written, most likely; try again next time.
+	}
+	lastWriteTime = writeTime;
+
+	std::string className;
+	std::string presetName;
+	std::string moduleName;
+	std::string deviceClass;
+	std::string devicePreset;
+	std::string deviceModule;
+	std::vector<std::string> filesToReload;
+	std::string line;
+	while (std::getline(requestFile, line)) {
+		const size_t equalsPos = line.find('=');
+		if (equalsPos == std::string::npos) {
+			continue;
+		}
+		const std::string key = TrimSpaces(line.substr(0, equalsPos));
+		const std::string value = TrimSpaces(line.substr(equalsPos + 1));
+		if (key == "Class") {
+			className = value;
+		} else if (key == "Preset") {
+			presetName = value;
+		} else if (key == "Module") {
+			moduleName = value;
+		} else if (key == "ReloadFile" && !value.empty()) {
+			filesToReload.push_back(value);
+		} else if (key == "DeviceClass") {
+			deviceClass = value;
+		} else if (key == "DevicePreset") {
+			devicePreset = value;
+		} else if (key == "DeviceModule") {
+			deviceModule = value;
+		}
+	}
+	if (className.empty() || presetName.empty()) {
+		return nullptr;
+	}
+	if (!moduleName.empty() && g_PresetMan.GetModuleID(moduleName) < 0) {
+		g_ConsoleMan.PrintString("WARNING: Mod Studio asked for \"" + presetName + "\" from " + moduleName + ", which isn't loaded. New modules load when the game starts.");
+		return nullptr;
+	}
+	for (const std::string& file: filesToReload) {
+		ReloadChangedFile(file);
+	}
+	const Entity* preset = g_PresetMan.GetEntityPreset(className, presetName, moduleName.empty() ? -1 : g_PresetMan.GetModuleID(moduleName));
+	Actor* actor = preset ? dynamic_cast<Actor*>(preset->Clone()) : nullptr;
+	if (!actor) {
+		g_ConsoleMan.PrintString("WARNING: Mod Studio asked for the " + className + " \"" + presetName + "\", but it can't be found.");
+		return nullptr;
+	}
+	// The item picked in the tool goes in the actor's hands; what it carries already stays in its inventory.
+	if (AHuman* human = dynamic_cast<AHuman*>(actor); human && !devicePreset.empty()) {
+		const Entity* deviceEntity = g_PresetMan.GetEntityPreset(deviceClass.empty() ? "HDFirearm" : deviceClass, devicePreset, deviceModule.empty() ? -1 : g_PresetMan.GetModuleID(deviceModule));
+		if (HeldDevice* device = deviceEntity ? dynamic_cast<HeldDevice*>(deviceEntity->Clone()) : nullptr) {
+			human->AddInventoryItem(device);
+			human->EquipNamedDevice(devicePreset, true);
+		} else {
+			g_ConsoleMan.PrintString("WARNING: Mod Studio asked for \"" + devicePreset + "\" to be held, but it can't be found.");
+		}
+	}
+	g_ConsoleMan.PrintString("SYSTEM: Showing \"" + presetName + "\" from Mod Studio.");
+	return actor;
+}
+
 void ModStudioLink::Watch(const std::string& name, const std::string& value) {
 	if (!s_Enabled) {
 		return;

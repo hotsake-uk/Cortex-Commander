@@ -6,6 +6,8 @@
 
 namespace RTE {
 
+	class Actor;
+
 	/// The game's side of the link to Cortex Mod Studio (or any tool that speaks the same files), on only when the game is started with
 	/// -modstudio. The link is a few plain files in the ModStudio folder next to the game: the tool writes a request and the game reads it
 	/// once a frame (or every few hundred milliseconds), and the game writes what the tool shows. Nothing here changes the simulation unless
@@ -26,6 +28,9 @@ namespace RTE {
 	///                           seconds old, the inspector lets go: a tool that closes doesn't leave the game held.
 	///   ModStudio/World.ini     Four times a second while the inspector is open: whether the sim is paused, the actors (one line each), and
 	///                           the selected actor's values, scripts, inventory and parts. It ends with "End = 1".
+	///   ModStudio/Preview.ini   From the tool, for the Actor Editor: "Class", "Preset" and "Module" name the actor to show, "ReloadFile"
+	///                           lines name the files saved since the last request (read again first), and "DeviceClass", "DevicePreset" and
+	///                           "DeviceModule" name an item to put in an AHuman's hands.
 	///
 	/// The files the game writes are written to a temporary file first and swapped in, so the tool never reads half of one.
 	class ModStudioLink {
@@ -48,6 +53,12 @@ namespace RTE {
 		/// Called after each sim update's MovableMan update: adds up the scripts' time for Profile.ini (written twice a second), and outlines
 		/// the actor selected in the inspector.
 		static void UpdateAfterSim();
+
+		/// Called by the Actor Editor a few times a second: when ModStudio/Preview.ini was written since the time given, reloads the files it
+		/// lists and makes the actor it asks for. What goes wrong is printed to the console.
+		/// @param lastWriteTime When the last request handled was written. Moved on when a new one is read.
+		/// @return A new copy of the actor, owned by the caller, or nullptr when there's no new request or the actor can't be made.
+		static Actor* TakePreviewRequest(std::filesystem::file_time_type& lastWriteTime);
 
 		/// StudioWatch(name, value) in Lua: shows a value in the tool's Watch panel. Any thread can call it.
 		/// @param name The value's name.
