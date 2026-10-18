@@ -280,6 +280,8 @@ namespace RTE {
 		GLTarget m_RoundedNormals; //!< The player screen's normals with metallic and glossy objects rounded off (see SurfaceRound.frag).
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
+		GLTarget m_FogOfWar; //!< The part of the screen's team's unseen layer around the screen, R 1 where unseen (UploadFogOfWar).
+		std::vector<unsigned char> m_FogOfWarTexels; //!< Its texels, built on the CPU.
 		GLTarget m_PaperMask; //!< 1 where the paper grain may go when it's on the backdrop only (LightingSettings::RetroLayers::PaperBackgroundOnly).
 		GLTarget m_OutlineRows; //!< Unit outlines: per pixel, the distance along its row to the nearest unit pixel, its side, and whether a stroke may go there (see UnitOutlineRow.frag).
 		GLTarget m_GodRays; //!< Half resolution light shafts.
@@ -354,6 +356,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_RetroSceneShader;
 		std::unique_ptr<Shader> m_AfterglowShader;
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
+		std::unique_ptr<Shader> m_FogOfWarShader;
 		std::unique_ptr<Shader> m_ScorchShader;
 		std::unique_ptr<Shader> m_StainShader;
 		std::unique_ptr<Shader> m_DecalFadeShader;
@@ -401,6 +404,16 @@ namespace RTE {
 
 		/// Sets the point light shader's terrain distance field uniforms and binds the field to unit 4. The shader must be enabled.
 		void SetShadowFieldUniforms() const;
+
+		/// Uploads the part of a player screen's team's unseen layer (fog of war) around the screen into m_FogOfWar, with a texel to spare all round.
+		/// @param screenIndex The player screen.
+		/// @param origin World position of the screen's top left pixel.
+		/// @param width The screen's width.
+		/// @param height The screen's height.
+		/// @param texelOrigin Set to the unseen layer pixel the texture starts at.
+		/// @param scale Set to the scene pixels per unseen layer pixel.
+		/// @return Whether the screen's team has fog of war, and so whether there's anything to draw.
+		bool UploadFogOfWar(int screenIndex, glm::vec2 origin, int width, int height, glm::vec2& texelOrigin, glm::vec2& scale);
 		void PropagateSkyLight(int iterations);
 		void StampScorchMarks();
 		void StampStains();

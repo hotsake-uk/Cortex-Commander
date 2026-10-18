@@ -19,6 +19,9 @@
 #include "FrameMan.h"
 #include "DebugMan.h"
 #include "SettingsMan.h"
+#include "CameraMan.h"
+#include "Scene.h"
+#include "SceneLayer.h"
 #include <array>
 #include <optional>
 
@@ -139,6 +142,7 @@ void SceneLighting::LoadShaders() {
 	m_RetroSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RetroScene.frag");
 	m_AfterglowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Afterglow.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
+	m_FogOfWarShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/FogOfWar.frag");
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_WeatherEverywhereShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WeatherEverywhere.frag");
 	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
@@ -409,6 +413,7 @@ void SceneLighting::DestroyScreenResources() {
 	m_Distortion.Destroy();
 	m_OutlineRows.Destroy();
 	m_PaperMask.Destroy();
+	m_FogOfWar.Destroy();
 	m_GodRays.Destroy();
 	for (GLTarget& mip: m_IndirectMips) {
 		mip.Destroy();
@@ -2019,6 +2024,53 @@ void SceneLighting::DrawQuads(size_t firstQuad, size_t quadCount) {
 	GL_CHECK(glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(quadCount * 6), GL_UNSIGNED_INT, reinterpret_cast<void*>(firstQuad * 6 * sizeof(GLuint))));
 }
 
+bool SceneLighting::UploadFogOfWar(int screenIndex, glm::vec2 origin, int width, int height, glm::vec2& texelOrigin, glm::vec2& scale) {
+	const Scene* scene = g_SceneMan.GetScene();
+	int team = g_CameraMan.GetScreenTeam(screenIndex);
+	SceneLayer* unseenLayer = (scene && team != Activity::NoTeam) ? scene->GetUnseenLayer(team) : nullptr;
+	BITMAP* unseen = unseenLayer ? unseenLayer->GetBitmap() : nullptr;
+	if (!unseen || bitmap_color_depth(unseen) != 8) {
+		return false;
+	}
+	scale = glm::vec2(static_cast<float>(unseenLayer->GetScaleFactor().GetX()), static_cast<float>(unseenLayer->GetScaleFactor().GetY()));
+	if (scale.x <= 0.0F || scale.y <= 0.0F) {
+		return false;
+	}
+	int startX = static_cast<int>(std::floor(origin.x / scale.x)) - 1;
+	int startY = static_cast<int>(std::floor(origin.y / scale.y)) - 1;
+	int texelsWide = static_cast<int>(std::ceil(static_cast<float>(width) / scale.x)) + 3;
+	int texelsHigh = static_cast<int>(std::ceil(static_cast<float>(height) / scale.y)) + 3;
+	texelOrigin = glm::vec2(static_cast<float>(startX), static_cast<float>(startY));
+	if (m_FogOfWar.Width != texelsWide || m_FogOfWar.Height != texelsHigh || !m_FogOfWar.Texture) {
+		m_FogOfWar.Create(texelsWide, texelsHigh, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, false);
+	}
+	// Read only, for drawing: the unseen layer is the game's, and nothing here changes it.
+	bool wrapsX = g_SceneMan.SceneWrapsX();
+	bool wrapsY = g_SceneMan.SceneWrapsY();
+	m_FogOfWarTexels.resize(static_cast<size_t>(texelsWide) * texelsHigh);
+	bool anyUnseen = false;
+	for (int row = 0; row < texelsHigh; ++row) {
+		int y = startY + row;
+		y = wrapsY ? ((y % unseen->h) + unseen->h) % unseen->h : std::clamp(y, 0, unseen->h - 1);
+		const unsigned char* line = unseen->line[y];
+		unsigned char* texels = &m_FogOfWarTexels[static_cast<size_t>(row) * texelsWide];
+		for (int column = 0; column < texelsWide; ++column) {
+			int x = startX + column;
+			x = wrapsX ? ((x % unseen->w) + unseen->w) % unseen->w : std::clamp(x, 0, unseen->w - 1);
+			texels[column] = line[x] != g_MaskColor ? 255 : 0;
+			anyUnseen |= texels[column] != 0;
+		}
+	}
+	if (!anyUnseen) {
+		return false;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_FogOfWar.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, texelsWide, texelsHigh, GL_RED, GL_UNSIGNED_BYTE, m_FogOfWarTexels.data());
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	return true;
+}
+
 void SceneLighting::DrawFullscreen() const {
 	glBindVertexArray(m_FullscreenVAO);
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
@@ -3245,6 +3297,25 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
 		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		glDisable(GL_BLEND);
+	}
+
+	// Fog of war: the unseen layer was drawn over the scene, but the lights, glows, beams, weather and god rays added since would show through it.
+	if (glm::vec2 fogTexelOrigin, fogScale; UploadFogOfWar(screenIndex, origin, width, height, fogTexelOrigin, fogScale)) {
+		TracyGpuZone("Fog Of War");
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFuncSeparate(GL_ZERO, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+		m_FogOfWarShader->Enable();
+		m_FogOfWarShader->SetInt("rteFog", 0);
+		m_FogOfWarShader->SetVector2f("rteFogTexelOrigin", fogTexelOrigin);
+		m_FogOfWarShader->SetVector2f("rteFogScale", fogScale);
+		m_FogOfWarShader->SetVector2f("rteScreenOrigin", origin);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_FogOfWar.Texture);
 		DrawFullscreen();
 		glDisable(GL_BLEND);
 	}

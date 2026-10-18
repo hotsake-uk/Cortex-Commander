@@ -33,6 +33,6 @@ void main() {
 	}
 	FragColor = vec4(0.0, 0.0, 0.0, coverage * vertexColor.a);
 	NormalOut = vec4(0.5, 0.5, 1.0, 0.5);
-	// Nothing under the fog casts a shadow anyone can see.
-	SurfaceOut = vec4(0.0);
+	// Nothing under the fog casts a shadow anyone can see or gets an outline: its solid flag is faded out as the fog covers it.
+	SurfaceOut = vec4(0.0, 0.0, 0.0, coverage * vertexColor.a);
 }
