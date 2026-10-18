@@ -805,6 +805,11 @@
     <ClInclude Include="Source\Renderer\RenderTarget.h" />
     <ClInclude Include="Source\Renderer\Shader.h" />
     <ClInclude Include="Source\Renderer\BigTexture.h" />
+    <ClInclude Include="Source\Renderer\EffectsParticles.h" />
+    <ClInclude Include="Source\Renderer\SceneLighting.h" />
+    <ClInclude Include="Source\Renderer\Weather.h" />
+    <ClInclude Include="Source\Renderer\VisualWind.h" />
+    <ClInclude Include="Source\Renderer\LightingSettings.h" />
     <ClInclude Include="Source\System\AllegroTools.h" />
     <ClInclude Include="Source\System\Atom.h" />
     <ClInclude Include="Source\System\Base64\base64.h" />
@@ -1070,6 +1075,10 @@
     <ClCompile Include="Source\Renderer\Shader.cpp" />
     <ClCompile Include="Source\Renderer\Draw.cpp" />
     <ClCompile Include="Source\Renderer\BigTexture.cpp" />
+    <ClCompile Include="Source\Renderer\EffectsParticles.cpp" />
+    <ClCompile Include="Source\Renderer\SceneLighting.cpp" />
+    <ClCompile Include="Source\Renderer\Weather.cpp" />
+    <ClCompile Include="Source\Renderer\VisualWind.cpp" />
     <ClCompile Include="Source\System\AllegroTools.cpp" />
     <ClCompile Include="Source\System\Atom.cpp" />
     <ClCompile Include="Source\System\Base64\base64.cpp" />

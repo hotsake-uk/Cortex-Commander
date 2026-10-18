@@ -53,7 +53,8 @@ void VertexBuffer::InitializeBuffers() {
 
 	GL_CHECK(glBindVertexArray(m_VertexArray));
 	GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, m_VertexBuffer));
-	GL_CHECK(glBufferData(GL_ARRAY_BUFFER, m_BufferElements * 4 * sizeof(Vertex), nullptr, GL_DYNAMIC_DRAW));
+	m_VertexBufferBytes = static_cast<size_t>(m_BufferElements) * 4 * sizeof(Vertex);
+	GL_CHECK(glBufferData(GL_ARRAY_BUFFER, m_VertexBufferBytes, nullptr, GL_DYNAMIC_DRAW));
 
 	GL_CHECK(glEnableVertexAttribArray(VertexAttribLocation::VERTEX));
 	GL_CHECK(glVertexAttribPointer(VertexAttribLocation::VERTEX, 3, GL_FLOAT, GL_FALSE, sizeof(Vertex), 0));
@@ -64,8 +65,12 @@ void VertexBuffer::InitializeBuffers() {
 	GL_CHECK(glEnableVertexAttribArray(VertexAttribLocation::COLOR));
 	GL_CHECK(glVertexAttribPointer(VertexAttribLocation::COLOR, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, m_Color)));
 
+	GL_CHECK(glEnableVertexAttribArray(VertexAttribLocation::SURFACE));
+	GL_CHECK(glVertexAttribPointer(VertexAttribLocation::SURFACE, 4, GL_UNSIGNED_BYTE, GL_TRUE, sizeof(Vertex), (GLvoid*)offsetof(Vertex, m_Surface)));
+
 	GL_CHECK(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_IndexBuffer));
-	GL_CHECK(glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_BufferElements * 6 * sizeof(decltype(m_Indices)::value_type), nullptr, GL_DYNAMIC_DRAW));
+	m_IndexBufferBytes = static_cast<size_t>(m_BufferElements) * 6 * sizeof(decltype(m_Indices)::value_type);
+	GL_CHECK(glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_IndexBufferBytes, nullptr, GL_DYNAMIC_DRAW));
 	glBindVertexArray(0);
 }
 
@@ -75,7 +80,13 @@ void RenderBatch::BeginFrame() {
 	ZoneScoped;
 	m_CurrentDepth = 0;
 	m_CurrentZ = c_DefaultDrawDepth;
+	m_CurrentSurface = glm::u8vec4(0);
+	m_ShadowCasting = true;
 	m_OpenPixelDraw = nullptr;
+	m_ObjectUniforms.clear();
+	m_ShaderBeforeObject = nullptr;
+	m_InObjectShader = false;
+	m_ObjectMapUniforms.clear();
 	m_VertexBuffers.m_Vertices.clear();
 	m_VertexBuffers.m_Indices.clear();
 	RecycleDrawCalls();
@@ -97,12 +108,20 @@ void RenderBatch::Render() {
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetPaletteTexture());
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetEmissivePaletteTexture());
+	for (size_t globalUnit = 0; globalUnit < g_RenderMan.GetGlobalTextures().size(); ++globalUnit) {
+		glActiveTexture(GL_TEXTURE3 + static_cast<GLenum>(globalUnit));
+		glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetGlobalTextures()[globalUnit]);
+	}
+	// Draw call textures are bound to unit 1, so leave it active.
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, g_RenderMan.GetShapeTexture());
 	const Camera* currentCamera = m_CurrentCamera;
 	currentShader->Enable();
 	currentShader->SetInt(currentShader->GetTextureUniform(), 1);
 	currentShader->SetInt(currentShader->GetPaletteUniform(), 0);
+	currentShader->SetInt("rteEmissivePalette", 2);
 	if(!currentCamera) {
 		currentShader->SetMatrix4f(currentShader->GetProjectionUniform(), glm::mat4(1.0f));
 		currentShader->SetMatrix4f(currentShader->GetTransformUniform(), glm::mat4(1.0f));
@@ -135,6 +154,7 @@ void RenderBatch::Render() {
 			currentShader->Enable();
 			currentShader->SetInt(currentShader->GetTextureUniform(), 1);
 			currentShader->SetInt(currentShader->GetPaletteUniform(), 0);
+			currentShader->SetInt("rteEmissivePalette", 2);
 			if (currentCamera) {
 				currentShader->SetMatrix4f(currentShader->GetProjectionUniform(), currentCamera->GetProjection());
 				currentShader->SetMatrix4f(currentShader->GetViewUniform(), currentCamera->GetView());
@@ -197,6 +217,9 @@ void RenderBatch::Render() {
 		}
 
 		GL_CHECK(glDrawElements(drawCall->m_DrawMode, static_cast<GLsizei>(indexCount), GL_UNSIGNED_INT, (GLvoid*)(indexOffset * sizeof(GLuint))));
+		for (auto& uniform: drawCall->m_UniformValues) {
+			uniform->Reset();
+		}
 		indexOffset += static_cast<GLuint>(indexCount);
 		drawIndex = nextIndex;
 	}
@@ -229,8 +252,9 @@ void RenderBatch::ApplyDrawCalls() {
 	// TODO: Sort and batch DrawCalls by shader and transparency.
 	// std::stable_sort(m_DrawCalls.begin(), m_DrawCalls.end(), [](auto r, auto l) { return r->m_TextureId < l->m_TextureId; });
 
-	for (auto drawCall: m_DrawCalls) {
-		RTEAssert(drawCall.use_count() == 2, "DrawCall still in use on EndFrame!");
+	// By reference: copying each shared_ptr cost two atomic refcount changes per draw call. The batch is then the only holder of a finished draw call.
+	for (const std::shared_ptr<DrawCall>& drawCall: m_DrawCalls) {
+		RTEAssert(drawCall.use_count() == 1, "DrawCall still in use on EndFrame!");
 		size_t vertexCount = m_VertexBuffers.m_Vertices.size();
 
 		for (auto& index: drawCall->m_Indices) {
@@ -253,20 +277,20 @@ void VertexBuffer::UpdateBuffers() {
 	TracyGpuZone("VertexBuffer::UpdateBuffers");
 	glBindVertexArray(m_VertexArray);
 
-	GLint bufferSize;
+	// Each upload gives the buffer a fresh store (orphaning it) before filling it, so it never waits on the GPU still drawing the last frame's from the old one.
+	// The store grows by half again when it's outgrown, rather than to the exact size every time the battle gets bigger, and its size is kept here instead of asked of the driver.
+	auto upload = [](GLenum target, size_t& storeBytes, size_t dataBytes, const void* data) {
+		if (dataBytes == 0) {
+			return;
+		}
+		if (dataBytes > storeBytes) {
+			storeBytes = std::max(dataBytes, storeBytes + storeBytes / 2);
+		}
+		GL_CHECK(glBufferData(target, static_cast<GLsizeiptr>(storeBytes), nullptr, GL_DYNAMIC_DRAW));
+		GL_CHECK(glBufferSubData(target, 0, static_cast<GLsizeiptr>(dataBytes), data));
+	};
 	GL_CHECK(glBindBuffer(GL_ARRAY_BUFFER, m_VertexBuffer));
-	GL_CHECK(glGetBufferParameteriv(GL_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSize));
-	if (m_Vertices.size() * sizeof(decltype(m_Vertices)::value_type) < bufferSize) {
-		GL_CHECK(glBufferSubData(GL_ARRAY_BUFFER, 0, m_Vertices.size() * sizeof(decltype(m_Vertices)::value_type), m_Vertices.data()));
-	} else {
-		GL_CHECK(glBufferData(GL_ARRAY_BUFFER, m_Vertices.size() * sizeof(decltype(m_Vertices)::value_type), m_Vertices.data(), GL_DYNAMIC_DRAW));
-	}
-
+	upload(GL_ARRAY_BUFFER, m_VertexBufferBytes, m_Vertices.size() * sizeof(decltype(m_Vertices)::value_type), m_Vertices.data());
 	GL_CHECK(glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_IndexBuffer));
-	glGetBufferParameteriv(GL_ELEMENT_ARRAY_BUFFER, GL_BUFFER_SIZE, &bufferSize);
-	if (m_Indices.size() * sizeof(decltype(m_Indices)::value_type) < bufferSize) {
-		GL_CHECK(glBufferSubData(GL_ELEMENT_ARRAY_BUFFER, 0, m_Indices.size() * sizeof(decltype(m_Indices)::value_type), m_Indices.data()));
-	} else {
-		GL_CHECK(glBufferData(GL_ELEMENT_ARRAY_BUFFER, m_Indices.size() * sizeof(decltype(m_Indices)::value_type), m_Indices.data(), GL_DYNAMIC_DRAW));
-	}
+	upload(GL_ELEMENT_ARRAY_BUFFER, m_IndexBufferBytes, m_Indices.size() * sizeof(decltype(m_Indices)::value_type), m_Indices.data());
 }

@@ -17,6 +17,8 @@ namespace RTE {
 		UniformValueType(GLint uniformLocation): m_UniformLocation(uniformLocation) {}
 		virtual ~UniformValueType() = default;
 		virtual void Enable() = 0;
+		/// Undoes what Enable set that mustn't carry over to the draws after this one, which share the shader program. Most values are set again by whoever needs them, and do nothing.
+		virtual void Reset() {}
 	protected:
 		GLint m_UniformLocation{0};
 	};
@@ -44,7 +46,9 @@ namespace RTE {
 		VERTEX,
 		TEXTURECOORDINATE,
 		COLOR,
-		NORMAL
+		NORMAL,
+		LIGHTCONE, //!< Light quads: xy cone direction, z cosine of the cone's half angle (below -1 for no cone).
+		SURFACE //!< Batch vertices: how the lighting should treat what's drawn (see Vertex::m_Surface).
 	};
 
 	class Shader: public Entity {
@@ -227,7 +231,35 @@ namespace RTE {
 		/// The location of the color modifier uniform. This may be -1 if the shader doesn't apply projection, in which case the value will be ignored.
 		int GetProjectionUniform() const { return m_ProjectionUniform; }
 
+		/// The uniforms a mod's object shader (MovableObject's Shader) is given on top of the sprite shader's: seconds of effect time, a number from 0 to 1 that
+		/// stays the same for the object, its unit's health from 0 to 1 (1 for anything that isn't a unit), the player's strength setting for mod shaders,
+		/// and how much sprites' own shading counts as relief. -1 where the shader doesn't use one.
+		int GetTimeUniform() const { return m_TimeUniform; }
+		int GetObjectSeedUniform() const { return m_ObjectSeedUniform; }
+		int GetHealthUniform() const { return m_HealthUniform; }
+		int GetStrengthUniform() const { return m_StrengthUniform; }
+		int GetReliefUniform() const { return m_ReliefUniform; }
+
+		/// Where a shader reads a sprite's authored maps (MOSprite's NormalMapFile and EmissiveMapFile): the samplers, whether each is there, where the sprite sits in its
+		/// GL texture (xy corner, zw size, in UV), and the player's strength for them. -1 where the shader doesn't use one.
+		struct SpriteMapUniforms {
+			GLint NormalMap{-1};
+			GLint HasNormalMap{-1};
+			GLint EmissiveMap{-1};
+			GLint HasEmissiveMap{-1};
+			GLint UVRect{-1};
+			GLint Strength{-1};
+			GLint TeamColor{-1};
+			GLint TeamColorIndices{-1};
+			GLint TeamColorMap{-1};
+			GLint HasTeamColorMap{-1};
+		};
+		const SpriteMapUniforms& GetSpriteMapUniforms() const { return m_SpriteMapUniforms; }
+
 #pragma endregion
+
+		/// Whether this compiled and linked. A mod's shader that doesn't is reported in the console and left unused, and the mod loads without it.
+		bool IsValid() const { return m_Valid; }
 	protected:
 		static Entity::ClassInfo m_sClass;
 		std::string m_FragmentPath{};
@@ -250,9 +282,11 @@ namespace RTE {
 		/// The compiled vertex shader.
 		/// @param fragShader
 		/// The compiled fragment shader.
+		/// @param error
+		/// String to contain the link log if it fails.
 		/// @return
 		/// Whether linking was successful.
-		bool Link(uint32_t vtxShader, uint32_t fragShader);
+		bool Link(uint32_t vtxShader, uint32_t fragShader, std::string& error);
 
 		/// Sets default values for the shader uniforms (may not persist across frames!)
 		void ApplyDefaultUniforms();
@@ -277,5 +311,13 @@ namespace RTE {
 		GLint m_ViewUniform{-1}; //!< Location of the view matrix uniform (mat4 rteView).
 		GLint m_UVTransformUniform{-1}; //!< Location of the UV transform uniform (mat4 rteUVTransform).
 		GLint m_ProjectionUniform{-1}; //!< Location of the projection uniform (mat4 rteProjection).
+		GLint m_TimeUniform{-1}; //!< float rteTime.
+		GLint m_ObjectSeedUniform{-1}; //!< float rteObjectSeed.
+		GLint m_HealthUniform{-1}; //!< float rteHealth.
+		GLint m_StrengthUniform{-1}; //!< float rteStrength.
+		GLint m_ReliefUniform{-1}; //!< float rteRelief.
+		SpriteMapUniforms m_SpriteMapUniforms; //!< rteNormalMap, rteHasNormalMap, rteEmissiveMap, rteHasEmissiveMap, rteMapUVRect, rteMapStrength, rteTeamColor, rteTeamColorIndices, rteTeamColorMap, rteHasTeamColorMap.
+		bool m_Valid{false}; //!< Compiled and linked.
+		bool m_AbortOnError{true}; //!< The game's own shaders can't do without: a failure stops the game. Mods' shaders are reported and skipped.
 	};
 } // namespace RTE

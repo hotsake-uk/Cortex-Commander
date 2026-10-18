@@ -11,6 +11,7 @@ namespace RTE {
 
 	struct BigTexture;
 	class Texture;
+	class Camera;
 
 	struct SceneLayerInfo {
 		std::string name;
@@ -264,11 +265,22 @@ namespace RTE {
 		/// @param targetBox The region to update (will be wrapped if neccessary)
 		void UpdateTargetRegion(const Box& targetBox);
 
+		/// UpdateTargetRegion for a camera's view, done once per view between RenderMan::BeginFrame calls. The terrain's layers are drawn in up to three
+		/// passes per camera with only objects drawn between them, which don't write to the terrain, so a second diff of the same view finds nothing new.
+		/// Layers that track drawings re-upload every time, as before.
+		/// @param viewport The camera's view.
+		void UpdateTargetRegionForView(const Box& viewport);
+
 		/// Performs tiled drawing of this SceneLayer's bitmap to the screen in cases where the target bitmap is larger in some dimension.
 		/// @param targetBitmap The bitmap to draw to.
 		/// @param targetBox The box on the target bitmap to limit drawing to, with the corner of box being where the scroll position lines up.
 		/// @param drawScaled Whether to use scaled drawing routines or not.
 		void DrawTiled(const Camera& camera) const;
+
+		unsigned long long m_ViewSyncedFrame = 0; //!< The RenderMan::GetBeginFrameCount at the last UpdateTargetRegionForView, 0 for none.
+		Box m_ViewSyncedBox; //!< The view it brought up to date.
+		const BITMAP* m_ViewSyncedBitmap = nullptr; //!< The bitmap it brought up to date.
+		const BigTexture* m_ViewSyncedTexture = nullptr; //!< The texture it brought up to date.
 
 		virtual void DrawMainTexture(int destX, int destY) const {};
 #pragma endregion

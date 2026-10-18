@@ -7,6 +7,7 @@
 #include "ThreadMan.h"
 #include "GLStateMan.h"
 #include "BigTexture.h"
+#include "RenderMan.h"
 
 #include "Draw.h"
 #include "DebugMan.h"
@@ -102,6 +103,8 @@ int SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Create(const SceneLayerImpl&
 	m_WrapX = reference.m_WrapX;
 	m_WrapY = reference.m_WrapY;
 	m_OriginOffset = reference.m_OriginOffset;
+	// The depth has to survive copying: scenes are played from copies of their presets, and the lighting tells the terrain's background walls from its foreground by depth.
+	m_ZOrder = reference.m_ZOrder;
 	m_ScrollInfo = reference.m_ScrollInfo;
 	m_ScrollRatio = reference.m_ScrollRatio;
 	m_ScaleFactor = reference.m_ScaleFactor;
@@ -481,6 +484,26 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::UpdateTargetRegion(const Bo
 }
 
 template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
+void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::UpdateTargetRegionForView(const Box& viewport) {
+	if constexpr (!TRACK_DRAWINGS && !STATIC_TEXTURE) {
+		unsigned long long frame = g_RenderMan.GetBeginFrameCount();
+		const BigTexture* texture = m_MainStreamTexture.get();
+		// Only once the texture has been brought up to date from this bitmap at all (a new texture starts empty), and for exactly the same view.
+		bool synced = texture && texture->m_MirroredBitmap == texture->m_Bitmap && !texture->m_Mirror.empty();
+		if (synced && frame == m_ViewSyncedFrame && texture == m_ViewSyncedTexture && texture->m_Bitmap == m_ViewSyncedBitmap && viewport == m_ViewSyncedBox) {
+			return;
+		}
+		UpdateTargetRegion(viewport);
+		m_ViewSyncedFrame = frame;
+		m_ViewSyncedTexture = texture;
+		m_ViewSyncedBitmap = texture ? texture->m_Bitmap : nullptr;
+		m_ViewSyncedBox = viewport;
+	} else {
+		UpdateTargetRegion(viewport);
+	}
+}
+
+template <bool TRACK_DRAWINGS, bool STATIC_TEXTURE>
 void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Draw(const Box& targetDimensions, Box& targetBox, bool offsetNeedsScrollRatioAdjustment) {
 	RTEAssert(m_MainBitmap, "Data of this SceneLayerImpl has not been loaded before trying to draw!");
 	if constexpr(!STATIC_TEXTURE) {
@@ -521,7 +544,7 @@ void SceneLayerImpl<TRACK_DRAWINGS, STATIC_TEXTURE>::Draw(const Camera& camera) 
 	if constexpr (!STATIC_TEXTURE) {
 		RTEAssert(m_MainStreamTexture, "Texture of this SceneLayerImpl has not been created before trying to draw!");
 		if (m_MainBitmapOwned) {
-			UpdateTargetRegion(camera.GetViewport());
+			UpdateTargetRegionForView(camera.GetViewport());
 		}
 		m_MainBitmapUpdated = false;
 	} else {

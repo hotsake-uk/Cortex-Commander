@@ -6,17 +6,24 @@
 #include "glm/fwd.hpp"
 #include "SceneMan.h"
 #include "Shader.h"
+#include "LightingSettings.h"
 
 #include <array>
 #include <atomic>
 #include <memory>
 #include <list>
 #include <vector>
+#include <mutex>
+#include <algorithm>
+#include <cmath>
+#include <chrono>
 
 #define g_PostProcessMan PostProcessMan::Instance()
 
 namespace RTE {
 	class RenderTarget;
+	class SceneLighting;
+	class Scene;
 	/// Struct for storing GL information in the BITMAP->extra field.
 
 	/// Structure for storing a post-process screen effect to be applied at the last stage of 32bpp rendering.
@@ -26,13 +33,72 @@ namespace RTE {
 		float m_Angle = 0.0F; // Post effect angle in radians.
 		int m_Strength = 128; //!< Scalar float for how hard to blend it in, 0 - 255.
 		Vector m_Pos; //!< Post effect position. Can be relative to the scene, or to the screen, depending on context.
+		bool m_NoLight = false; //!< The glow is drawn but casts no light on the scene (aiming dots, when their light is turned off).
+		float m_LightScale = 1.0F; //!< Multiplier for the brightness of the light the glow casts, not the glow itself (a jetpack's, by LightingSettings::JetpackLightBrightness).
+		float m_LightReach = 1.0F; //!< Multiplier for how far that light reaches.
 
 		/// Constructor method used to instantiate a PostEffect object in system memory.
-		PostEffect(const Vector& pos, std::shared_ptr<BitmapTexture> bitmap, size_t bitmapHash, int strength, float angle) :
-		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos) {}
+		PostEffect(const Vector& pos, std::shared_ptr<BitmapTexture> bitmap, size_t bitmapHash, int strength, float angle, bool noLight = false, float lightScale = 1.0F, float lightReach = 1.0F) :
+		    m_Bitmap(bitmap), m_BitmapHash(bitmapHash), m_Angle(angle), m_Strength(strength), m_Pos(pos), m_NoLight(noLight), m_LightScale(lightScale), m_LightReach(lightReach) {}
+	};
+
+	/// What registered a scene light, for the lighting-by-source readout (SettingsMan::ShowLightsBySource).
+	enum class LightSource : unsigned char {
+		Other, //!< Not said.
+		Objects, //!< An object's own light (its LightRadius/LightIntensity), round or cone.
+		Hot, //!< The glow of an object's hot spots.
+		Headlamps, //!< Units' headlamp beams and the glow round the lamp.
+		Tracers, //!< Tracers and their trails.
+		Lamps, //!< Scenery lamps placed in the terrain.
+		Fire, //!< Burning ground and burning units.
+		Sandbox, //!< Effects put down in the sandbox.
+		Scripts, //!< Lua, through AddLight.
+		Outlines, //!< The glow of units' outlines (LightingSettings::UnitOutlineGlow).
+		Jetpacks, //!< The glow at a firing jetpack's nozzle (and its flames lit as tracers).
+		Count
 	};
 
 	/// Singleton manager responsible for all 32bpp post-process effect drawing.
+	/// A dynamic light in the scene, registered for the current frame by MovableObjects with light properties or from Lua.
+	struct SceneLight {
+		Vector m_Pos; //!< Light position. Scene coordinates, or relative to a screen, depending on context.
+		glm::vec3 m_Color{1.0F}; //!< Linear light color, intensity included.
+		float m_Radius = 0.0F; //!< Radius in pixels, where the light reaches zero.
+		glm::vec2 m_Direction{1.0F, 0.0F}; //!< For cone lights (flashlights): the direction the cone points, screen space (Y down).
+		float m_ConeCos = -2.0F; //!< Cosine of the cone's half angle; below -1 is an ordinary all-round light.
+		LightSource m_Source = LightSource::Other; //!< What registered it.
+		bool m_Steady = false; //!< A scenery lamp that shines all round without flickering or pulsing: drawn from the lamp cache when that's on (LightingSettings::LampCache).
+		glm::vec2 m_Line{0.0F}; //!< For line lights (a lightsaber's blade): from m_Pos, the middle, to one end. Zero for a light from a point.
+
+		/// Gets how far from m_Pos the light reaches: its radius, plus half its length for a line light.
+		float GetReach() const { return m_Radius + glm::length(m_Line); }
+	};
+
+	/// One straight piece of a lightning bolt as seen by a player screen (PostProcessMan::GetLightningBolts).
+	struct LightningBoltSegment {
+		glm::vec2 From; //!< Relative to the screen.
+		glm::vec2 To;
+		float Width; //!< In pixels.
+		float Brightness; //!< This frame's, 0 to about 1.6 (the first stroke is brightest).
+	};
+
+	/// An energy beam (a lightsaber's blade, a cutting beam) as seen by a player screen (PostProcessMan::GetEnergyBeams): a thin white-hot core.
+	struct EnergyBeamSegment {
+		glm::vec2 From; //!< Relative to the screen.
+		glm::vec2 To;
+		glm::vec3 Color; //!< The core's tint, 0 to 1.
+		float Width; //!< The core's width, in pixels.
+		float Brightness; //!< 0 to about 2.
+	};
+
+	/// A shockwave ring as seen by one player screen this frame.
+	struct ScreenShockwave {
+		glm::vec2 m_Pos; //!< Position relative to the screen.
+		float m_Radius; //!< Maximum radius of the ring, in pixels.
+		float m_Amplitude; //!< Maximum displacement, in pixels.
+		float m_Progress; //!< How far the ring has expanded, 0 to 1.
+	};
+
 	class PostProcessMan : public Singleton<PostProcessMan> {
 
 	public:
@@ -65,20 +131,25 @@ namespace RTE {
 		void ClearScenePostEffects() {
 			m_PostSceneEffects.clear();
 			m_GlowAreas.clear();
+			ClearSceneLights();
+			// Look the mod post pass up again, for a new scene or reloaded presets.
+			m_ActivePostShaderName.clear();
+			m_ActivePostShader = nullptr;
+		}
+
+		/// Clears the lights and shimmers registered so far. They're registered on every sim update and the light pass adds them up, so only the
+		/// last update's set may reach the draw: a frame that runs several sim updates would otherwise draw every light that many times over.
+		void ClearSceneLights() {
+			m_SceneLights.clear();
+			m_EnergyBeams.clear();
+			std::scoped_lock lock(m_ShockwaveMutex);
+			m_Shimmers.clear();
 		}
 #pragma endregion
 
 #pragma region Concrete Methods
-		/// Takes the current state of the 8bpp back-buffer, copies it, and adds post-processing effects on top like glows etc.
+		/// Takes the current state of the 8bpp back-buffer and copies it to the 32bpp post-processing buffer, and steps the palette animation. Glows are drawn by the scene lighting.
 		void PostProcess();
-
-		/// Adjusts the offsets of all effects relative to the specified player screen and adds them to the total screen effects list so they can be drawn in PostProcess().
-		/// @param playerScreen Player screen to adjust effect offsets for.
-		/// @param targetBitmap Bitmap representing the player screen.
-		/// @param targetBitmapOffset The position of the specified player's draw screen on the backbuffer.
-		/// @param screenRelativeEffectsList List of the specified player's accumulated post effects for this frame.
-		/// @param screenRelativeGlowBoxesList List of the specified player's accumulated glow boxes for this frame.
-		void AdjustEffectsPosToPlayerScreen(int playerScreen, BITMAP* targetBitmap, const Vector& targetBitmapOffset, std::list<PostEffect>& screenRelativeEffectsList, std::list<Box>& screenRelativeGlowBoxesList);
 #pragma endregion
 
 #pragma region Post Effect Handling
@@ -90,6 +161,12 @@ namespace RTE {
 		/// @param angle The angle this effect should be rotated at in radians.
 		void RegisterPostEffect(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength = 255, float angle = 0);
 
+		/// Registers a post effect like RegisterPostEffect, with the light it casts on the scene scaled apart from the glow itself (a jetpack's flames and flash,
+		/// by LightingSettings::JetpackLightBrightness and JetpackLightReach). A separate name, not an overload, so the Lua binding of RegisterPostEffect stays as it is.
+		/// @param lightScale Multiplier for the brightness of the light it casts.
+		/// @param lightReach Multiplier for how far that light reaches.
+		void RegisterPostEffectScaledLight(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength, float angle, float lightScale, float lightReach);
+
 		/// Gets all screen effects that are located within a box in the scene.
 		/// Their coordinates will be returned relative to the upper left corner of the box passed in here. Wrapping of the box will be taken care of.
 		/// @param boxPos The top left coordinates of the box to get post effects for.
@@ -98,7 +175,7 @@ namespace RTE {
 		/// @param effectsList The list to add the screen effects that fall within the box to. The coordinates of the effects returned here will be relative to the boxPos passed in above.
 		/// @param team The team whose unseen layer should obscure the screen effects here.
 		/// @return Whether any active post effects were found in that box.
-		bool GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team = -1);
+		bool GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team = -1);
 
 		/// Gets a temporary bitmap of specified size to rotate post effects in.
 		/// @param bitmapSize Size of bitmap to get.
@@ -143,6 +220,376 @@ namespace RTE {
 		/// @return The opengl backbuffer texture for indexed drawings.
 		std::shared_ptr<RenderTarget> GetPostProcessColorBuffer() { return m_PostProcessFramebuffer; }
 
+		/// Registers a dynamic light for the current frame. Lights persist until the next sim update after a drawn frame, like scene post effects.
+		/// @param pos Scene position of the light.
+		/// @param color Light color in 0-255 gamma space, like palette and INI colors.
+		/// @param radius Radius in pixels, where the light reaches zero.
+		/// @param intensity Brightness multiplier.
+		/// @param source What is registering it, for the lighting-by-source readout.
+		/// @param steady A scenery lamp that won't change from one frame to the next, for the lamp cache (see SceneLight::m_Steady).
+		void RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other, bool steady = false);
+
+		/// Registers a cone light (flashlight, headlamp) for the current frame.
+		/// @param pos Where the light comes from, scene coordinates.
+		/// @param direction Direction the cone points (Y down), any length.
+		/// @param halfAngleDegrees Half the cone's width.
+		void RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
+
+		/// Registers a line light for the current frame: light from a whole straight line (a lightsaber's blade) instead of a point, falling off round it
+		/// with rounded ends, and showing as a faint glow in the air around it.
+		/// @param from One end, scene coordinates.
+		/// @param to The other end.
+		void RegisterLineLight(const Vector& from, const Vector& to, const glm::vec3& color, float radius, float intensity, LightSource source = LightSource::Other);
+
+		/// Registers an energy beam for the current frame: a straight line of light such as a lightsaber's blade, drawn as a thin white-hot core, with
+		/// all the colour round it coming from a line light along its whole length. Registered on every sim update like lights. Safe from any thread.
+		/// @param from One end, scene coordinates.
+		/// @param to The other end.
+		/// @param color The core's tint and the light's colour in 0-255 gamma space, like INI colors.
+		/// @param width The core's width in pixels, about 1 to 4.
+		/// @param brightness 1 for a lightsaber.
+		/// @param lightRadius How far its light reaches from the beam, in pixels. 0 for no light, only the core.
+		void RegisterEnergyBeam(const Vector& from, const Vector& to, const glm::vec3& color, float width, float brightness, float lightRadius);
+
+		/// Registers an energy beam for the current frame, from Lua. See RegisterEnergyBeam.
+		void AddEnergyBeam(const Vector& from, const Vector& to, float width, float red, float green, float blue, float brightness, float lightRadius) { RegisterEnergyBeam(from, to, glm::vec3(red, green, blue), width, brightness, lightRadius); }
+
+		/// Gets the energy beams registered for the frame about to be drawn that may show in a box, with positions relative to the box. Handles horizontal scene wrapping.
+		void GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const;
+
+		/// Registers a dynamic light for the current frame, from Lua. See RegisterLight.
+		void AddLight(const Vector& pos, float radius, float red, float green, float blue, float intensity) { RegisterLight(pos, glm::vec3(red, green, blue), radius, intensity, LightSource::Scripts); }
+
+		/// Makes a palette colour's glow pulse, from Lua (animated palette flags; see RenderMan::SetPalettePulse). A period of 0 stops it.
+		void SetPalettePulse(int paletteIndex, float low, float high, float period, float phase);
+
+		/// Rotates a run of palette colours through each other, from Lua (see RenderMan::SetPaletteCycle). A period of 0 stops it.
+		void SetPaletteCycle(int from, int to, float period);
+
+		/// Stops every palette pulse and cycle asked for by scripts or PaletteAnimation.ini. Glowing liquids keep theirs.
+		void ClearPaletteAnimation();
+
+		/// Gives the screen a mod's post pass (LightingSettings::ModShaders), from Lua: a Shader preset that redraws the lit scene before bloom and
+		/// tonemapping, such as a scanner overlay or a sandstorm filter. Empty to go back to the activity's or scene's own (their PostShader key), or none.
+		/// Lasts until the next activity starts. Safe from any thread.
+		void SetPostShader(const std::string& shaderName);
+
+		/// Gets the post pass asked for from Lua, empty for none.
+		std::string GetPostShader() const;
+
+		/// Gets the mod post pass to draw now: the one asked for from Lua, else the activity's, else the scene's. Null for none or one that didn't compile. Main thread only.
+		const Shader* GetActivePostShader();
+
+		/// Gets the name of the post pass found by the last GetActivePostShader, empty for none.
+		const std::string& GetActivePostShaderName() const { return m_ActivePostShaderName; }
+
+		/// Gets the scene lights registered for the frame about to be drawn, in scene coordinates, for the lighting-by-source readout. Main thread only.
+		const std::vector<SceneLight>& GetSceneLights() const { return m_SceneLights; }
+
+		/// Gets the scene lights that may affect a box, with positions relative to the box. Handles scene wrapping.
+		/// @param boxPos Scene position of the box's top left corner.
+		/// @param boxWidth Width of the box.
+		/// @param boxHeight Height of the box.
+		/// @param lights Out parameter the lights are appended to.
+		void GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const;
+
+		/// Registers an explosion shockwave. Ring size and strength scale with the energy released.
+		/// @param pos Scene position of the explosion.
+		/// @param energy Energy released, as computed for gib screen shake.
+		void RegisterShockwave(const Vector& pos, float energy);
+
+		/// Registers an explosion shockwave from Lua (a spell's blast). See RegisterShockwave: nothing under 2000 energy shows.
+		void AddShockwave(const Vector& pos, float energy) { RegisterShockwave(pos, energy); }
+
+		/// Registers a scorch mark from Lua (a fireball or a lightning strike). See RegisterScorchMark: nothing under 2000 energy shows.
+		void AddScorchMark(const Vector& pos, float energy) { RegisterScorchMark(pos, energy); }
+
+		/// Registers a shimmer for the current frame: the scene behind is bent in a wobbling ring, as around an energy shield or a cloaked unit. Call every update to keep it up.
+		/// @param pos Scene position of its centre.
+		/// @param radius How far out it reaches, in pixels.
+		/// @param strength How strongly it bends, around 1.
+		void RegisterShimmer(const Vector& pos, float radius, float strength);
+
+		/// Puts mist or dust into the air (the fog volume, LightingSettings::FogVolume): it drifts with the wind, is lit by the sky and lamps, and clears over time.
+		/// Safe from any thread. Ignored with the fog volume off.
+		/// @param pos Scene position of its centre.
+		/// @param radius How far it spreads, in pixels.
+		/// @param amount How thick, 0 to 1 (1 hides what's behind at full fog strength).
+		void RegisterFog(const Vector& pos, float radius, float amount);
+
+		/// Puts mist into the air, from Lua. See RegisterFog.
+		void AddFog(const Vector& pos, float radius, float amount) { RegisterFog(pos, radius, amount); }
+
+		/// Takes the mist and dust put into the air since the last call: x, y (scene pixels), radius (pixels), amount.
+		std::vector<glm::vec4> TakeFogPuffs();
+
+		/// Draws a lightning bolt for a moment (LightingSettings::LightningBolts): a jagged, branching line of light from the sky to the strike, a flash of
+		/// light where it lands and across the sky, flickering twice and gone in under half a second. Render only: what it strikes is the caller's business.
+		/// The bolt's shape comes from the seed alone, so the same seed draws the same bolt. Safe from any thread.
+		/// @param from Where it starts, scene coordinates (up in the sky).
+		/// @param to Where it strikes.
+		/// @param seed Its shape.
+		void RegisterLightningBolt(const Vector& from, const Vector& to, unsigned int seed);
+
+		/// Draws a lightning bolt for a moment, from Lua. See RegisterLightningBolt.
+		void AddLightningBolt(const Vector& from, const Vector& to, int seed) { RegisterLightningBolt(from, to, static_cast<unsigned int>(seed)); }
+
+		/// Gets the lightning bolts showing now, as straight pieces relative to a box, with this frame's brightness. Handles horizontal scene wrapping.
+		void GetLightningBolts(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<LightningBoltSegment>& segments) const;
+
+		/// Registers a scorch mark: soot stamped into the terrain that glows hot for a few seconds. Size and darkness scale with the energy released.
+		/// @param pos Scene position of the explosion.
+		/// @param energy Energy released, as computed for gib screen shake.
+		void RegisterScorchMark(const Vector& pos, float energy);
+
+		/// Gets the active shockwaves that may affect a box, with positions relative to the box, and forgets expired ones. Handles scene wrapping.
+		void GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves);
+
+		/// A soot mark to stamp into the world, and the hot spot it leaves.
+		struct ScorchMark {
+			Vector m_Pos;
+			float m_Radius;
+			float m_Darkness;
+			float m_StartTime;
+		};
+
+		/// Takes the scorch marks registered since the last call, for stamping.
+		std::vector<ScorchMark> TakePendingScorchMarks();
+
+		/// Gets a copy of the recent scorch marks that are still hot, and forgets the cooled ones. A copy, because gibbing can add marks from other threads while the caller reads them.
+		/// @param duration How long marks stay hot, in seconds.
+		std::vector<ScorchMark> GetHotScorchMarks(float duration);
+
+		/// Forgets the recent scorch marks, so the last scene's don't glow in a new one.
+		void ClearHotScorchMarks() {
+			std::scoped_lock lock(m_ShockwaveMutex);
+			m_HotScorchMarks.clear();
+		}
+
+		/// Gets the current simulation time in seconds, including the fraction of the current sim update, for smooth time based effects that pause and slow down with the game.
+		static float GetSmoothSimTime();
+
+		/// Gets the smooth sim time in double precision, for time based effects that would lose precision as a float after a few hours of play.
+		static double GetSmoothSimTimePrecise();
+
+		/// Gets the smooth sim time for animating render-only effects (shaders, lamp pulse, flames, embers): wrapped to c_EffectTimePeriod seconds so it keeps sub-millisecond precision as a float however long the game runs.
+		/// Effects animated by it skip once every period, which is about an hour, rather than starting to step at the sim rate after a few hours.
+		static float GetEffectTime();
+
+		static constexpr double c_EffectTimePeriod = 4096.0; //!< The period GetEffectTime wraps at, in seconds.
+
+		/// Gets the scene lighting, creating it on first use (it needs a GL context).
+		/// @return The scene lighting.
+		SceneLighting* GetSceneLighting();
+
+#pragma region Atmosphere Lua Accessors
+		float GetTimeOfDay() const { return m_LightingSettings.TimeOfDay; }
+		void SetTimeOfDay(float hours) { m_LightingSettings.TimeOfDay = std::fmod(std::fmod(hours, 24.0F) + 24.0F, 24.0F); }
+		float GetDayLengthMinutes() const { return m_LightingSettings.DayLengthMinutes; }
+		void SetDayLengthMinutes(float minutes) { m_LightingSettings.DayLengthMinutes = std::max(minutes, 0.0F); }
+		int GetWeatherType() const { return m_LightingSettings.WeatherType; }
+		/// Sets the weather by slot (Weather.h): 0 clear, 1 rain, 2 snow, 3 ash fall, 4 dust storm, 5 on the other Weather presets. Kept within the slots there are.
+		void SetWeatherType(int weatherType);
+		/// Gets the name of the weather now: its Weather preset's name, or "Clear".
+		std::string GetWeatherName() const;
+		/// Sets the weather by its Weather preset's name ("Clear" for none). An unknown name leaves it as it is, with a word in the console.
+		void SetWeatherName(const std::string& name);
+		/// Gets the SoundContainer preset the weather now names for a script to loop while it falls (Weather::Sound), or "" for none.
+		std::string GetWeatherSound() const;
+		/// Picks up a custom weather asked for by name before the Weather presets were loaded (LightingSettings::WeatherName), and keeps the slot within the slots there are.
+		void ResolveWeather();
+		float GetWeatherIntensity() const { return m_LightingSettings.WeatherIntensity; }
+		void SetWeatherIntensity(float intensity) { m_LightingSettings.WeatherIntensity = std::clamp(intensity, 0.0F, 1.0F); }
+		float GetWind() const { return m_LightingSettings.Wind; }
+		void SetWind(float wind) { m_LightingSettings.Wind = wind; }
+		bool GetLightingEnabled() const { return m_LightingSettings.Enabled; }
+		void SetLightingEnabled(bool enabled) { m_LightingSettings.Enabled = enabled; }
+		/// Sets the sky light color, 0-255 gamma space per channel. Values above 255 brighten.
+		void SetSkyColor(float red, float green, float blue) { m_LightingSettings.SkyColor = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
+		/// Sets the color grade: white balance (-1 cool .. 1 warm), tint (-1 green .. 1 magenta) and contrast (1 neutral).
+		/// Sets the grading, grain, vignette and bloom to a ready-made look: 0 natural, 1 gritty, 2 vivid, 3 noir.
+		void ApplyLook(int look) { m_LightingSettings.ApplyLook(look); }
+
+		void SetColorGrade(float temperature, float tint, float contrast) {
+			m_LightingSettings.Temperature = temperature;
+			m_LightingSettings.Tint = tint;
+			m_LightingSettings.Contrast = contrast;
+		}
+		/// Sets the shadow and highlight tints for split toning, as linear multipliers (1 = neutral).
+		void SetSplitToning(float shadowR, float shadowG, float shadowB, float highlightR, float highlightG, float highlightB) {
+			m_LightingSettings.ShadowTint = glm::vec3(shadowR, shadowG, shadowB);
+			m_LightingSettings.HighlightTint = glm::vec3(highlightR, highlightG, highlightB);
+		}
+
+		/// Focus effects a script asks for (for cinematics), on top of the player's: they apply outside photo mode and are never saved.
+		struct ScriptFocus {
+			float DepthFocus = 0.0F; //!< As LightingSettings::DepthOfFieldFocus.
+			float DepthStrength = 0.0F; //!< 0 for no depth of field.
+			float TiltLine = 0.5F; //!< As LightingSettings::TiltShiftLine.
+			float TiltStrength = 0.0F; //!< 0 for no tilt-shift.
+		};
+
+		/// Turns a script's depth of field on (strength above 0, up to 2) or off (0), from Lua. Lasts until the next activity starts. Safe from any thread.
+		void SetDepthOfField(float focus, float strength) {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			m_ScriptFocus.DepthFocus = std::clamp(focus, 0.0F, 1.0F);
+			m_ScriptFocus.DepthStrength = std::clamp(strength, 0.0F, 2.0F);
+		}
+
+		/// Turns a script's tilt-shift on (strength above 0, up to 2) or off (0), from Lua, with its sharp band at line (0 top to 1 bottom). Lasts until the next activity starts.
+		void SetTiltShift(float line, float strength) {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			m_ScriptFocus.TiltLine = std::clamp(line, 0.0F, 1.0F);
+			m_ScriptFocus.TiltStrength = std::clamp(strength, 0.0F, 2.0F);
+		}
+
+		/// Gets the focus effects scripts asked for.
+		ScriptFocus GetScriptFocus() const {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			return m_ScriptFocus;
+		}
+
+		/// Turns off the focus effects scripts asked for.
+		void ClearScriptFocus() {
+			std::scoped_lock lock(m_ScriptFocusMutex);
+			m_ScriptFocus = ScriptFocus();
+		}
+
+		/// Pushes the grade towards a look for a moment (LightingSettings::EventLooks): up to full strength (0 to 2) over attackMS, back over releaseMS, in real time so it plays
+		/// through a hit-stop. Any look, ready-made or event (LightingSettings::LookHurt and on). From the engine's events and from Lua. Safe from any thread.
+		void PulseGrade(int look, float strength, float attackMS, float releaseMS);
+
+		/// Crossfades the grade between two looks, t 0 (from) to 1 (to), in place of the player's own grade, from Lua (a scene or activity's mood). Never saved;
+		/// lasts until ClearLookBlend or the next activity. Safe from any thread.
+		void BlendLook(int fromLook, int toLook, float t);
+
+		/// Gives the grade back to the player after BlendLook.
+		void ClearLookBlend();
+
+		/// Ends every grade pulse and look blend. At the start of each activity.
+		void ClearEventLooks();
+
+		/// Gets whether the player lets the grade be pushed towards an event look: the blast flash, the hurt look and fire warmth each have their own switch (LightingSettings::EventBlastFlash and the rest).
+		/// @param look The look (LightingSettings::LookHurt, LookFlash, LookWarm; any other is always allowed).
+		bool EventLookAllowed(int look) const;
+
+		/// Sets off a retro glitch burst (LightingSettings::RetroLayers::Glitch), strength 0 to 1, fading over about half a second of real time. From big blasts
+		/// when the layers' GlitchOnBlasts is on, and from Lua. Safe from any thread.
+		void KickRetroGlitch(float strength) {
+			double now = RealSeconds();
+			float current = GetRetroGlitchKick();
+			m_RetroGlitchKick.store(std::max(current, std::clamp(strength, 0.0F, 1.0F)));
+			m_RetroGlitchKickSeconds.store(now);
+		}
+
+		/// Sets off a comic sound-effect burst (LightingSettings::RetroLayers::ComicFX): speed lines and a word (BOOM!, KRAK!, BLAM!, WHAM!) popping up at a
+		/// scene position, strength 0 to 1, over about a second and a quarter of real time. From big blasts while the layers ask for it. Safe from any thread.
+		void KickComicBurst(const Vector& position, float strength) {
+			std::lock_guard<std::mutex> lock(m_ComicBurstMutex);
+			m_ComicBurstPosition = position;
+			m_ComicBurstStrength = std::clamp(strength, 0.0F, 1.0F);
+			m_ComicBurstSeconds = RealSeconds();
+			m_ComicBurstWord = (m_ComicBurstWord + 1 + static_cast<int>(RealSeconds() * 1000.0) % 3) % 4;
+		}
+
+		/// Gets the comic burst in play, if any.
+		/// @param position Set to where in the scene it went off.
+		/// @param age Set to its age in real seconds.
+		/// @param word Set to which word it shows, 0 to 3.
+		/// @param strength Set to its strength, 0 to 1.
+		/// @return Whether one is in play.
+		bool GetComicBurst(Vector& position, float& age, int& word, float& strength) const {
+			std::lock_guard<std::mutex> lock(m_ComicBurstMutex);
+			double since = RealSeconds() - m_ComicBurstSeconds;
+			if (since < 0.0 || since > 1.4) {
+				return false;
+			}
+			position = m_ComicBurstPosition;
+			age = static_cast<float>(since);
+			word = m_ComicBurstWord;
+			strength = m_ComicBurstStrength;
+			return true;
+		}
+
+		/// Sets off a Game Boy blast flash (LightingSettings::RetroLayers::BlastFlash): the screen's shades shown inverted for a couple of quick blinks,
+		/// strength 0 to 1. From big blasts while the layers ask for it, and from Lua. Safe from any thread.
+		void KickRetroFlash(float strength) {
+			m_RetroFlashStrength.store(std::clamp(strength, 0.0F, 1.0F));
+			m_RetroFlashSeconds.store(RealSeconds());
+		}
+
+		/// Gets how far the blast flash inverts the screen now, 0 to 1: on, off for a moment, on again, then done after about a quarter second.
+		float GetRetroFlash() const {
+			double since = RealSeconds() - m_RetroFlashSeconds.load();
+			bool on = (since >= 0.0 && since < 0.07) || (since >= 0.13 && since < 0.22);
+			return on ? m_RetroFlashStrength.load() : 0.0F;
+		}
+
+		/// Gets how strong the glitch burst set off by KickRetroGlitch is now, 0 to 1.
+		float GetRetroGlitchKick() const {
+			double since = RealSeconds() - m_RetroGlitchKickSeconds.load();
+			return since < 0.0 || since > 1.0 ? 0.0F : m_RetroGlitchKick.load() * static_cast<float>(std::exp(-since * 5.0));
+		}
+
+		/// Gets the screen style in effect (LightingSettings::ScreenStyles), for Lua.
+		int GetScreenStyle() const { return m_LightingSettings.ScreenStyle; }
+
+		/// Sets the screen style (LightingSettings::ScreenStyles; anything else is Off), as the player's setting: a scenario or mod can switch the synthwave look on.
+		void SetScreenStyle(int style) {
+			m_LightingSettings.ScreenStyle = style > LightingSettings::StyleOff && style < LightingSettings::StyleCount ? style : LightingSettings::StyleOff;
+			m_LightingSettings.ScreenVariant.clear();
+		}
+
+		/// Gets the player's saved variant chosen as the screen style (a filter preset's name), empty for none.
+		std::string GetScreenVariant() const { return m_LightingSettings.ScreenVariant; }
+
+		/// Chooses one of the player's saved variants (a filter preset in Userdata/FilterPresets) as the screen style, loading its filters. Empty goes back
+		/// to the built-in ScreenStyle. False, changing nothing, if there's no such variant.
+		bool SetScreenVariant(const std::string& name);
+
+		/// Gets how strongly the screen style applies, 0 to 1.
+		float GetScreenStyleStrength() const { return m_LightingSettings.ScreenStyleStrength; }
+
+		/// Sets how strongly the screen style applies, 0 to 1.
+		void SetScreenStyleStrength(float strength) { m_LightingSettings.ScreenStyleStrength = std::clamp(strength, 0.0F, 1.0F); }
+
+		/// Gets the grade to draw with: the player's (or a script's look blend), with the pulses playing now on top, each scaled by strength.
+		/// @param playerGrade The grade the player set.
+		/// @param strength LightingSettings::EventLookStrength.
+		/// @param extra Further looks to push towards with their weights (0 to 1), such as being hurt or the warmth of a fire.
+		LightingSettings::GradeLook GetEventGrade(const LightingSettings::GradeLook& playerGrade, float strength, const std::vector<std::pair<int, float>>& extra);
+
+		/// Sets the ambient light color where no sky light reaches, 0-255 gamma space per channel.
+		void SetAmbientColor(float red, float green, float blue) { m_LightingSettings.Ambient = glm::vec3(std::pow(red / 255.0F, 2.2F), std::pow(green / 255.0F, 2.2F), std::pow(blue / 255.0F, 2.2F)); }
+#pragma endregion
+
+		/// Resets the atmosphere (time of day, weather) to the player's settings and applies the overrides of the newly loaded Scene, if any.
+		/// Also undoes any atmosphere changes scripts made during the previous Scene.
+		void ApplySceneAtmosphere(const Scene* scene);
+
+		/// Gets the settings to save to Settings.ini: the player's own atmosphere, not a Scene's or script's.
+		LightingSettings GetLightingSettingsToSave() const;
+
+		/// Makes the current atmosphere the player's own, so it's what gets saved and restored between Scenes (used by the Graphics Lab).
+		void AdoptAtmosphereAsPlayers() {
+			m_PlayerAtmosphere = m_LightingSettings;
+			m_PlayerAtmosphereCaptured = true;
+		}
+
+		/// Makes the weather now the player's own, so it's kept from map to map and is what Settings.ini saves. For the weather the player picks
+		/// in the settings panel or loads with a preset, not a map's or a script's: only what the player set is taken, so a map's own weather
+		/// showing at the time isn't taken with it.
+		/// @param type Whether to take the precipitation (its slot and name).
+		/// @param intensity Whether to take the intensity.
+		void AdoptWeatherAsPlayers(bool type = true, bool intensity = true);
+
+		/// Turns OverrideMapWeather on or off and puts the weather it means up now: the player's own when on, the map's (or the game's pick) when off.
+		void SetOverrideMapWeather(bool on);
+
+		/// Gets the lighting and post-processing settings. These persist in Settings.ini and can be changed live.
+		/// @return The lighting settings.
+		LightingSettings& GetLightingSettings() { return m_LightingSettings; }
+
 		GLuint GetPaletteTexture() { return m_Palette8Texture; }
 
 	protected:
@@ -170,11 +617,125 @@ namespace RTE {
 		GLuint m_Palette8Texture; //!< Palette texture for incoming indexed drawings.
 		std::shared_ptr<RenderTarget> m_BlitFramebuffer; //!< Framebuffer for blitting the 8bpp backbuffer to the 32bpp backbuffer.
 		std::shared_ptr<RenderTarget> m_PostProcessFramebuffer; //!< Framebuffer for post-processing effects.
+		std::unique_ptr<SceneLighting> m_SceneLighting; //!< Scene lighting, bloom and tonemapping applied to each player screen.
+		LightingSettings m_LightingSettings; //!< Settings for the scene lighting.
+		LightingSettings m_PlayerAtmosphere; //!< The player's own atmosphere settings, captured when the first Scene loads.
+		bool m_PaletteAnimationLoaded = false; //!< Base.rte/PaletteAnimation.ini has been read.
+
+		/// Reads the animated palette colours in Base.rte/PaletteAnimation.ini, once: lines "Pulse = index, low, high, period, phase" and "Cycle = from, to, period".
+		void LoadPaletteAnimation();
+		bool m_PlayerAtmosphereCaptured = false;
+		std::vector<SceneLight> m_SceneLights; //!< Dynamic lights registered for the current frame, in scene coordinates. Pushed to under m_SceneLightsMutex.
+		/// An energy beam registered for the current frame, in scene coordinates.
+		struct EnergyBeam {
+			glm::vec2 From;
+			glm::vec2 To;
+			glm::vec3 Color; //!< 0 to 1, gamma space.
+			float Width;
+			float Brightness;
+		};
+		std::vector<EnergyBeam> m_EnergyBeams; //!< Pushed to under m_SceneLightsMutex.
+		std::mutex m_SceneLightsMutex; //!< Lights can be registered from Lua, and Lua's ThreadedUpdate runs scripts in parallel.
+		/// An active explosion shockwave.
+		struct Shockwave {
+			Vector m_Pos;
+			float m_Radius;
+			float m_Amplitude;
+			float m_StartTime;
+		};
+		std::vector<Shockwave> m_Shockwaves; //!< Active shockwaves, in scene coordinates.
+		std::vector<Shockwave> m_Shimmers; //!< Shimmers registered for the current frame (the start time isn't used).
+		float m_ActivityTimeOfDay = -1.0F; //!< Time of day chosen for the current activity, negative for none.
+		int m_ActivityWeather = -1; //!< Weather chosen for the current activity, negative for none.
+		bool m_SavedGameWeatherSet = false; //!< Whether the game under way was loaded from a save, whose weather wins over the player's and the map's until the next map loads.
+		int m_SavedGameWeatherType = 0; //!< That save's weather slot.
+		float m_SavedGameWeatherIntensity = 0.0F; //!< And its intensity.
+
+	public:
+		/// Gets the active shockwaves in scene coordinates, as xy position, z current wavefront radius, w remaining strength. For vegetation pushed by blasts.
+		void GetActiveShockwaves(std::vector<glm::vec4>& shockwaves);
+
+		/// Sets the time of day and weather for the activity about to start, overriding the scene's and the player's settings. Negative values leave them alone.
+		/// Kept for restarts of the same activity, until set again.
+		/// @param timeOfDay Hours, or negative for the default.
+		/// @param weatherType 0 clear, 1 rain, 2 snow, or negative for the default.
+		/// Applies the activity's chosen atmosphere, if any, over the current settings.
+		void ApplyActivityAtmosphere();
+
+		/// Puts up the weather for a Scene: the player's own, then the Scene's own unless OverrideMapWeather is on, then the activity's pick.
+		void ApplySceneWeather(const Scene* scene);
+
+		/// Keeps the weather up now as a loaded saved game's, so putting the weather up again (OverrideMapWeather turned on or off) keeps it, until the next map loads.
+		void KeepSavedGameWeather() {
+			m_SavedGameWeatherSet = true;
+			m_SavedGameWeatherType = m_LightingSettings.WeatherType;
+			m_SavedGameWeatherIntensity = m_LightingSettings.WeatherIntensity;
+		}
+
+		void SetActivityAtmosphere(float timeOfDay, int weatherType) {
+			m_ActivityTimeOfDay = timeOfDay;
+			m_ActivityWeather = weatherType;
+		}
+
+	private:
+		std::mutex m_ShockwaveMutex; //!< Gibbing can happen off the main thread.
+		/// A lightning bolt being drawn.
+		struct LightningBolt {
+			glm::vec2 From;
+			glm::vec2 To;
+			unsigned int Seed;
+			float StartTime; //!< Smooth sim seconds.
+		};
+		static constexpr float c_LightningBoltSeconds = 0.45F; //!< How long a bolt shows, its echo included.
+		std::vector<LightningBolt> m_LightningBolts; //!< Guarded by m_LightningMutex.
+		mutable std::mutex m_LightningMutex;
+		std::string m_PostShaderName; //!< The mod post pass asked for from Lua. Guarded by m_PostShaderMutex.
+		mutable std::mutex m_PostShaderMutex;
+		std::string m_ActivePostShaderName; //!< The post pass last looked up, and what it found (null if nothing usable). Main thread.
+		const Shader* m_ActivePostShader = nullptr;
+		ScriptFocus m_ScriptFocus; //!< Guarded by m_ScriptFocusMutex.
+		mutable std::mutex m_ScriptFocusMutex;
+		/// A grade pulse playing (PulseGrade).
+		struct GradePulse {
+			int Look;
+			float Strength;
+			float AttackSeconds;
+			float ReleaseSeconds;
+			double StartSeconds; //!< Real seconds.
+		};
+		std::vector<GradePulse> m_GradePulses; //!< Guarded by m_EventLookMutex.
+		bool m_LookBlendOn = false; //!< A script's look blend (BlendLook). Guarded by m_EventLookMutex.
+		int m_LookBlendFrom = 0;
+		int m_LookBlendTo = 0;
+		float m_LookBlendT = 0.0F;
+		std::mutex m_EventLookMutex;
+		std::atomic<float> m_RetroGlitchKick{0.0F}; //!< The last glitch burst's strength (KickRetroGlitch).
+		std::atomic<double> m_RetroGlitchKickSeconds{-10.0}; //!< Real seconds it was set off.
+		std::atomic<float> m_RetroFlashStrength{0.0F}; //!< The last blast flash's strength (KickRetroFlash).
+		std::atomic<double> m_RetroFlashSeconds{-10.0}; //!< Real seconds it was set off.
+		mutable std::mutex m_ComicBurstMutex; //!< Guards the comic burst (KickComicBurst).
+		Vector m_ComicBurstPosition; //!< Where in the scene the last comic burst went off.
+		float m_ComicBurstStrength = 0.0F; //!< Its strength, 0 to 1.
+		double m_ComicBurstSeconds = -10.0; //!< Real seconds it went off.
+		int m_ComicBurstWord = 0; //!< Which word it shows.
+
+		/// Gets real seconds on a steady clock, for effects that play through pauses and hit-stops.
+		static double RealSeconds() { return std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count(); }
+
+		/// How bright a bolt is this long after it struck: a sharp first stroke and a weaker echo, as the sky's flash.
+		static float LightningFlash(float seconds) { return seconds < 0.0F || seconds > c_LightningBoltSeconds ? 0.0F : 1.6F * std::exp(-seconds * 18.0F) + 0.9F * std::exp(-std::abs(seconds - 0.2F) * 25.0F); }
+		std::vector<ScorchMark> m_PendingScorchMarks; //!< Scorch marks not stamped yet. Guarded by m_ShockwaveMutex.
+		std::vector<ScorchMark> m_HotScorchMarks; //!< Recent scorch marks, for the cooling glow. Guarded by m_ShockwaveMutex.
+		std::vector<glm::vec4> m_FogPuffs; //!< Mist and dust put into the air and not yet taken by the fog volume. Guarded by m_ShockwaveMutex.
 		std::unique_ptr<glm::mat4> m_ProjectionMatrix; //!< Projection matrix for post-processing effects.
 		GLuint m_VertexBuffer; //!< Vertex buffer for post-processing effects.
 		GLuint m_VertexArray; //!< Vertex array for post-processing effects.
 		std::unique_ptr<Shader> m_Blit8; //!< Shader for blitting the 8bpp backbuffer to the 32bpp backbuffer.
 		std::unique_ptr<Shader> m_PostProcessShader; //!< Shader for drawing bitmap post effects.
+
+		/// Fills in a scene light from what RegisterLight was given, without registering it.
+		/// @return Whether the light is worth registering (a positive radius and intensity, in a sim update that will be drawn).
+		bool MakeSceneLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, SceneLight& light) const;
 
 #pragma region Post Effect Handling
 		/// Gets all screen effects that are located within a box in the scene. Their coordinates will be returned relative to the upper left corner of the box passed in here.
@@ -184,7 +745,7 @@ namespace RTE {
 		/// @param effectsList The list to add the screen effects that fall within the box to. The coordinates of the effects returned here will be relative to the boxPos passed in above.
 		/// @param team The team whose unseen area should block the glows.
 		/// @return Whether any active post effects were found in that box.
-		bool GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team = -1);
+		bool GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team = -1);
 
 		/// Gets all screen effects that are located within a box in the scene. Their coordinates will be returned relative to the upper left corner of the box passed in here.
 		/// @param left Position of box left plane (X start).
@@ -194,7 +755,7 @@ namespace RTE {
 		/// @param effectsList The list to add the screen effects that fall within the box to. The coordinates of the effects returned here will be relative to the boxPos passed in above.
 		/// @param team The team whose unseen area should block the glows.
 		/// @return Whether any active post effects were found in that box.
-		bool GetPostScreenEffects(int left, int top, int right, int bottom, std::list<PostEffect>& effectsList, int team = -1);
+		bool GetPostScreenEffects(int left, int top, int right, int bottom, std::vector<PostEffect>& effectsList, int team = -1);
 #pragma endregion
 
 #pragma region Post Pixel Glow Handling
@@ -207,14 +768,6 @@ namespace RTE {
 		/// @param which Which of the dot glow colors to get, see the DotGlowColor enumerator.
 		/// @return The hash value of the requested glow dot BITMAP.
 		size_t GetDotGlowEffectHash(DotGlowColor whichColor) const;
-#pragma endregion
-
-#pragma region PostProcess Breakdown
-		/// Draws all the glow dot effects on pixels registered inside glow boxes for this frame. This is called from PostProcess().
-		void DrawDotGlowEffects();
-
-		/// Draws all the glow effects registered for this frame. This is called from PostProcess().
-		void DrawPostScreenEffects();
 #pragma endregion
 
 		/// Clears all the member variables of this PostProcessMan, effectively resetting the members of this abstraction level only.

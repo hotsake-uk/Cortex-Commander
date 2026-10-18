@@ -1,9 +1,14 @@
 #include "PostProcessMan.h"
+#include "SettingsMan.h"
+#include "SceneLighting.h"
+#include "Weather.h"
 
 #include "CameraMan.h"
+#include "TimerMan.h"
 #include "WindowMan.h"
 #include "FrameMan.h"
 #include "Scene.h"
+#include "SceneMan.h"
 #include "ContentFile.h"
 #include "Matrix.h"
 #include "Rectangles.h"
@@ -11,6 +16,9 @@
 #include "RenderMan.h"
 
 #include "PresetMan.h"
+#include "ActivityMan.h"
+#include "Activity.h"
+#include "ConsoleMan.h"
 #include "GLStateMan.h"
 #include "RenderTarget.h"
 
@@ -21,6 +29,10 @@
 #include "glm/gtc/type_ptr.hpp"
 
 #include "tracy/Tracy.hpp"
+#include <fstream>
+#include <cctype>
+#include <algorithm>
+#include <sstream>
 #include "tracy/TracyOpenGL.hpp"
 #include "raylib/raylib.h"
 
@@ -134,35 +146,715 @@ void PostProcessMan::UpdatePalette() {
 	GL_CHECK(glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_NEAREST));
 }
 
+void PostProcessMan::SetPalettePulse(int paletteIndex, float low, float high, float period, float phase) {
+	g_RenderMan.SetPalettePulse(paletteIndex, low, high, period, phase);
+}
+
+void PostProcessMan::SetPaletteCycle(int from, int to, float period) {
+	g_RenderMan.SetPaletteCycle(from, to, period);
+}
+
+void PostProcessMan::ClearPaletteAnimation() {
+	g_RenderMan.ClearPaletteAnimation();
+}
+
+void PostProcessMan::SetWeatherType(int weatherType) {
+	m_LightingSettings.WeatherType = std::clamp(weatherType, 0, Weather::GetSlotCount() - 1);
+	m_LightingSettings.WeatherName.clear();
+}
+
+std::string PostProcessMan::GetWeatherName() const {
+	const Weather* weather = Weather::GetSlot(m_LightingSettings.WeatherType);
+	return weather ? weather->GetPresetName() : "Clear";
+}
+
+void PostProcessMan::SetWeatherName(const std::string& name) {
+	int slot = Weather::FindSlot(name);
+	if (slot < 0) {
+		g_ConsoleMan.PrintString("ERROR: there's no weather called \"" + name + "\" (an AddWeather = Weather preset); the weather stays as it is.");
+		return;
+	}
+	SetWeatherType(slot);
+}
+
+std::string PostProcessMan::GetWeatherSound() const {
+	const Weather* weather = Weather::GetSlot(m_LightingSettings.WeatherType, m_LightingSettings.CustomWeather);
+	return weather ? weather->GetParams().Sound : "";
+}
+
+void PostProcessMan::ResolveWeather() {
+	for (LightingSettings* settings: {&m_LightingSettings, &m_PlayerAtmosphere}) {
+		if (!settings->WeatherName.empty()) {
+			if (int slot = Weather::FindSlot(settings->WeatherName); slot >= 0) {
+				settings->WeatherType = slot;
+			}
+			settings->WeatherName.clear();
+		}
+		settings->WeatherType = std::clamp(settings->WeatherType, 0, Weather::GetSlotCount() - 1);
+	}
+}
+
+void PostProcessMan::SetPostShader(const std::string& shaderName) {
+	std::scoped_lock lock(m_PostShaderMutex);
+	m_PostShaderName = shaderName == "None" ? "" : shaderName;
+}
+
+std::string PostProcessMan::GetPostShader() const {
+	std::scoped_lock lock(m_PostShaderMutex);
+	return m_PostShaderName;
+}
+
+bool PostProcessMan::SetScreenVariant(const std::string& name) {
+	if (name.empty()) {
+		m_LightingSettings.ScreenVariant.clear();
+		return true;
+	}
+	// No screen style presets in this build.
+	return false;
+}
+
+const Shader* PostProcessMan::GetActivePostShader() {
+	std::string name = GetPostShader();
+	if (name.empty() && g_SceneMan.GetScene()) {
+		name = g_SceneMan.GetScene()->GetAtmosphere().PostShader;
+	}
+	if (name != m_ActivePostShaderName) {
+		m_ActivePostShaderName = name;
+		m_ActivePostShader = nullptr;
+		if (!name.empty()) {
+			const Shader* shader = dynamic_cast<const Shader*>(g_PresetMan.GetEntityPreset("Shader", name));
+			if (!shader) {
+				g_ConsoleMan.PrintString("ERROR: The post shader \"" + name + "\" isn't defined. The screen is drawn without it.");
+			} else if (shader->IsValid()) {
+				m_ActivePostShader = shader;
+			}
+		}
+	}
+	return m_ActivePostShader;
+}
+
+void PostProcessMan::LoadPaletteAnimation() {
+	m_PaletteAnimationLoaded = true;
+	std::ifstream file(g_PresetMan.GetFullModulePath("Base.rte/PaletteAnimation.ini"));
+	std::string line;
+	while (std::getline(file, line)) {
+		size_t comment = line.find("//");
+		line = line.substr(0, comment);
+		size_t equals = line.find('=');
+		if (equals == std::string::npos) {
+			continue;
+		}
+		std::string key = line.substr(0, equals);
+		key.erase(std::remove_if(key.begin(), key.end(), [](unsigned char c) { return std::isspace(c); }), key.end());
+		std::string values = line.substr(equals + 1);
+		std::replace(values.begin(), values.end(), ',', ' ');
+		std::istringstream numbers(values);
+		if (key == "Pulse") {
+			int index = 0;
+			float low = 0.0F, high = 0.0F, period = 0.0F, phase = 0.0F;
+			if (numbers >> index >> low >> high >> period) {
+				numbers >> phase;
+				g_RenderMan.SetPalettePulse(index, low, high, period, phase);
+			}
+		} else if (key == "Cycle") {
+			int from = 0, to = 0;
+			float period = 0.0F;
+			if (numbers >> from >> to >> period) {
+				g_RenderMan.SetPaletteCycle(from, to, period);
+			}
+		}
+	}
+}
+
+void PostProcessMan::RegisterLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, LightSource source, bool steady) {
+	SceneLight light;
+	if (MakeSceneLight(pos, color, radius, intensity, light)) {
+		light.m_Source = source;
+		light.m_Steady = steady;
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
+	}
+}
+
+void PostProcessMan::RegisterConeLight(const Vector& pos, const Vector& direction, float halfAngleDegrees, const glm::vec3& color, float radius, float intensity, LightSource source) {
+	SceneLight light;
+	if (MakeSceneLight(pos, color, radius, intensity, light)) {
+		light.m_Source = source;
+		glm::vec2 dir(direction.m_X, direction.m_Y);
+		float length = glm::length(dir);
+		light.m_Direction = length > 0.0001F ? dir / length : glm::vec2(1.0F, 0.0F);
+		light.m_ConeCos = std::cos(halfAngleDegrees * c_PI / 180.0F);
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
+	}
+}
+
+void PostProcessMan::RegisterEnergyBeam(const Vector& from, const Vector& to, const glm::vec3& color, float width, float brightness, float lightRadius) {
+	if (brightness <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return;
+	}
+	glm::vec3 clamped = glm::clamp(color, glm::vec3(0.0F), glm::vec3(255.0F)) / 255.0F;
+	{
+		std::scoped_lock lock(m_SceneLightsMutex);
+		if (m_EnergyBeams.size() >= 256) {
+			return;
+		}
+		m_EnergyBeams.push_back({glm::vec2(from.m_X, from.m_Y), glm::vec2(to.m_X, to.m_Y), clamped, std::clamp(width, 0.5F, 12.0F), std::min(brightness, 4.0F)});
+	}
+	if (lightRadius <= 0.0F) {
+		return;
+	}
+	// The light comes from the whole length, so its colour round the blade is real light: on the holder, the ground, and the air.
+	const LightingSettings& settings = GetLightingSettings();
+	RegisterLineLight(from, to, color, lightRadius * settings.SaberLightReach, brightness * 0.8F * settings.SaberLightBrightness, LightSource::Objects);
+}
+
+void PostProcessMan::GetEnergyBeams(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<EnergyBeamSegment>& segments) const {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
+	for (const EnergyBeam& beam: m_EnergyBeams) {
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			glm::vec2 shift(static_cast<float>(wrapX) * sceneWidth, 0.0F);
+			glm::vec2 from = beam.From + shift - box;
+			glm::vec2 to = beam.To + shift - box;
+			float margin = beam.Width * 4.0F + 4.0F;
+			if (std::max(from.x, to.x) + margin < 0.0F || std::min(from.x, to.x) - margin > static_cast<float>(boxWidth) || std::max(from.y, to.y) + margin < 0.0F || std::min(from.y, to.y) - margin > static_cast<float>(boxHeight)) {
+				continue;
+			}
+			segments.push_back({from, to, beam.Color, beam.Width, beam.Brightness});
+		}
+	}
+}
+
+void PostProcessMan::RegisterLineLight(const Vector& from, const Vector& to, const glm::vec3& color, float radius, float intensity, LightSource source) {
+	SceneLight light;
+	Vector along = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY());
+	if (MakeSceneLight(from + along * 0.5F, color, radius, intensity, light)) {
+		light.m_Source = source;
+		light.m_Line = glm::vec2(along.m_X, along.m_Y) * 0.5F;
+		std::scoped_lock lock(m_SceneLightsMutex);
+		m_SceneLights.push_back(light);
+	}
+}
+
+bool PostProcessMan::MakeSceneLight(const Vector& pos, const glm::vec3& color, float radius, float intensity, SceneLight& light) const {
+	if (radius <= 0.0F || intensity <= 0.0F || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return false;
+	}
+	glm::vec3 linearColor(std::pow(std::clamp(color.r, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.g, 0.0F, 255.0F) / 255.0F, 2.2F), std::pow(std::clamp(color.b, 0.0F, 255.0F) / 255.0F, 2.2F));
+	light.m_Pos = pos;
+	light.m_Color = linearColor * intensity;
+	light.m_Radius = radius;
+	return true;
+}
+
+void PostProcessMan::GetLightsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<SceneLight>& lights) const {
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
+	for (const SceneLight& light: m_SceneLights) {
+		// Try the light's position and its wrapped copies, keeping any that reach the box.
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			for (int wrapY = -1; wrapY <= 1; ++wrapY) {
+				if (wrapY != 0 && !g_SceneMan.SceneWrapsY()) {
+					continue;
+				}
+				Vector relativePos = light.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
+				float reach = light.GetReach();
+				if (relativePos.m_X + reach >= 0 && relativePos.m_Y + reach >= 0 && relativePos.m_X - reach <= boxWidth && relativePos.m_Y - reach <= boxHeight) {
+					lights.push_back({relativePos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, light.m_Source, light.m_Steady, light.m_Line});
+				}
+			}
+		}
+	}
+	// Lightning lights up where it strikes and the air along it, for as long as the bolt shows.
+	std::vector<LightningBolt> bolts;
+	{
+		std::scoped_lock lock(m_LightningMutex);
+		bolts = m_LightningBolts;
+	}
+	float now = GetSmoothSimTime();
+	for (const LightningBolt& bolt: bolts) {
+		float flash = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.0F, 2.0F);
+		if (flash <= 0.01F) {
+			continue;
+		}
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			const glm::vec2 places[2] = {bolt.To, (bolt.From + bolt.To) * 0.5F};
+			for (int place = 0; place < 2; ++place) {
+				float radius = place == 0 ? 460.0F : 300.0F;
+				Vector relativePos = Vector(places[place].x + static_cast<float>(wrapX) * sceneWidth, places[place].y) - boxPos;
+				if (relativePos.m_X + radius >= 0 && relativePos.m_Y + radius >= 0 && relativePos.m_X - radius <= boxWidth && relativePos.m_Y - radius <= boxHeight) {
+					lights.push_back({relativePos, glm::vec3(0.62F, 0.68F, 1.0F) * flash * (place == 0 ? 5.0F : 2.5F), radius, glm::vec2(1.0F, 0.0F), -2.0F, LightSource::Other});
+				}
+			}
+		}
+	}
+}
+
+float PostProcessMan::GetSmoothSimTime() {
+	return static_cast<float>(GetSmoothSimTimePrecise());
+}
+
+double PostProcessMan::GetSmoothSimTimePrecise() {
+	return (static_cast<double>(g_TimerMan.GetSimUpdateCount()) + static_cast<double>(g_TimerMan.GetSimUpdateProportion())) * static_cast<double>(g_TimerMan.GetDeltaTimeSecs());
+}
+
+float PostProcessMan::GetEffectTime() {
+	return static_cast<float>(std::fmod(GetSmoothSimTimePrecise(), c_EffectTimePeriod));
+}
+
+void PostProcessMan::RegisterShockwave(const Vector& pos, float energy) {
+	// Only explosions, not every gibbing body part. Explosives release ~10k, limbs and items a few hundred.
+	if (energy < 2000.0F || !m_LightingSettings.DistortionEnabled || m_LightingSettings.ShockwaveStrength <= 0.0F) {
+		return;
+	}
+	Shockwave shockwave{pos, std::clamp(std::sqrt(energy) * 2.2F, 60.0F, 500.0F), std::clamp(energy / 2500.0F, 2.0F, 10.0F) * m_LightingSettings.ShockwaveStrength, GetSmoothSimTime()};
+	std::scoped_lock lock(m_ShockwaveMutex);
+	m_Shockwaves.push_back(shockwave);
+}
+
+void PostProcessMan::RegisterShimmer(const Vector& pos, float radius, float strength) {
+	if (radius <= 1.0F || strength <= 0.0F || !m_LightingSettings.DistortionEnabled || g_TimerMan.SimUpdatesSinceDrawn() < 0) {
+		return;
+	}
+	std::scoped_lock lock(m_ShockwaveMutex);
+	if (m_Shimmers.size() < 64) {
+		m_Shimmers.push_back({pos, radius, strength, 0.0F});
+	}
+}
+
+void PostProcessMan::RegisterFog(const Vector& pos, float radius, float amount) {
+	if (radius <= 0.0F || amount <= 0.0F || !m_LightingSettings.Enabled || m_LightingSettings.FogVolume <= 0.0F) {
+		return;
+	}
+	std::scoped_lock lock(m_ShockwaveMutex);
+	// A burst of a hundred steam puffs is still one thick patch; past this many in a frame the oldest are dropped.
+	if (m_FogPuffs.size() >= 64) {
+		m_FogPuffs.erase(m_FogPuffs.begin());
+	}
+	m_FogPuffs.emplace_back(pos.m_X, pos.m_Y, std::min(radius, 400.0F), std::min(amount, 1.0F));
+}
+
+std::vector<glm::vec4> PostProcessMan::TakeFogPuffs() {
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::vector<glm::vec4> puffs;
+	puffs.swap(m_FogPuffs);
+	return puffs;
+}
+
+void PostProcessMan::RegisterLightningBolt(const Vector& from, const Vector& to, unsigned int seed) {
+	if (!m_LightingSettings.LightningBolts) {
+		return;
+	}
+	float now = GetSmoothSimTime();
+	{
+		std::scoped_lock lock(m_LightningMutex);
+		m_LightningBolts.erase(std::remove_if(m_LightningBolts.begin(), m_LightningBolts.end(), [now](const LightningBolt& bolt) { return now - bolt.StartTime > c_LightningBoltSeconds || now < bolt.StartTime; }), m_LightningBolts.end());
+		if (m_LightningBolts.size() < 16) {
+			m_LightningBolts.push_back({glm::vec2(from.m_X, from.m_Y), glm::vec2(to.m_X, to.m_Y), seed, now});
+		}
+	}
+	if (m_SceneLighting) {
+		m_SceneLighting->TriggerLightning();
+	}
+}
+
+namespace {
+	/// Builds a lightning bolt's jagged line from one point to another by splitting each piece at a displaced midpoint, five times over, with a few
+	/// dimmer forks. The shape depends on the seed alone.
+	void BuildLightningBolt(glm::vec2 from, glm::vec2 to, unsigned int& random, float width, float brightness, int levels, int forks, std::vector<RTE::LightningBoltSegment>& segments) {
+		auto next = [&random]() {
+			random = random * 1664525u + 1013904223u;
+			return static_cast<float>(random >> 8) / static_cast<float>(1u << 24);
+		};
+		std::vector<glm::vec2> points{from, to};
+		std::vector<glm::vec2> split;
+		struct Fork {
+			glm::vec2 From, To;
+		};
+		std::vector<Fork> forkList;
+		for (int level = 0; level < levels; ++level) {
+			split.clear();
+			for (size_t i = 0; i + 1 < points.size(); ++i) {
+				glm::vec2 a = points[i];
+				glm::vec2 b = points[i + 1];
+				glm::vec2 along = b - a;
+				float length = glm::length(along);
+				glm::vec2 across = length > 0.001F ? glm::vec2(-along.y, along.x) / length : glm::vec2(1.0F, 0.0F);
+				glm::vec2 middle = (a + b) * 0.5F + across * (next() - 0.5F) * length * 0.4F;
+				split.push_back(a);
+				split.push_back(middle);
+				// Forks leave from the coarser bends, angled off downwards.
+				if (level >= 1 && level <= 2 && static_cast<int>(forkList.size()) < forks && next() < 0.35F) {
+					float turn = (next() < 0.5F ? -1.0F : 1.0F) * (0.4F + next() * 0.5F);
+					glm::vec2 direction = length > 0.001F ? along / length : glm::vec2(0.0F, 1.0F);
+					glm::vec2 turned(direction.x * std::cos(turn) - direction.y * std::sin(turn), direction.x * std::sin(turn) + direction.y * std::cos(turn));
+					forkList.push_back({middle, middle + turned * length * (0.7F + next() * 0.6F)});
+				}
+			}
+			split.push_back(points.back());
+			points.swap(split);
+		}
+		for (size_t i = 0; i + 1 < points.size(); ++i) {
+			segments.push_back({points[i], points[i + 1], width, brightness});
+		}
+		for (const Fork& fork: forkList) {
+			BuildLightningBolt(fork.From, fork.To, random, width * 0.55F, brightness * 0.55F, 3, 0, segments);
+		}
+	}
+}
+
+void PostProcessMan::GetLightningBolts(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<LightningBoltSegment>& segments) const {
+	std::vector<LightningBolt> bolts;
+	{
+		std::scoped_lock lock(m_LightningMutex);
+		bolts = m_LightningBolts;
+	}
+	float now = GetSmoothSimTime();
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	glm::vec2 box(boxPos.m_X, boxPos.m_Y);
+	for (const LightningBolt& bolt: bolts) {
+		float brightness = LightningFlash(now - bolt.StartTime) * std::clamp(m_LightingSettings.LightningBrightness, 0.0F, 2.0F);
+		if (brightness <= 0.01F) {
+			continue;
+		}
+		// The copy of the bolt nearest the box, on a wrapping scene.
+		glm::vec2 shift(0.0F);
+		if (g_SceneMan.SceneWrapsX() && sceneWidth > 0.0F) {
+			float centre = (bolt.From.x + bolt.To.x) * 0.5F - (box.x + static_cast<float>(boxWidth) * 0.5F);
+			shift.x = -std::round(centre / sceneWidth) * sceneWidth;
+		}
+		float left = std::min(bolt.From.x, bolt.To.x) + shift.x - box.x;
+		float right = std::max(bolt.From.x, bolt.To.x) + shift.x - box.x;
+		float top = std::min(bolt.From.y, bolt.To.y) - box.y;
+		float bottom = std::max(bolt.From.y, bolt.To.y) - box.y;
+		float margin = glm::distance(bolt.From, bolt.To) * 0.5F;
+		if (right + margin < 0.0F || left - margin > static_cast<float>(boxWidth) || bottom + margin < 0.0F || top - margin > static_cast<float>(boxHeight)) {
+			continue;
+		}
+		unsigned int random = bolt.Seed * 2654435761u + 12345u;
+		BuildLightningBolt(bolt.From + shift - box, bolt.To + shift - box, random, 1.4F, brightness, 5, 4, segments);
+	}
+}
+
+void PostProcessMan::RegisterScorchMark(const Vector& pos, float energy) {
+	if (energy < 2000.0F || !m_LightingSettings.ScorchMarks) {
+		return;
+	}
+	ScorchMark mark{pos, std::clamp(std::sqrt(energy) * 0.45F, 14.0F, 90.0F), std::clamp(0.35F + energy / 40000.0F, 0.35F, 0.8F), GetSmoothSimTime()};
+	std::scoped_lock lock(m_ShockwaveMutex);
+	m_PendingScorchMarks.push_back(mark);
+	m_HotScorchMarks.push_back(mark);
+}
+
+std::vector<PostProcessMan::ScorchMark> PostProcessMan::TakePendingScorchMarks() {
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::vector<ScorchMark> marks;
+	marks.swap(m_PendingScorchMarks);
+	return marks;
+}
+
+std::vector<PostProcessMan::ScorchMark> PostProcessMan::GetHotScorchMarks(float duration) {
+	float now = GetSmoothSimTime();
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::erase_if(m_HotScorchMarks, [now, duration](const ScorchMark& mark) { return now - mark.m_StartTime > duration || now < mark.m_StartTime - 1.0F; });
+	return m_HotScorchMarks;
+}
+
+void PostProcessMan::GetActiveShockwaves(std::vector<glm::vec4>& shockwaves) {
+	const float duration = 0.55F;
+	float now = GetSmoothSimTime();
+	std::scoped_lock lock(m_ShockwaveMutex);
+	for (const Shockwave& shockwave: m_Shockwaves) {
+		float progress = std::clamp((now - shockwave.m_StartTime) / duration, 0.0F, 1.0F);
+		shockwaves.emplace_back(shockwave.m_Pos.m_X, shockwave.m_Pos.m_Y, shockwave.m_Radius * progress, shockwave.m_Amplitude * (1.0F - progress));
+	}
+}
+
+void PostProcessMan::GetShockwavesWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<ScreenShockwave>& shockwaves) {
+	const float duration = 0.55F;
+	float now = GetSmoothSimTime();
+	float sceneWidth = static_cast<float>(g_SceneMan.GetSceneWidth());
+	float sceneHeight = static_cast<float>(g_SceneMan.GetSceneHeight());
+	std::scoped_lock lock(m_ShockwaveMutex);
+	std::erase_if(m_Shockwaves, [now, duration](const Shockwave& shockwave) { return now - shockwave.m_StartTime > duration || now < shockwave.m_StartTime - 1.0F; });
+	for (const Shockwave& shockwave: m_Shockwaves) {
+		float progress = std::clamp((now - shockwave.m_StartTime) / duration, 0.0F, 1.0F);
+		for (int wrapX = -1; wrapX <= 1; ++wrapX) {
+			if (wrapX != 0 && !g_SceneMan.SceneWrapsX()) {
+				continue;
+			}
+			for (int wrapY = -1; wrapY <= 1; ++wrapY) {
+				if (wrapY != 0 && !g_SceneMan.SceneWrapsY()) {
+					continue;
+				}
+				Vector relativePos = shockwave.m_Pos + Vector(wrapX * sceneWidth, wrapY * sceneHeight) - boxPos;
+				if (relativePos.m_X + shockwave.m_Radius >= 0 && relativePos.m_Y + shockwave.m_Radius >= 0 && relativePos.m_X - shockwave.m_Radius <= boxWidth && relativePos.m_Y - shockwave.m_Radius <= boxHeight) {
+					shockwaves.push_back({glm::vec2(relativePos.m_X, relativePos.m_Y), shockwave.m_Radius, shockwave.m_Amplitude, progress});
+				}
+			}
+		}
+	}
+	// Shimmers are the same ring held in place: its radius breathes in and out a little, each at its own pace.
+	for (const Shockwave& shimmer: m_Shimmers) {
+		Vector relativePos = shimmer.m_Pos - boxPos;
+		if (g_SceneMan.SceneWrapsX()) {
+			if (relativePos.m_X < (static_cast<float>(boxWidth) - sceneWidth) * 0.5F) {
+				relativePos.m_X += sceneWidth;
+			} else if (relativePos.m_X > (static_cast<float>(boxWidth) + sceneWidth) * 0.5F) {
+				relativePos.m_X -= sceneWidth;
+			}
+		}
+		if (relativePos.m_X + shimmer.m_Radius >= 0 && relativePos.m_Y + shimmer.m_Radius >= 0 && relativePos.m_X - shimmer.m_Radius <= boxWidth && relativePos.m_Y - shimmer.m_Radius <= boxHeight) {
+			float wobble = 0.62F + 0.16F * std::sin(now * 3.1F + shimmer.m_Pos.m_X * 0.37F + shimmer.m_Pos.m_Y * 0.21F);
+			// The ring's strength falls off with its progress in the shader; make up for that so the strength asked for is what shows.
+			shockwaves.push_back({glm::vec2(relativePos.m_X, relativePos.m_Y), shimmer.m_Radius, shimmer.m_Amplitude * 3.0F / ((1.0F - wobble) * (1.0F - wobble)) * 0.15F, wobble});
+		}
+	}
+}
+
+void PostProcessMan::ApplySceneAtmosphere(const Scene* scene) {
+	ResolveWeather();
+	// A new map, or the same one again: a saved game's weather is put back after this, if one is being loaded.
+	m_SavedGameWeatherSet = false;
+	if (!m_PlayerAtmosphereCaptured) {
+		m_PlayerAtmosphere = m_LightingSettings;
+		m_PlayerAtmosphereCaptured = true;
+	}
+	m_LightingSettings.TimeOfDay = m_PlayerAtmosphere.TimeOfDay;
+	m_LightingSettings.DayLengthMinutes = m_PlayerAtmosphere.DayLengthMinutes;
+	m_LightingSettings.WeatherType = m_PlayerAtmosphere.WeatherType;
+	m_LightingSettings.WeatherIntensity = m_PlayerAtmosphere.WeatherIntensity;
+	m_LightingSettings.Wind = m_PlayerAtmosphere.Wind;
+	m_LightingSettings.SkyColor = m_PlayerAtmosphere.SkyColor;
+	m_LightingSettings.Ambient = m_PlayerAtmosphere.Ambient;
+	m_LightingSettings.Temperature = m_PlayerAtmosphere.Temperature;
+	m_LightingSettings.Tint = m_PlayerAtmosphere.Tint;
+	m_LightingSettings.Contrast = m_PlayerAtmosphere.Contrast;
+	m_LightingSettings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
+	m_LightingSettings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
+	if (!scene) {
+		ApplyActivityAtmosphere();
+		return;
+	}
+	const Scene::Atmosphere& atmosphere = scene->GetAtmosphere();
+	if (atmosphere.TimeOfDay >= 0.0F) {
+		m_LightingSettings.TimeOfDay = std::fmod(atmosphere.TimeOfDay, 24.0F);
+	}
+	if (atmosphere.DayLengthMinutes >= 0.0F) {
+		m_LightingSettings.DayLengthMinutes = atmosphere.DayLengthMinutes;
+	}
+	ApplySceneWeather(scene);
+	// The map's wind stays its own either way.
+	if (atmosphere.Wind > -10000.0F) {
+		m_LightingSettings.Wind = atmosphere.Wind;
+	}
+	ApplyActivityAtmosphere();
+}
+
+void PostProcessMan::ApplySceneWeather(const Scene* scene) {
+	ResolveWeather();
+	if (m_PlayerAtmosphereCaptured) {
+		m_LightingSettings.WeatherType = m_PlayerAtmosphere.WeatherType;
+		m_LightingSettings.WeatherIntensity = m_PlayerAtmosphere.WeatherIntensity;
+	}
+	if (scene && !m_LightingSettings.OverrideMapWeather) {
+		const Scene::Atmosphere& atmosphere = scene->GetAtmosphere();
+		if (!atmosphere.WeatherName.empty() && Weather::FindSlot(atmosphere.WeatherName) >= 0) {
+			// A custom weather goes by name, since its slot depends on the mods loaded.
+			m_LightingSettings.WeatherType = Weather::FindSlot(atmosphere.WeatherName);
+		} else if (atmosphere.WeatherType >= 0) {
+			m_LightingSettings.WeatherType = std::clamp(atmosphere.WeatherType, 0, Weather::GetSlotCount() - 1);
+		}
+		if (atmosphere.WeatherIntensity >= 0.0F) {
+			m_LightingSettings.WeatherIntensity = std::clamp(atmosphere.WeatherIntensity, 0.0F, 1.0F);
+		}
+	}
+	if (m_ActivityWeather >= 0) {
+		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, Weather::GetSlotCount() - 1);
+		if (m_LightingSettings.WeatherType > 0) {
+			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
+		}
+	}
+	if (m_SavedGameWeatherSet) {
+		m_LightingSettings.WeatherType = std::clamp(m_SavedGameWeatherType, 0, Weather::GetSlotCount() - 1);
+		m_LightingSettings.WeatherIntensity = m_SavedGameWeatherIntensity;
+	}
+}
+
+void PostProcessMan::AdoptWeatherAsPlayers(bool type, bool intensity) {
+	if (!m_PlayerAtmosphereCaptured) {
+		// Not captured yet: the first map takes the settings as they are now.
+		return;
+	}
+	if (type) {
+		m_PlayerAtmosphere.WeatherType = m_LightingSettings.WeatherType;
+		m_PlayerAtmosphere.WeatherName = m_LightingSettings.WeatherName;
+	}
+	if (intensity) {
+		m_PlayerAtmosphere.WeatherIntensity = m_LightingSettings.WeatherIntensity;
+	}
+}
+
+void PostProcessMan::SetOverrideMapWeather(bool on) {
+	m_LightingSettings.OverrideMapWeather = on;
+	ApplySceneWeather(g_SceneMan.GetScene());
+}
+
+void PostProcessMan::ApplyActivityAtmosphere() {
+	if (m_ActivityTimeOfDay >= 0.0F) {
+		m_LightingSettings.TimeOfDay = std::fmod(m_ActivityTimeOfDay, 24.0F);
+		m_LightingSettings.DayLengthMinutes = 0.0F;
+	}
+	if (m_ActivityWeather >= 0) {
+		m_LightingSettings.WeatherType = std::clamp(m_ActivityWeather, 0, Weather::GetSlotCount() - 1);
+		if (m_LightingSettings.WeatherType > 0) {
+			m_LightingSettings.WeatherIntensity = std::max(m_LightingSettings.WeatherIntensity, 0.6F);
+		}
+	}
+}
+
+void PostProcessMan::PulseGrade(int look, float strength, float attackMS, float releaseMS) {
+	if (look < 0 || look >= LightingSettings::LookAllCount || strength <= 0.0F) {
+		return;
+	}
+	double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	std::scoped_lock lock(m_EventLookMutex);
+	// A handful at once is plenty; the oldest makes way.
+	if (m_GradePulses.size() >= 8) {
+		m_GradePulses.erase(m_GradePulses.begin());
+	}
+	m_GradePulses.push_back({look, std::min(strength, 2.0F), std::clamp(attackMS, 0.0F, 10000.0F) * 0.001F, std::clamp(releaseMS, 1.0F, 30000.0F) * 0.001F, now});
+}
+
+void PostProcessMan::BlendLook(int fromLook, int toLook, float t) {
+	std::scoped_lock lock(m_EventLookMutex);
+	m_LookBlendOn = true;
+	m_LookBlendFrom = std::clamp(fromLook, 0, LightingSettings::LookAllCount - 1);
+	m_LookBlendTo = std::clamp(toLook, 0, LightingSettings::LookAllCount - 1);
+	m_LookBlendT = std::clamp(t, 0.0F, 1.0F);
+}
+
+void PostProcessMan::ClearLookBlend() {
+	std::scoped_lock lock(m_EventLookMutex);
+	m_LookBlendOn = false;
+}
+
+void PostProcessMan::ClearEventLooks() {
+	std::scoped_lock lock(m_EventLookMutex);
+	m_GradePulses.clear();
+	m_LookBlendOn = false;
+}
+
+bool PostProcessMan::EventLookAllowed(int look) const {
+	switch (look) {
+		case LightingSettings::LookFlash:
+			return m_LightingSettings.EventBlastFlash;
+		case LightingSettings::LookHurt:
+			return m_LightingSettings.EventHurtLook;
+		case LightingSettings::LookWarm:
+			return m_LightingSettings.EventFireWarmth;
+		default:
+			return true;
+	}
+}
+
+LightingSettings::GradeLook PostProcessMan::GetEventGrade(const LightingSettings::GradeLook& playerGrade, float strength, const std::vector<std::pair<int, float>>& extra) {
+	using GradeLook = LightingSettings::GradeLook;
+	auto mixGrade = [](const GradeLook& a, const GradeLook& b, float t) {
+		return GradeLook{glm::mix(a.Saturation, b.Saturation, t), glm::mix(a.Contrast, b.Contrast, t), glm::mix(a.Temperature, b.Temperature, t), glm::mix(a.Tint, b.Tint, t), glm::mix(a.Vignette, b.Vignette, t), glm::mix(a.FilmGrain, b.FilmGrain, t), glm::mix(a.BloomIntensity, b.BloomIntensity, t), glm::mix(a.ShadowTint, b.ShadowTint, t), glm::mix(a.HighlightTint, b.HighlightTint, t)};
+	};
+	// Events push the grade by how far their look is from Natural, so they show over whatever grade the player chose.
+	const GradeLook natural = LightingSettings::LookGrade(LightingSettings::LookNatural);
+	auto push = [&natural](GradeLook& grade, int look, float weight) {
+		GradeLook target = LightingSettings::LookGrade(look);
+		grade.Saturation += (target.Saturation - natural.Saturation) * weight;
+		grade.Contrast += (target.Contrast - natural.Contrast) * weight;
+		grade.Temperature += (target.Temperature - natural.Temperature) * weight;
+		grade.Tint += (target.Tint - natural.Tint) * weight;
+		grade.Vignette += (target.Vignette - natural.Vignette) * weight;
+		grade.FilmGrain += (target.FilmGrain - natural.FilmGrain) * weight;
+		grade.BloomIntensity += (target.BloomIntensity - natural.BloomIntensity) * weight;
+		grade.ShadowTint += (target.ShadowTint - natural.ShadowTint) * weight;
+		grade.HighlightTint += (target.HighlightTint - natural.HighlightTint) * weight;
+	};
+	GradeLook grade = playerGrade;
+	double now = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	{
+		std::scoped_lock lock(m_EventLookMutex);
+		if (m_LookBlendOn) {
+			grade = mixGrade(LightingSettings::LookGrade(m_LookBlendFrom), LightingSettings::LookGrade(m_LookBlendTo), m_LookBlendT);
+		}
+		std::erase_if(m_GradePulses, [now](const GradePulse& pulse) { return now - pulse.StartSeconds > static_cast<double>(pulse.AttackSeconds + pulse.ReleaseSeconds); });
+		for (const GradePulse& pulse: m_GradePulses) {
+			if (!EventLookAllowed(pulse.Look)) {
+				continue;
+			}
+			float age = static_cast<float>(now - pulse.StartSeconds);
+			float weight = age < pulse.AttackSeconds ? age / std::max(pulse.AttackSeconds, 0.001F) : 1.0F - (age - pulse.AttackSeconds) / pulse.ReleaseSeconds;
+			weight = std::clamp(weight, 0.0F, 1.0F);
+			push(grade, pulse.Look, weight * weight * pulse.Strength * strength);
+		}
+	}
+	for (const auto& [look, weight]: extra) {
+		if (weight > 0.0F && EventLookAllowed(look)) {
+			push(grade, look, weight * strength);
+		}
+	}
+	grade.Saturation = std::max(grade.Saturation, 0.0F);
+	grade.Contrast = std::max(grade.Contrast, 0.1F);
+	grade.Vignette = std::clamp(grade.Vignette, 0.0F, 1.0F);
+	grade.FilmGrain = std::clamp(grade.FilmGrain, 0.0F, 1.0F);
+	grade.BloomIntensity = std::max(grade.BloomIntensity, 0.0F);
+	grade.ShadowTint = glm::max(grade.ShadowTint, glm::vec3(0.0F));
+	grade.HighlightTint = glm::max(grade.HighlightTint, glm::vec3(0.0F));
+	return grade;
+}
+
+LightingSettings PostProcessMan::GetLightingSettingsToSave() const {
+	LightingSettings settings = m_LightingSettings;
+	if (m_PlayerAtmosphereCaptured) {
+		settings.TimeOfDay = m_PlayerAtmosphere.TimeOfDay;
+		settings.DayLengthMinutes = m_PlayerAtmosphere.DayLengthMinutes;
+		settings.WeatherType = m_PlayerAtmosphere.WeatherType;
+		settings.WeatherIntensity = m_PlayerAtmosphere.WeatherIntensity;
+		settings.Wind = m_PlayerAtmosphere.Wind;
+		settings.SkyColor = m_PlayerAtmosphere.SkyColor;
+		settings.Ambient = m_PlayerAtmosphere.Ambient;
+		settings.Temperature = m_PlayerAtmosphere.Temperature;
+		settings.Tint = m_PlayerAtmosphere.Tint;
+		settings.Contrast = m_PlayerAtmosphere.Contrast;
+		settings.ShadowTint = m_PlayerAtmosphere.ShadowTint;
+		settings.HighlightTint = m_PlayerAtmosphere.HighlightTint;
+	}
+	return settings;
+}
+
+SceneLighting* PostProcessMan::GetSceneLighting() {
+	if (!m_SceneLighting) {
+		m_SceneLighting = std::make_unique<SceneLighting>(m_LightingSettings);
+	}
+	return m_SceneLighting.get();
+}
+
 void PostProcessMan::Destroy() {
 	for (std::pair<int, BITMAP*> tempBitmapEntry: m_TempEffectBitmaps) {
 		destroy_bitmap(tempBitmapEntry.second);
 	}
+	m_SceneLighting.reset();
 	DestroyGLPointers();
 	ClearScreenPostEffects();
 	ClearScenePostEffects();
 	Clear();
-}
-
-void PostProcessMan::AdjustEffectsPosToPlayerScreen(int playerScreen, BITMAP* targetBitmap, const Vector& targetBitmapOffset, std::list<PostEffect>& screenRelativeEffectsList, std::list<Box>& screenRelativeGlowBoxesList) {
-	int screenOcclusionOffsetX = g_CameraMan.GetScreenOcclusion(playerScreen).GetFloorIntX();
-	int screenOcclusionOffsetY = g_CameraMan.GetScreenOcclusion(playerScreen).GetFloorIntY();
-	int occludedOffsetX = targetBitmap->w + screenOcclusionOffsetX;
-	int occludedOffsetY = targetBitmap->h + screenOcclusionOffsetY;
-
-	// Adjust for the player screen's position on the final buffer
-	for (const PostEffect& postEffect: screenRelativeEffectsList) {
-		// Make sure we won't be adding any effects to a part of the screen that is occluded by menus and such
-		if (postEffect.m_Pos.GetFloorIntX() > screenOcclusionOffsetX && postEffect.m_Pos.GetFloorIntY() > screenOcclusionOffsetY && postEffect.m_Pos.GetFloorIntX() < occludedOffsetX && postEffect.m_Pos.GetFloorIntY() < occludedOffsetY) {
-			m_PostScreenEffects.emplace_back(postEffect.m_Pos, postEffect.m_Bitmap, postEffect.m_BitmapHash, postEffect.m_Strength, postEffect.m_Angle);
-		}
-	}
-	// Adjust glow areas for the player screen's position on the final buffer
-	for (const Box& glowBox: screenRelativeGlowBoxesList) {
-		m_PostScreenGlowBoxes.push_back(glowBox);
-		// Adjust each added glow area for the player screen's position on the final buffer
-		m_PostScreenGlowBoxes.back().m_Corner += targetBitmapOffset;
-	}
 }
 
 void PostProcessMan::RegisterPostEffect(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength, float angle) {
@@ -174,7 +866,13 @@ void PostProcessMan::RegisterPostEffect(const Vector& effectPos, std::shared_ptr
 	}
 }
 
-bool PostProcessMan::GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team) {
+void PostProcessMan::RegisterPostEffectScaledLight(const Vector& effectPos, std::shared_ptr<BitmapTexture> effect, size_t hash, int strength, float angle, float lightScale, float lightReach) {
+	if (effect && g_TimerMan.SimUpdatesSinceDrawn() >= 0) {
+		m_PostSceneEffects.push_back(PostEffect(effectPos, effect, hash, strength, angle, lightScale <= 0.0F, lightScale, lightReach));
+	}
+}
+
+bool PostProcessMan::GetPostScreenEffectsWrapped(const Vector& boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team) {
 	bool found = false;
 
 	// Do the first unwrapped rect
@@ -222,7 +920,10 @@ BITMAP* PostProcessMan::GetTempEffectBitmap(BITMAP* bitmap) const {
 void PostProcessMan::RegisterGlowDotEffect(const Vector& effectPos, DotGlowColor color, int strength) {
 	// These effects only apply only once per drawn sim update, and only on the first frame drawn after one or more sim updates
 	if (color != NoDot && g_TimerMan.DrawnSimUpdate() && g_TimerMan.SimUpdatesSinceDrawn() >= 0) {
-		RegisterPostEffect(effectPos, GetDotGlowEffect(color), GetDotGlowEffectHash(color), strength);
+		// Aiming dots glow, but only light the scene around them if that's turned on.
+		if (std::shared_ptr<BitmapTexture> effect = GetDotGlowEffect(color); effect && g_TimerMan.SimUpdatesSinceDrawn() >= 0) {
+			m_PostSceneEffects.push_back(PostEffect(effectPos, effect, GetDotGlowEffectHash(color), strength, 0.0F, !m_LightingSettings.AimDotsLight));
+		}
 	}
 }
 
@@ -254,42 +955,42 @@ bool PostProcessMan::GetGlowAreasWrapped(const Vector& boxPos, int boxWidth, int
 	return foundAny;
 }
 
-bool PostProcessMan::GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::list<PostEffect>& effectsList, int team) {
+bool PostProcessMan::GetPostScreenEffects(Vector boxPos, int boxWidth, int boxHeight, std::vector<PostEffect>& effectsList, int team) {
 	bool found = false;
-	bool unseen = false;
 	Vector postEffectPosRelativeToBox;
 
 	if (g_SceneMan.GetScene()) {
 		for (PostEffect& scenePostEffect: m_PostSceneEffects) {
-			if (team != Activity::NoTeam) {
-				unseen = g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team);
+			// The cheap box test first: most effects are off this screen, and the unseen test reads the fog of war bitmap.
+			if (!WithinBox(scenePostEffect.m_Pos, boxPos, static_cast<float>(boxWidth), static_cast<float>(boxHeight))) {
+				continue;
 			}
-
-			if (WithinBox(scenePostEffect.m_Pos, boxPos, static_cast<float>(boxWidth), static_cast<float>(boxHeight)) && !unseen) {
-				found = true;
-				postEffectPosRelativeToBox = scenePostEffect.m_Pos - boxPos;
-				effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle));
+			if (team != Activity::NoTeam && g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team)) {
+				continue;
 			}
+			found = true;
+			postEffectPosRelativeToBox = scenePostEffect.m_Pos - boxPos;
+			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
 		}
 	}
 	return found;
 }
 
-bool PostProcessMan::GetPostScreenEffects(int left, int top, int right, int bottom, std::list<PostEffect>& effectsList, int team) {
+bool PostProcessMan::GetPostScreenEffects(int left, int top, int right, int bottom, std::vector<PostEffect>& effectsList, int team) {
 	bool found = false;
-	bool unseen = false;
 	Vector postEffectPosRelativeToBox;
 
 	for (PostEffect& scenePostEffect: m_PostSceneEffects) {
-		if (team != Activity::NoTeam) {
-			unseen = g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team);
+		// The cheap box test first: most effects are off this screen, and the unseen test reads the fog of war bitmap.
+		if (!WithinBox(scenePostEffect.m_Pos, static_cast<float>(left), static_cast<float>(top), static_cast<float>(right), static_cast<float>(bottom))) {
+			continue;
 		}
-
-		if (WithinBox(scenePostEffect.m_Pos, static_cast<float>(left), static_cast<float>(top), static_cast<float>(right), static_cast<float>(bottom)) && !unseen) {
-			found = true;
-			postEffectPosRelativeToBox = Vector(scenePostEffect.m_Pos.m_X - static_cast<float>(left), scenePostEffect.m_Pos.m_Y - static_cast<float>(top));
-			effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle));
+		if (team != Activity::NoTeam && g_SceneMan.IsUnseen(scenePostEffect.m_Pos.GetFloorIntX(), scenePostEffect.m_Pos.GetFloorIntY(), team)) {
+			continue;
 		}
+		found = true;
+		postEffectPosRelativeToBox = Vector(scenePostEffect.m_Pos.m_X - static_cast<float>(left), scenePostEffect.m_Pos.m_Y - static_cast<float>(top));
+		effectsList.push_back(PostEffect(postEffectPosRelativeToBox, scenePostEffect.m_Bitmap, scenePostEffect.m_BitmapHash, scenePostEffect.m_Strength, scenePostEffect.m_Angle, scenePostEffect.m_NoLight, scenePostEffect.m_LightScale, scenePostEffect.m_LightReach));
 	}
 	return found;
 }
@@ -330,88 +1031,18 @@ void PostProcessMan::PostProcess() {
 	ZoneScoped;
 	TracyGpuZone("PostProcess");
 	UpdatePalette();
+	// Animated palette flags: pulsing glows and cycling colours, for the next frame's sprites and terrain.
+	if (!m_PaletteAnimationLoaded) {
+		LoadPaletteAnimation();
+	}
+	g_RenderMan.UpdatePaletteAnimation(GetEffectTime(), m_LightingSettings.PaletteAnimation, m_LightingSettings.PaletteAnimationStrength);
 
-	// First copy the current 8bpp backbuffer to the 32bpp buffer; we'll add effects to it
+	// Copy the current 8bpp backbuffer to the 32bpp buffer.
 	m_PostProcessFramebuffer->Begin(true);
 	g_RenderMan.BeginFrame(nullptr);
 	Draw::DrawTexture(g_FrameMan.GetBackBuffer()->GetColorTexture().lock().get(), {-1.0f, -1.0f, 2.0f, 2.0f})->m_Indexed = false;
 	m_PostProcessFramebuffer->End();
-
-	// Set the screen blender mode for glows
-	m_PostProcessFramebuffer->Begin(false, false);
-
-	g_RenderMan.BeginFrame(nullptr);
-	g_RenderMan.SetActiveBlendMode(Blend::SCREEN);
-
-	DrawDotGlowEffects();
-	DrawPostScreenEffects();
-
-	// Clear the effects list for this frame
+	// Glows are drawn once, as emitted light in the scene lighting (SceneLighting::LightPlayerScreen). The old second pass that screened them over the
+	// finished frame, HUD and all, is gone.
 	m_PostScreenEffects.clear();
-	m_PostProcessFramebuffer->End();
-}
-
-void PostProcessMan::DrawDotGlowEffects() {
-	int startX = 0;
-	int startY = 0;
-	int endX = 0;
-	int endY = 0;
-	int testpixel = 0;
-
-	// Randomly sample the entire backbuffer, looking for pixels to put a glow on.
-	for (const Box& glowBox: m_PostScreenGlowBoxes) {
-		startX = glowBox.m_Corner.GetFloorIntX();
-		startY = glowBox.m_Corner.GetFloorIntY();
-		endX = startX + static_cast<int>(glowBox.m_Width);
-		endY = startY + static_cast<int>(glowBox.m_Height);
-
-		// Sanity check a little at least
-		if (startX < 0 || startX >= g_FrameMan.GetBackBuffer8()->w || startY < 0 || startY >= g_FrameMan.GetBackBuffer8()->h ||
-		    endX < 0 || endX >= g_FrameMan.GetBackBuffer8()->w || endY < 0 || endY >= g_FrameMan.GetBackBuffer8()->h) {
-			continue;
-		}
-
-#ifdef DEBUG_BUILD
-		// Draw a rectangle around the glow box so we see it's position and size
-		rect(g_FrameMan.GetBackBuffer32(), startX, startY, endX, endY, g_RedColor);
-#endif
-
-		for (int y = startY; y < endY; ++y) {
-			for (int x = startX; x < endX; ++x) {
-				testpixel = _getpixel(g_FrameMan.GetBackBuffer8(), x, y);
-
-				// YELLOW
-				if ((testpixel == g_YellowGlowColor && RandomNum() < 0.9F) || testpixel == 98 || (testpixel == 120 && RandomNum() < 0.7F)) {
-					Draw::DrawTexture(m_YellowGlow.get(),  std::floor(x -m_YellowGlow->GetDimensions().w / 2.0f), std::floor(y - m_YellowGlow->GetDimensions().h / 2.0f));
-				}
-				// TODO: Enable and add more colors once we actually have something that needs these.
-				// RED
-				/*
-				if (testpixel == 13) {
-				    draw_trans_sprite(m_BackBuffer32, m_RedGlow, x - 2, y - 2);
-				}
-				// BLUE
-				if (testpixel == 166) {
-				    draw_trans_sprite(g_FrameMan.GetBackBuffer32(), m_BlueGlow, x - 2, y - 2);
-				}
-				*/
-			}
-		}
-	}
-}
-
-void PostProcessMan::DrawPostScreenEffects() {
-	int effectPosX = 0;
-	int effectPosY = 0;
-	unsigned char effectStrength = 0;
-
-	for (const PostEffect& postEffect: m_PostScreenEffects) {
-		if (postEffect.m_Bitmap) {
-			effectStrength = postEffect.m_Strength;
-			effectPosX = postEffect.m_Pos.GetFloorIntX();
-			effectPosY = postEffect.m_Pos.GetFloorIntY();
-			glm::vec2 effectDims(postEffect.m_Bitmap->GetDimensions().w, postEffect.m_Bitmap->GetDimensions().h);
-			Draw::DrawTexture(postEffect.m_Bitmap.get(), glm::vec2(effectPosX, effectPosY), -effectDims / 2.0F, -postEffect.m_Angle, glm::vec2(1.0F), {effectStrength, effectStrength, effectStrength, 255})->m_Indexed = false;
-		}
-	}
 }

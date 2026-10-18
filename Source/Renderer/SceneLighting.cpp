@@ -1,0 +1,3736 @@
+#include "SceneLighting.h"
+#include "VisualWind.h"
+#include "Weather.h"
+#include "PresetMan.h"
+#include "EffectsParticles.h"
+
+#include "PostProcessMan.h"
+#include "PerformanceMan.h"
+#include "SceneMan.h"
+#include "SLTerrain.h"
+#include "Material.h"
+#include "RenderTarget.h"
+#include "Shader.h"
+#include "Texture.h"
+#include "GLCheck.h"
+#include "Constants.h"
+#include "TimerMan.h"
+#include "RenderMan.h"
+#include "FrameMan.h"
+#include "DebugMan.h"
+#include "SettingsMan.h"
+#include <array>
+#include <optional>
+
+#include "allegro.h"
+#include "tracy/Tracy.hpp"
+#include "tracy/TracyOpenGL.hpp"
+
+#include <algorithm>
+#include <chrono>
+#include <climits>
+#include <vector>
+#include <cstring>
+#include <limits>
+#include <cmath>
+
+using namespace RTE;
+
+namespace {
+	/// Terrain material indices that light passes through.
+	bool IsOpenMaterial(unsigned char material) { return material == MaterialColorKeys::g_MaterialAir || material == MaterialColorKeys::g_MaterialCavity; }
+
+	glm::vec3 ToLinear(float r, float g, float b) { return glm::vec3(std::pow(r / 255.0F, 2.2F), std::pow(g / 255.0F, 2.2F), std::pow(b / 255.0F, 2.2F)); }
+} // namespace
+
+#pragma region GLTarget
+
+void SceneLighting::GLTarget::Create(int width, int height, GLenum internalFormat, GLenum format, GLenum type, GLint filter, GLint wrapS, GLint wrapT, bool withFramebuffer) {
+	Destroy();
+	Width = width;
+	Height = height;
+	glGenTextures(1, &Texture);
+	glBindTexture(GL_TEXTURE_2D, Texture);
+	GL_CHECK(glTexImage2D(GL_TEXTURE_2D, 0, internalFormat, width, height, 0, format, type, nullptr));
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, filter);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, wrapS);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, wrapT);
+	if (withFramebuffer) {
+		glGenFramebuffers(1, &Framebuffer);
+		glBindFramebuffer(GL_FRAMEBUFFER, Framebuffer);
+		GL_CHECK(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT0, GL_TEXTURE_2D, Texture, 0));
+		glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glBindFramebuffer(GL_FRAMEBUFFER, 0);
+	}
+}
+
+void SceneLighting::GLTarget::Destroy() {
+	if (Framebuffer) {
+		glDeleteFramebuffers(1, &Framebuffer);
+		Framebuffer = 0;
+	}
+	if (Texture) {
+		glDeleteTextures(1, &Texture);
+		Texture = 0;
+	}
+	Width = 0;
+	Height = 0;
+}
+
+#pragma endregion
+
+#pragma region Creation and Destruction
+
+SceneLighting::SceneLighting(LightingSettings& settings) :
+    m_Settings(settings) {
+	LoadShaders();
+	CreateGeometry();
+}
+
+SceneLighting::~SceneLighting() {
+	DestroyWorldResources();
+	DestroyScreenResources();
+	if (m_FullscreenVAO) {
+		glDeleteVertexArrays(1, &m_FullscreenVAO);
+		glDeleteBuffers(1, &m_FullscreenVBO);
+	}
+	if (m_EmptyVAO) {
+		glDeleteVertexArrays(1, &m_EmptyVAO);
+	}
+	if (m_QuadVAO) {
+		glDeleteVertexArrays(1, &m_QuadVAO);
+		glDeleteBuffers(1, &m_QuadVBO);
+		glDeleteBuffers(1, &m_QuadIBO);
+	}
+}
+
+void SceneLighting::LoadShaders() {
+	const std::string fullscreenVertex = "Base.rte/Shaders/Lighting/Fullscreen.vert";
+	m_PropagateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightPropagate.frag");
+	m_FogUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/FogUpdate.frag");
+	m_WetnessUpdateShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WetnessUpdate.frag");
+	m_SunShadowMapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SunShadowMap.frag");
+	m_PointLightShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/PointLight.frag");
+	m_LampCacheApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LampCacheApply.frag");
+	m_OccluderSeedShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderSeed.frag");
+	m_OccluderJumpShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/OccluderJump.frag");
+	m_SurfaceRoundShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SurfaceRound.frag");
+	m_CompositeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/LightComposite.frag");
+	m_EmissiveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/Emissive.frag");
+	m_FireFlameShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/FireFlame.frag");
+	m_BloomDownsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomDownsample.frag");
+	m_BloomUpsampleShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/BloomUpsample.frag");
+	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
+	m_UnitOutlineRowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/UnitOutlineRow.frag");
+	m_PaperMaskShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/PaperMask.frag");
+	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
+	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
+	m_LitParticleShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/LitParticle.frag");
+	m_SmokeScatterShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/SmokeScatter.frag");
+	m_RCCascadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCCascade.frag");
+	m_RCIrradianceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCIrradiance.frag");
+	m_ExposureAdaptShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/ExposureAdapt.frag");
+	m_ShockwaveShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Shockwave.frag");
+	m_PrecipitationShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Precipitation.vert", "Base.rte/Shaders/Lighting/Precipitation.frag");
+	m_GodRaysShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRays.frag");
+	m_DepthOfFieldShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DepthOfField.frag");
+	m_RetroSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RetroScene.frag");
+	m_AfterglowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Afterglow.frag");
+	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
+	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
+	m_WeatherEverywhereShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WeatherEverywhere.frag");
+	m_ScorchShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Scorch.frag");
+	m_StainShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/PointLight.vert", "Base.rte/Shaders/Lighting/Stain.frag");
+	m_DecalFadeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DecalFade.frag");
+	m_DecalWipeShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DecalWipe.frag");
+	m_TerrainShader = std::make_unique<Shader>("Base.rte/Shaders/TerrainLayer.vert", "Base.rte/Shaders/Terrain.frag");
+}
+
+void SceneLighting::CreateGeometry() {
+	const float fullscreen[] = {
+	    -1.0F, -1.0F, 0.0F, 0.0F, 0.0F,
+	    1.0F, -1.0F, 0.0F, 1.0F, 0.0F,
+	    -1.0F, 1.0F, 0.0F, 0.0F, 1.0F,
+	    1.0F, 1.0F, 0.0F, 1.0F, 1.0F};
+	glGenVertexArrays(1, &m_FullscreenVAO);
+	glGenBuffers(1, &m_FullscreenVBO);
+	glBindVertexArray(m_FullscreenVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, m_FullscreenVBO);
+	glBufferData(GL_ARRAY_BUFFER, sizeof(fullscreen), fullscreen, GL_STATIC_DRAW);
+	glEnableVertexAttribArray(VertexAttribLocation::VERTEX);
+	glVertexAttribPointer(VertexAttribLocation::VERTEX, 3, GL_FLOAT, GL_FALSE, 5 * sizeof(float), nullptr);
+	glEnableVertexAttribArray(VertexAttribLocation::TEXTURECOORDINATE);
+	glVertexAttribPointer(VertexAttribLocation::TEXTURECOORDINATE, 2, GL_FLOAT, GL_FALSE, 5 * sizeof(float), reinterpret_cast<void*>(3 * sizeof(float)));
+
+	glGenVertexArrays(1, &m_EmptyVAO);
+
+	glGenVertexArrays(1, &m_QuadVAO);
+	glGenBuffers(1, &m_QuadVBO);
+	glGenBuffers(1, &m_QuadIBO);
+	glBindVertexArray(m_QuadVAO);
+	glBindBuffer(GL_ARRAY_BUFFER, m_QuadVBO);
+	glEnableVertexAttribArray(VertexAttribLocation::VERTEX);
+	glVertexAttribPointer(VertexAttribLocation::VERTEX, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, X)));
+	glEnableVertexAttribArray(VertexAttribLocation::TEXTURECOORDINATE);
+	glVertexAttribPointer(VertexAttribLocation::TEXTURECOORDINATE, 2, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, U)));
+	glEnableVertexAttribArray(VertexAttribLocation::COLOR);
+	glVertexAttribPointer(VertexAttribLocation::COLOR, 4, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, R)));
+	glEnableVertexAttribArray(VertexAttribLocation::NORMAL);
+	glVertexAttribPointer(VertexAttribLocation::NORMAL, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, CenterX)));
+	glEnableVertexAttribArray(VertexAttribLocation::LIGHTCONE);
+	glVertexAttribPointer(VertexAttribLocation::LIGHTCONE, 3, GL_FLOAT, GL_FALSE, sizeof(QuadVertex), reinterpret_cast<void*>(offsetof(QuadVertex, ConeX)));
+	glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_QuadIBO);
+	glBindVertexArray(0);
+}
+
+bool SceneLighting::EnsureWorldResources() {
+	const Scene* scene = g_SceneMan.GetScene();
+	SLTerrain* terrain = scene ? g_SceneMan.GetTerrain() : nullptr;
+	BITMAP* materialBitmap = terrain ? terrain->GetMaterialBitmap() : nullptr;
+	if (!materialBitmap) {
+		return false;
+	}
+	unsigned int sceneGeneration = g_SceneMan.GetSceneGeneration();
+	if (scene == m_WorldScene && sceneGeneration == m_WorldSceneGeneration && materialBitmap == m_WorldMaterialBitmap && materialBitmap->w == m_SceneWidth && materialBitmap->h == m_SceneHeight) {
+		return true;
+	}
+	ZoneScopedN("Build World Light Grid");
+
+	DestroyWorldResources();
+	// Glow textures are cached by address. A new scene is where data can have been reloaded and a freed texture's address reused, so start the cache afresh.
+	m_GlowInfoCache.clear();
+	m_WorldScene = scene;
+	m_WorldSceneGeneration = sceneGeneration;
+	m_WorldMaterialBitmap = materialBitmap;
+	m_SceneWidth = materialBitmap->w;
+	m_SceneHeight = materialBitmap->h;
+	m_WrapX = g_SceneMan.SceneWrapsX();
+	m_WrapY = g_SceneMan.SceneWrapsY();
+	// Keep the grid a manageable size on huge scenes.
+	m_CellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 8 : 4;
+	m_GridWidth = (m_SceneWidth + m_CellSize - 1) / m_CellSize;
+	m_GridHeight = (m_SceneHeight + m_CellSize - 1) / m_CellSize;
+
+	m_Occupancy.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight * 4, 0);
+	// What each terrain material looks like, for the grid's material values.
+	m_MaterialMetalness.fill(0);
+	m_MaterialGloss.fill(0);
+	m_MaterialLightBlock.fill(255);
+	for (int id = 1; id < 256; ++id) {
+		const Material* material = g_SceneMan.GetMaterialFromID(static_cast<unsigned char>(id));
+		if (material && material->GetIndex() == id) {
+			m_MaterialMetalness[id] = static_cast<unsigned char>(std::clamp(material->GetMetalness(), 0.0F, 1.0F) * 255.0F);
+			m_MaterialGloss[id] = static_cast<unsigned char>(std::clamp(material->GetGloss(), 0.0F, 1.0F) * 255.0F);
+			// (Small numbers: a lamp's light is sampled at a fixed number of places on its way to each pixel, so even these take a third or so off it across a pool.)
+			// Clear liquids let light through, dimming it with depth: sky light reaches down into a pool, and a lamp or a fire under water lights the water around it.
+			const std::string& materialName = material->GetPresetName();
+			m_MaterialLightBlock[id] = materialName == "Water" ? 8 : (materialName == "Acid" ? 14 : (materialName == "Ice" ? 30 : (materialName == "Glass" ? 10 : (materialName == "Oil" ? 120 : 255))));
+		}
+	}
+	m_Skyline.assign(m_GridWidth, 0.0F);
+	m_SkylineRows.assign(m_GridWidth, m_GridHeight);
+	m_SkylineDirtyFirstColumn = 0;
+	m_SkylineDirtyEndColumn = m_GridWidth;
+
+	GLint wrapS = m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+	GLint wrapT = m_WrapY ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+	m_OccupancyTexture.Create(m_GridWidth, m_GridHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
+	m_SkylineTexture.Create(m_GridWidth, 1, GL_R32F, GL_RED, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, false);
+	for (GLTarget& skyLight: m_SkyLight) {
+		skyLight.Create(m_GridWidth, m_GridHeight, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
+	}
+	m_CurrentSkyLight = 0;
+
+	m_ScorchCellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 4 : 2;
+	m_Scorch.Create((m_SceneWidth + m_ScorchCellSize - 1) / m_ScorchCellSize, (m_SceneHeight + m_ScorchCellSize - 1) / m_ScorchCellSize, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	m_Stains.Create(m_Scorch.Width, m_Scorch.Height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, true);
+	m_DecalWipe.Create(m_Scorch.Width, m_Scorch.Height, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, wrapS, wrapT, false);
+	UpdateDecalGroundMaterials();
+	m_DecalGround.assign(static_cast<size_t>(m_DecalWipe.Width) * m_DecalWipe.Height, 0);
+	RefreshDecalGround(0, 0, m_SceneWidth, m_SceneHeight, false);
+	for (GLTarget& fog: m_Fog) {
+		fog.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
+	}
+	for (GLTarget& wetMap: m_WetMap) {
+		wetMap.Create(m_GridWidth, m_GridHeight, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, wrapS, wrapT, true);
+	}
+	m_CurrentWetMap = 0;
+	m_CurrentFog = 0;
+	m_FogLive = false;
+	m_LastFogTime = -1.0;
+	m_DecalFadeDebt = glm::vec3(0.0F);
+	m_PendingFogPuffs.clear();
+	// The flow field starts with nothing moving anywhere.
+	m_FlowTexture.Create(m_GridWidth, m_GridHeight, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
+	m_Flow.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight * 4, 0);
+	for (size_t cell = 0; cell < m_Flow.size(); cell += 4) {
+		m_Flow[cell] = 128;
+	}
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, m_GridWidth, m_GridHeight, GL_RGBA, GL_UNSIGNED_BYTE, m_Flow.data()));
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	m_FlowTileColumns = (m_GridWidth + c_FlowTileCells - 1) / c_FlowTileCells;
+	m_FlowTileMarks.assign(static_cast<size_t>(m_FlowTileColumns) * ((m_GridHeight + c_FlowTileCells - 1) / c_FlowTileCells), 0);
+	m_FlowTiles.clear();
+	// Scorch marks from before the grid was built belong to the last scene.
+	g_PostProcessMan.TakePendingScorchMarks();
+	g_PostProcessMan.ClearHotScorchMarks();
+
+	RefreshOccupancyRows(0, m_GridHeight);
+	UploadOccupancyRows(0, m_GridHeight);
+	m_ShadowFieldTexture.Create(m_GridWidth, m_GridHeight, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_LINEAR, wrapS, wrapT, false);
+	m_ShadowField.assign(static_cast<size_t>(m_GridWidth) * m_GridHeight, 255);
+	RefreshShadowField(0, 0, m_GridWidth, m_GridHeight);
+	m_WallChangeEndColumn = m_WallChangeMinColumn;
+	RecomputeSkyline();
+	m_NextRefreshRow = 0;
+
+	// Start with the light already settled instead of it visibly flowing in at scene start.
+	PropagateSkyLight(std::max(m_GridWidth, m_GridHeight) / 2);
+	return true;
+}
+
+void SceneLighting::DestroyWorldResources() {
+	m_OccupancyTexture.Destroy();
+	m_SkylineTexture.Destroy();
+	m_SkyLight[0].Destroy();
+	m_SkyLight[1].Destroy();
+	m_Scorch.Destroy();
+	m_Stains.Destroy();
+	m_DecalWipe.Destroy();
+	m_DecalWipeRows.clear();
+	m_DecalGround.clear();
+	m_FlowTexture.Destroy();
+	m_ShadowFieldTexture.Destroy();
+	m_ShadowField.clear();
+	m_Fog[0].Destroy();
+	m_Fog[1].Destroy();
+	m_LampCache.Destroy();
+	m_LampDirection.Destroy();
+	m_LampCacheCell = 0;
+	m_LampCacheReady = false;
+	m_LampCacheLamps = 0;
+	m_LampDirtyEndX = m_LampDirtyMinX;
+	m_WetMap[0].Destroy();
+	m_WetMap[1].Destroy();
+	m_SunMap.Destroy();
+	m_SunMapReady = false;
+	m_ShelterMap.Destroy();
+	m_ShelterMapReady = false;
+	m_Flow.clear();
+	m_FlowTiles.clear();
+	m_WorldScene = nullptr;
+	m_WorldMaterialBitmap = nullptr;
+	m_SceneWidth = 0;
+	m_SceneHeight = 0;
+}
+
+void SceneLighting::CreateSmokeDensity(int width, int height) {
+	// RGB: the smoke's colour times its density, A: its density (LightingSettings::SmokeShading); just R, the density, without, at a quarter of the memory.
+	m_SmokeDensityShaded = m_Settings.SmokeShading;
+	if (m_SmokeDensityShaded) {
+		m_SmokeDensity.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	} else {
+		m_SmokeDensity.Create(width, height, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+}
+
+void SceneLighting::EnsureScreenResources(int width, int height) {
+	if (width == m_ScreenWidth && height == m_ScreenHeight && m_HDRScene.Texture) {
+		return;
+	}
+	DestroyScreenResources();
+	m_ScreenWidth = width;
+	m_ScreenHeight = height;
+	m_DynamicLight.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	for (GLTarget& seeds: m_OccluderSeeds) {
+		seeds.Create(width, height, GL_RG32F, GL_RG, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+	m_RoundedNormals.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_Emissive.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_OutlineRows.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_PaperMask.Create(width, height, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	int indirectWidth = width;
+	int indirectHeight = height;
+	for (GLTarget& mip: m_IndirectMips) {
+		indirectWidth = std::max(1, indirectWidth / 2);
+		indirectHeight = std::max(1, indirectHeight / 2);
+		mip.Create(indirectWidth, indirectHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_IndirectHistory[screen].Create(indirectWidth, indirectHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		m_IndirectHistoryValid[screen] = false;
+	}
+	m_HDRScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	int mipWidth = width;
+	int mipHeight = height;
+	for (GLTarget& mip: m_BloomMips) {
+		mipWidth = std::max(1, mipWidth / 2);
+		mipHeight = std::max(1, mipHeight / 2);
+		mip.Create(mipWidth, mipHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+	int rcWidth = std::max(4, width / 2);
+	int rcHeight = std::max(4, height / 2);
+	m_RCScene.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	CreateSmokeDensity(rcWidth, rcHeight);
+	for (GLTarget& cascade: m_RCCascades) {
+		cascade.Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	}
+	m_RCIrradiance.Create(rcWidth / 2, rcHeight / 2, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_RCPreviousLit[screen].Create(rcWidth, rcHeight, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		m_RCPreviousValid[screen] = false;
+	}
+	// 64x32 log luminance; its mip chain down to 1x1 is the average.
+	m_Luminance.Create(64, 32, GL_R16F, GL_RED, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	glBindTexture(GL_TEXTURE_2D, m_Luminance.Texture);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR_MIPMAP_NEAREST);
+	glGenerateMipmap(GL_TEXTURE_2D);
+	m_LuminanceMaxLod = 6;
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		for (GLTarget& adapted: m_AdaptedLuminance[screen]) {
+			adapted.Create(1, 1, GL_R32F, GL_RED, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		}
+		m_AdaptedLuminanceValid[screen] = false;
+	}
+}
+
+void SceneLighting::DestroyScreenResources() {
+	m_DynamicLight.Destroy();
+	for (GLTarget& seeds: m_OccluderSeeds) {
+		seeds.Destroy();
+	}
+	m_RoundedNormals.Destroy();
+	m_Emissive.Destroy();
+	m_Distortion.Destroy();
+	m_OutlineRows.Destroy();
+	m_PaperMask.Destroy();
+	m_GodRays.Destroy();
+	for (GLTarget& mip: m_IndirectMips) {
+		mip.Destroy();
+	}
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_IndirectHistory[screen].Destroy();
+		m_IndirectHistoryValid[screen] = false;
+	}
+	m_HDRScene.Destroy();
+	m_ModPostScene.Destroy();
+	m_FocusScene.Destroy();
+	m_RetroScene.Destroy();
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_AfterglowHistory[screen][0].Destroy();
+		m_AfterglowHistory[screen][1].Destroy();
+		m_AfterglowValid[screen] = false;
+		m_GhostHistory[screen][0].Destroy();
+		m_GhostHistory[screen][1].Destroy();
+		m_GhostValid[screen] = false;
+	}
+	m_WeatherDrops.Destroy();
+	for (GLTarget& mip: m_BloomMips) {
+		mip.Destroy();
+	}
+	m_Luminance.Destroy();
+	m_RCScene.Destroy();
+	m_SmokeDensity.Destroy();
+	for (GLTarget& cascade: m_RCCascades) {
+		cascade.Destroy();
+	}
+	m_RCIrradiance.Destroy();
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		m_RCPreviousLit[screen].Destroy();
+		m_RCPreviousValid[screen] = false;
+	}
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		for (GLTarget& adapted: m_AdaptedLuminance[screen]) {
+			adapted.Destroy();
+		}
+		m_AdaptedLuminanceValid[screen] = false;
+	}
+	m_ScreenWidth = 0;
+	m_ScreenHeight = 0;
+}
+
+#pragma endregion
+
+#pragma region World Grid
+
+void SceneLighting::RefreshOccupancyRows(int firstRow, int endRow, int firstColumn, int endColumn) {
+	if (endColumn < 0 || endColumn > m_GridWidth) {
+		endColumn = m_GridWidth;
+	}
+	firstColumn = std::clamp(firstColumn, 0, endColumn);
+	ZoneScoped;
+	const BITMAP* materialBitmap = static_cast<const BITMAP*>(m_WorldMaterialBitmap);
+	// Sample a 2x2 pattern inside each cell rather than every pixel, which is plenty to tell air, surfaces and solid apart.
+	const int sampleNear = m_CellSize / 4;
+	const int sampleFar = (m_CellSize * 3) / 4;
+	for (int row = firstRow; row < endRow; ++row) {
+		int y0 = std::min(row * m_CellSize + sampleNear, m_SceneHeight - 1);
+		int y1 = std::min(row * m_CellSize + sampleFar, m_SceneHeight - 1);
+		const unsigned char* line0 = materialBitmap->line[y0];
+		const unsigned char* line1 = materialBitmap->line[y1];
+		unsigned char* occupancyRow = &m_Occupancy[static_cast<size_t>(row) * m_GridWidth * 4];
+		for (int column = firstColumn; column < endColumn; ++column) {
+			int x0 = std::min(column * m_CellSize + sampleNear, m_SceneWidth - 1);
+			int x1 = std::min(column * m_CellSize + sampleFar, m_SceneWidth - 1);
+			const unsigned char materials[4] = {line0[x0], line0[x1], line1[x0], line1[x1]};
+			int solidSamples = 0;
+			int metalness = 0;
+			int gloss = 0;
+			int lightBlock = 0;
+			for (unsigned char material: materials) {
+				if (!IsOpenMaterial(material)) {
+					++solidSamples;
+					lightBlock += m_MaterialLightBlock[material];
+					metalness += m_MaterialMetalness[material];
+					gloss += m_MaterialGloss[material];
+				}
+			}
+			unsigned char* cell = occupancyRow + column * 4;
+			// R is how much the cell stops light; A is how much of it is filled with anything at all (what rain and snow can't fall through).
+			unsigned char block = static_cast<unsigned char>(lightBlock / 4);
+			if ((block >= c_ShadowWallBlock) != (cell[0] >= c_ShadowWallBlock)) {
+				// A wall came or went: the terrain distance field needs working out again here.
+				if (m_WallChangeEndColumn <= m_WallChangeMinColumn || m_WallChangeEndRow <= m_WallChangeMinRow) {
+					m_WallChangeMinColumn = column;
+					m_WallChangeMinRow = row;
+					m_WallChangeEndColumn = column + 1;
+					m_WallChangeEndRow = row + 1;
+				} else {
+					m_WallChangeMinColumn = std::min(m_WallChangeMinColumn, column);
+					m_WallChangeMinRow = std::min(m_WallChangeMinRow, row);
+					m_WallChangeEndColumn = std::max(m_WallChangeEndColumn, column + 1);
+					m_WallChangeEndRow = std::max(m_WallChangeEndRow, row + 1);
+				}
+			}
+			unsigned char fullness = static_cast<unsigned char>((solidSamples * 255) / 4);
+			if (block != cell[0] || fullness != cell[3]) {
+				// Something the sun's or the weather's strip stops at came or went: the rays through here are marched again, however the change was found.
+				if (m_CoverChangeEndColumn <= m_CoverChangeMinColumn || m_CoverChangeEndRow <= m_CoverChangeMinRow) {
+					m_CoverChangeMinColumn = column;
+					m_CoverChangeMinRow = row;
+					m_CoverChangeEndColumn = column + 1;
+					m_CoverChangeEndRow = row + 1;
+				} else {
+					m_CoverChangeMinColumn = std::min(m_CoverChangeMinColumn, column);
+					m_CoverChangeMinRow = std::min(m_CoverChangeMinRow, row);
+					m_CoverChangeEndColumn = std::max(m_CoverChangeEndColumn, column + 1);
+					m_CoverChangeEndRow = std::max(m_CoverChangeEndRow, row + 1);
+				}
+			}
+			cell[0] = block;
+			// What the solid part of the cell is made of, so a thin metal plate isn't diluted by the air beside it.
+			cell[1] = static_cast<unsigned char>(solidSamples > 0 ? metalness / solidSamples : 0);
+			cell[2] = static_cast<unsigned char>(solidSamples > 0 ? gloss / solidSamples : 0);
+			// (The skyline is the first cell at least half full from the top: a cell crossing that line below it can't move it.)
+			if ((fullness >= 128) != (cell[3] >= 128) && row <= m_SkylineRows[column]) {
+				if (m_SkylineDirtyEndColumn <= m_SkylineDirtyFirstColumn) {
+					m_SkylineDirtyFirstColumn = column;
+					m_SkylineDirtyEndColumn = column + 1;
+				} else {
+					m_SkylineDirtyFirstColumn = std::min(m_SkylineDirtyFirstColumn, column);
+					m_SkylineDirtyEndColumn = std::max(m_SkylineDirtyEndColumn, column + 1);
+				}
+			}
+			cell[3] = fullness;
+		}
+	}
+}
+
+void SceneLighting::RecomputeSkyline() {
+	// Only the columns where a cell at or above the skyline filled or emptied past half (see RefreshOccupancyRows): every column was walked
+	// down to its surface every frame, about a million cell reads on an open 2048 column map, and uploaded, whether anything changed or not.
+	int firstColumn = std::max(m_SkylineDirtyFirstColumn, 0);
+	int endColumn = std::min(m_SkylineDirtyEndColumn, m_GridWidth);
+	m_SkylineDirtyFirstColumn = 0;
+	m_SkylineDirtyEndColumn = 0;
+	if (endColumn <= firstColumn) {
+		return;
+	}
+	ZoneScoped;
+	for (int column = firstColumn; column < endColumn; ++column) {
+		int row = 0;
+		// (By how full the cell is, so the open sky stops at the surface of water and light dims with depth below it.)
+		while (row < m_GridHeight && m_Occupancy[(static_cast<size_t>(row) * m_GridWidth + column) * 4 + 3] < 128) {
+			++row;
+		}
+		m_SkylineRows[column] = row;
+		m_Skyline[column] = static_cast<float>(row) / static_cast<float>(m_GridHeight);
+	}
+	glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, 0, endColumn - firstColumn, 1, GL_RED, GL_FLOAT, m_Skyline.data() + firstColumn));
+}
+
+void SceneLighting::RefreshShadowField(int firstColumn, int firstRow, int endColumn, int endRow) {
+	if (!m_ShadowFieldTexture.Texture || m_ShadowField.empty()) {
+		return;
+	}
+	ZoneScoped;
+	constexpr int reach = c_ShadowFieldCells;
+	// Rewritten: everything within reach of the change. Read: the walls within reach of that, so every rewritten cell sees every wall that can matter to it.
+	// (Across a wrapping scene's seam walls aren't seen; near it shadows fall back on the density alone.)
+	int writeX0 = std::max(firstColumn - reach, 0);
+	int writeY0 = std::max(firstRow - reach, 0);
+	int writeX1 = std::min(endColumn + reach, m_GridWidth);
+	int writeY1 = std::min(endRow + reach, m_GridHeight);
+	int x0 = std::max(writeX0 - reach, 0);
+	int y0 = std::max(writeY0 - reach, 0);
+	int x1 = std::min(writeX1 + reach, m_GridWidth);
+	int y1 = std::min(writeY1 + reach, m_GridHeight);
+	int width = x1 - x0;
+	int height = y1 - y0;
+	if (width <= 0 || height <= 0) {
+		return;
+	}
+	// A two pass chamfer distance (3 straight, 4 diagonal, so thirds of a cell), capped just past the reach.
+	const unsigned short beyondReach = static_cast<unsigned short>(reach * 3 + 4);
+	m_ShadowFieldScratch.resize(static_cast<size_t>(width) * height);
+	unsigned short* distance = m_ShadowFieldScratch.data();
+	for (int y = 0; y < height; ++y) {
+		const unsigned char* occupancyRow = &m_Occupancy[(static_cast<size_t>(y0 + y) * m_GridWidth + x0) * 4];
+		for (int x = 0; x < width; ++x) {
+			distance[y * width + x] = occupancyRow[x * 4] >= c_ShadowWallBlock ? 0 : beyondReach;
+		}
+	}
+	auto relax = [](unsigned short& value, unsigned short from, unsigned short cost) {
+		value = std::min<unsigned short>(value, static_cast<unsigned short>(from + cost));
+	};
+	for (int y = 0; y < height; ++y) {
+		for (int x = 0; x < width; ++x) {
+			unsigned short& value = distance[y * width + x];
+			if (x > 0) {
+				relax(value, distance[y * width + x - 1], 3);
+			}
+			if (y > 0) {
+				relax(value, distance[(y - 1) * width + x], 3);
+				if (x > 0) {
+					relax(value, distance[(y - 1) * width + x - 1], 4);
+				}
+				if (x < width - 1) {
+					relax(value, distance[(y - 1) * width + x + 1], 4);
+				}
+			}
+		}
+	}
+	for (int y = height - 1; y >= 0; --y) {
+		for (int x = width - 1; x >= 0; --x) {
+			unsigned short& value = distance[y * width + x];
+			if (x < width - 1) {
+				relax(value, distance[y * width + x + 1], 3);
+			}
+			if (y < height - 1) {
+				relax(value, distance[(y + 1) * width + x], 3);
+				if (x < width - 1) {
+					relax(value, distance[(y + 1) * width + x + 1], 4);
+				}
+				if (x > 0) {
+					relax(value, distance[(y + 1) * width + x - 1], 4);
+				}
+			}
+		}
+	}
+	for (int y = writeY0; y < writeY1; ++y) {
+		for (int x = writeX0; x < writeX1; ++x) {
+			int units = std::min<int>(distance[(y - y0) * width + (x - x0)], reach * 3);
+			m_ShadowField[static_cast<size_t>(y) * m_GridWidth + x] = static_cast<unsigned char>((units * 255 + reach * 3 / 2) / (reach * 3));
+		}
+	}
+	glBindTexture(GL_TEXTURE_2D, m_ShadowFieldTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, m_GridWidth);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, writeX0, writeY0, writeX1 - writeX0, writeY1 - writeY0, GL_RED, GL_UNSIGNED_BYTE, &m_ShadowField[static_cast<size_t>(writeY0) * m_GridWidth + writeX0]));
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+void SceneLighting::SetShadowFieldUniforms() const {
+	bool traced = m_Settings.LightShadowField && m_ShadowFieldTexture.Texture;
+	m_PointLightShader->SetBool("rteShadowFieldOn", traced);
+	m_PointLightShader->SetInt("rteShadowField", 4);
+	m_PointLightShader->SetFloat("rteShadowFieldReach", static_cast<float>(c_ShadowFieldCells * m_CellSize));
+	m_PointLightShader->SetBool("rteSoftWallLight", m_Settings.SoftWallLight);
+	m_PointLightShader->SetFloat("rteShadowSoftness", std::clamp(m_Settings.LightShadowSoftness, 0.0F, 2.0F));
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_ShadowFieldTexture.Texture);
+	glActiveTexture(GL_TEXTURE0);
+}
+
+void SceneLighting::UploadOccupancyRows(int firstRow, int endRow) {
+	if (endRow <= firstRow) {
+		return;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, 0, firstRow, m_GridWidth, endRow - firstRow, GL_RGBA, GL_UNSIGNED_BYTE, &m_Occupancy[static_cast<size_t>(firstRow) * m_GridWidth * 4]));
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+void SceneLighting::UploadOccupancyRect(int firstRow, int endRow, int firstColumn, int endColumn) {
+	if (endRow <= firstRow || endColumn <= firstColumn) {
+		return;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, m_GridWidth);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, firstRow, endColumn - firstColumn, endRow - firstRow, GL_RGBA, GL_UNSIGNED_BYTE, &m_Occupancy[(static_cast<size_t>(firstRow) * m_GridWidth + firstColumn) * 4]));
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+void SceneLighting::PropagateSkyLight(int iterations) {
+	ZoneScoped;
+	TracyGpuZone("Sky Light Propagation");
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glViewport(0, 0, m_GridWidth, m_GridHeight);
+	m_PropagateShader->Enable();
+	m_PropagateShader->SetInt("rteLight", 0);
+	m_PropagateShader->SetInt("rteOccupancy", 1);
+	m_PropagateShader->SetInt("rteSkyline", 2);
+	m_PropagateShader->SetVector2f("rteGridSize", glm::vec2(m_GridWidth, m_GridHeight));
+	m_PropagateShader->SetBool("rteWrapX", m_WrapX);
+	m_PropagateShader->SetBool("rteWrapY", m_WrapY);
+	m_PropagateShader->SetFloat("rteAirFalloff", m_Settings.AirFalloff);
+	m_PropagateShader->SetFloat("rteSolidFalloff", m_Settings.SolidFalloff);
+	// One cell at a time towards the sun: a whole cell along the longer axis, so the sample always lands in the next row or column.
+	m_PropagateShader->SetVector2f("rteSunStep", m_SunDirection / std::max(std::abs(m_SunDirection.x), std::abs(m_SunDirection.y)));
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+	for (int i = 0; i < iterations; ++i) {
+		const GLTarget& source = m_SkyLight[m_CurrentSkyLight];
+		const GLTarget& destination = m_SkyLight[1 - m_CurrentSkyLight];
+		glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, source.Texture);
+		DrawFullscreen();
+		m_CurrentSkyLight = 1 - m_CurrentSkyLight;
+	}
+	glActiveTexture(GL_TEXTURE0);
+}
+
+glm::vec3 SceneLighting::GetDaylightTint(float hours) {
+	struct Keyframe {
+		float Hours;
+		glm::vec3 Tint;
+	};
+	static const Keyframe keyframes[] = {
+	    {0.0F, {0.06F, 0.08F, 0.17F}},
+	    {4.5F, {0.06F, 0.08F, 0.17F}},
+	    {5.5F, {0.30F, 0.22F, 0.30F}},
+	    {6.5F, {0.95F, 0.55F, 0.35F}},
+	    {8.0F, {1.0F, 0.92F, 0.82F}},
+	    {12.0F, {1.0F, 1.0F, 1.0F}},
+	    {16.0F, {1.0F, 0.95F, 0.85F}},
+	    {18.0F, {1.0F, 0.62F, 0.38F}},
+	    {19.0F, {0.55F, 0.32F, 0.42F}},
+	    {20.0F, {0.10F, 0.11F, 0.22F}},
+	    {24.0F, {0.06F, 0.08F, 0.17F}}};
+	hours = std::fmod(std::fmod(hours, 24.0F) + 24.0F, 24.0F);
+	for (size_t i = 1; i < std::size(keyframes); ++i) {
+		if (hours <= keyframes[i].Hours) {
+			float t = (hours - keyframes[i - 1].Hours) / (keyframes[i].Hours - keyframes[i - 1].Hours);
+			// Smooth the transitions between keyframes.
+			t = t * t * (3.0F - 2.0F * t);
+			return glm::mix(keyframes[i - 1].Tint, keyframes[i].Tint, t);
+		}
+	}
+	return keyframes[0].Tint;
+}
+
+void SceneLighting::ReadAutoExposure(float& averageLuminance, float& autoExposure) const {
+	averageLuminance = 0.0F;
+	autoExposure = 1.0F;
+	if (!m_AdaptedLuminanceValid[0] || !m_AdaptedLuminance[0][0].Texture) {
+		return;
+	}
+	float logLuminance = 0.0F;
+	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[0][m_AdaptedLuminanceCurrent[0]].Texture);
+	glGetTexImage(GL_TEXTURE_2D, 0, GL_RED, GL_FLOAT, &logLuminance);
+	glBindTexture(GL_TEXTURE_2D, 0);
+	averageLuminance = std::exp(logLuminance);
+	// Same as Tonemap.frag.
+	float target = std::clamp(averageLuminance, std::min(m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh), m_Settings.AutoExposureHigh); // (Low never over high: std::clamp aborts on that with libstdc++'s checks.)
+	autoExposure = std::clamp(std::pow(target / std::max(averageLuminance, 0.0001F), m_Settings.AutoExposure), 0.5F, 2.0F);
+}
+
+void SceneLighting::StampScorchMarks() {
+	std::vector<PostProcessMan::ScorchMark> marks = g_PostProcessMan.TakePendingScorchMarks();
+	if (marks.empty() || !m_Scorch.Framebuffer) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Scorch Marks");
+	m_QuadVertices.clear();
+	float cell = static_cast<float>(m_ScorchCellSize);
+	auto addMark = [this, cell](glm::vec2 center, float radius, float darkness) {
+		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
+		for (const glm::vec2& corner: corners) {
+			glm::vec2 position = center + corner * radius;
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, darkness, 0.0F, 0.0F, 1.0F, center.x * cell, center.y * cell, radius, 1.0F, 0.0F, -2.0F});
+		}
+	};
+	for (const PostProcessMan::ScorchMark& mark: marks) {
+		glm::vec2 center(mark.m_Pos.m_X / cell, mark.m_Pos.m_Y / cell);
+		float radius = mark.m_Radius / cell;
+		addMark(center, radius, mark.m_Darkness);
+		// Wrapped copies so marks across the seam of wrapping scenes show on both sides.
+		if (m_WrapX) {
+			addMark(center + glm::vec2(static_cast<float>(m_Scorch.Width), 0.0F), radius, mark.m_Darkness);
+			addMark(center - glm::vec2(static_cast<float>(m_Scorch.Width), 0.0F), radius, mark.m_Darkness);
+		}
+	}
+	UploadQuads();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Scorch.Framebuffer);
+	glViewport(0, 0, m_Scorch.Width, m_Scorch.Height);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	// Max, so repeated explosions don't pile up into flat black.
+	glBlendEquation(GL_MAX);
+	glBlendFunc(GL_ONE, GL_ONE);
+	m_ScorchShader->Enable();
+	m_ScorchShader->SetVector2f("rteScreenSize", glm::vec2(m_Scorch.Width, m_Scorch.Height));
+	DrawQuads(0, m_QuadVertices.size() / 4);
+	glBlendEquation(GL_FUNC_ADD);
+	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
+void SceneLighting::StampStains() {
+	std::vector<EffectsParticles::Stain> stains = EffectsParticles::TakeStains();
+	if (stains.empty() || !m_Stains.Framebuffer || !m_Settings.Stains) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Stains");
+	m_QuadVertices.clear();
+	float cell = static_cast<float>(m_ScorchCellSize);
+	auto addSplat = [this, cell](glm::vec2 center, float radius, const glm::vec3& color) {
+		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
+		for (const glm::vec2& corner: corners) {
+			glm::vec2 position = center + corner * radius;
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, color.r, color.g, color.b, 0.55F, center.x * cell, center.y * cell, radius, 1.0F, 0.0F, -2.0F});
+		}
+	};
+	// The colour splats first, then the same splats again carrying how glossy they are wet and dry, for the scorch map's G and B (LightingSettings::StainSurface).
+	for (int pass = 0; pass < 2; ++pass) {
+		for (const EffectsParticles::Stain& stain: stains) {
+			glm::vec2 center = stain.Position / cell;
+			float radius = std::max(1.0F, stain.Radius / cell);
+			glm::vec3 color = pass == 0 ? stain.Color : glm::vec3(0.0F, stain.Gloss.x, stain.Gloss.y);
+			addSplat(center, radius, color);
+			if (m_WrapX) {
+				addSplat(center + glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, color);
+				addSplat(center - glm::vec2(static_cast<float>(m_Stains.Width), 0.0F), radius, color);
+			}
+		}
+	}
+	size_t splatCount = m_QuadVertices.size() / 8;
+	UploadQuads();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Stains.Framebuffer);
+	glViewport(0, 0, m_Stains.Width, m_Stains.Height);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	glBlendEquation(GL_FUNC_ADD);
+	// New stains cover old ones; coverage builds up towards fully stained.
+	glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+	m_StainShader->Enable();
+	m_StainShader->SetVector2f("rteScreenSize", glm::vec2(m_Stains.Width, m_Stains.Height));
+	DrawQuads(0, splatCount);
+	// Their gloss, in the same cells of the scorch map, leaving its soot (R) alone.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Scorch.Framebuffer);
+	glBlendFunc(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA);
+	glColorMask(GL_FALSE, GL_TRUE, GL_TRUE, GL_FALSE);
+	DrawQuads(splatCount, splatCount);
+	glColorMask(GL_TRUE, GL_TRUE, GL_TRUE, GL_TRUE);
+	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
+bool SceneLighting::UpdateDecalGroundMaterials() {
+	// Ground for the decal maps is what a mark can't stay on once it's gone, or come through when it arrives: anything but air, cavity and the flowing liquids
+	// (water running over a stain, or blood settling and running, leaves the stain under it be). The liquids are FluidSim's, which it works out on its own step.
+	bool changed = false;
+	for (int id = 0; id < 256; ++id) {
+		unsigned char ground = IsOpenMaterial(static_cast<unsigned char>(id)) ? 0 : 1;
+		changed |= m_DecalGroundMaterial[id] != ground;
+		m_DecalGroundMaterial[id] = ground;
+	}
+	return changed;
+}
+
+void SceneLighting::RefreshDecalGround(int minX, int minY, int endX, int endY, bool wipeChanged) {
+	if (!m_DecalWipe.Texture) {
+		return;
+	}
+	const int cell = m_ScorchCellSize;
+	auto cellRange = [cell](int first, int end, int count, bool whole) {
+		return whole ? glm::ivec2(0, count) : glm::ivec2(std::max(first / cell, 0), std::min((end + cell - 1) / cell, count));
+	};
+	glm::ivec2 columnRange = cellRange(minX, endX, m_DecalWipe.Width, minX < 0 || endX > m_SceneWidth);
+	glm::ivec2 rowRange = cellRange(minY, endY, m_DecalWipe.Height, minY < 0 || endY > m_SceneHeight);
+	const int firstColumn = columnRange.x;
+	const int columns = columnRange.y - columnRange.x;
+	const int firstRow = rowRange.x;
+	const int rows = rowRange.y - rowRange.x;
+	if (columns <= 0 || rows <= 0) {
+		return;
+	}
+	ZoneScoped;
+	const BITMAP* materialBitmap = static_cast<const BITMAP*>(m_WorldMaterialBitmap);
+	m_DecalWipeRows.assign(static_cast<size_t>(columns) * rows, 0);
+	bool anyWipe = false;
+	for (int row = 0; row < rows; ++row) {
+		int sceneRow = firstRow + row;
+		unsigned char* groundRow = &m_DecalGround[static_cast<size_t>(sceneRow) * m_DecalWipe.Width];
+		unsigned char* wipeRow = &m_DecalWipeRows[static_cast<size_t>(row) * columns];
+		for (int column = 0; column < columns; ++column) {
+			int sceneColumn = firstColumn + column;
+			// Branch free over the pixels, as this can run over a wide box a frame while things move about the scene.
+			unsigned char ground = 0;
+			for (int y = sceneRow * cell; y < std::min((sceneRow + 1) * cell, m_SceneHeight); ++y) {
+				const unsigned char* line = materialBitmap->line[y];
+				for (int x = sceneColumn * cell; x < std::min((sceneColumn + 1) * cell, m_SceneWidth); ++x) {
+					ground |= m_DecalGroundMaterial[line[x]];
+				}
+			}
+			if (ground != groundRow[sceneColumn]) {
+				groundRow[sceneColumn] = ground;
+				wipeRow[column] = 255;
+				anyWipe = true;
+			}
+		}
+	}
+	if (!wipeChanged || !anyWipe || !m_Scorch.Framebuffer || !m_Stains.Framebuffer) {
+		return;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_DecalWipe.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, firstRow, columns, rows, GL_RED, GL_UNSIGNED_BYTE, m_DecalWipeRows.data()));
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+	glBindTexture(GL_TEXTURE_2D, 0);
+
+	TracyGpuZone("Decal Wipe");
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_BLEND);
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(firstColumn, firstRow, columns, rows);
+	m_DecalWipeShader->Enable();
+	m_DecalWipeShader->SetInt("rteDecalWipe", 1);
+	m_DecalWipeShader->SetVector2f("rteDecalWipeSize", glm::vec2(m_DecalWipe.Width, m_DecalWipe.Height));
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_DecalWipe.Texture);
+	glActiveTexture(GL_TEXTURE0);
+	for (const GLTarget* map: {&m_Scorch, &m_Stains}) {
+		glBindFramebuffer(GL_FRAMEBUFFER, map->Framebuffer);
+		glViewport(0, 0, map->Width, map->Height);
+		DrawFullscreen();
+	}
+	glDisable(GL_SCISSOR_TEST);
+	glBindVertexArray(0);
+}
+
+void SceneLighting::FadeDecals(float seconds) {
+	if (!m_Settings.DecalsFade || !m_Scorch.Framebuffer || !m_Stains.Framebuffer || seconds <= 0.0F) {
+		m_DecalFadeDebt = glm::vec3(0.0F);
+		return;
+	}
+	// The maps hold 8 bit values, so they fade in whole steps of 1/255 when enough game time has gone by for one, linearly: soot weathers away and stains
+	// wash off over the set minutes (rain much faster), and wet stains dry over a minute and a half (slower in the wet).
+	float fadeSeconds = std::max(m_Settings.DecalFadeMinutes, 0.5F) * 60.0F;
+	m_DecalFadeDebt.x += seconds * 255.0F / fadeSeconds * (1.0F + 3.0F * m_Wetness);
+	m_DecalFadeDebt.y += seconds * 255.0F / 90.0F * (1.0F - 0.8F * m_Wetness);
+	m_DecalFadeDebt.z += seconds * 255.0F / (fadeSeconds * 1.5F) * (1.0F + 6.0F * m_Wetness);
+	glm::vec3 steps = glm::floor(m_DecalFadeDebt);
+	if (steps.x < 1.0F && steps.y < 1.0F && steps.z < 1.0F) {
+		return;
+	}
+	m_DecalFadeDebt -= steps;
+	ZoneScoped;
+	TracyGpuZone("Decal Fade");
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glEnable(GL_BLEND);
+	// What's drawn is taken off what the map holds.
+	glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+	glBlendFunc(GL_ONE, GL_ONE);
+	m_DecalFadeShader->Enable();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Scorch.Framebuffer);
+	glViewport(0, 0, m_Scorch.Width, m_Scorch.Height);
+	m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(steps.x, steps.y, steps.z, 0.0F) / 255.0F);
+	DrawFullscreen();
+	if (steps.z >= 1.0F) {
+		glBindFramebuffer(GL_FRAMEBUFFER, m_Stains.Framebuffer);
+		glViewport(0, 0, m_Stains.Width, m_Stains.Height);
+		m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(0.0F, 0.0F, 0.0F, steps.z / 255.0F));
+		DrawFullscreen();
+	}
+	glBlendEquation(GL_FUNC_ADD);
+	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
+const Shader* SceneLighting::PrepareTerrainShader() {
+	if (!m_Scorch.Texture) {
+		return nullptr;
+	}
+	m_TerrainShader->Enable();
+	m_TerrainShader->SetInt("rteScorch", 3);
+	m_TerrainShader->SetBool("rteScorchEnabled", m_Settings.ScorchMarks);
+	m_TerrainShader->SetVector2f("rteScorchWorldSize", glm::vec2(static_cast<float>(m_Scorch.Width * m_ScorchCellSize), static_cast<float>(m_Scorch.Height * m_ScorchCellSize)));
+	g_RenderMan.SetGlobalTexture(3, m_Scorch.Texture);
+	g_RenderMan.SetGlobalTexture(4, m_Stains.Texture);
+	g_RenderMan.SetGlobalTexture(5, m_SkylineTexture.Texture);
+	g_RenderMan.SetGlobalTexture(6, m_OccupancyTexture.Texture);
+	g_RenderMan.SetGlobalTexture(7, m_FlowTexture.Texture);
+	g_RenderMan.SetGlobalTexture(8, m_WetMap[m_CurrentWetMap].Texture);
+	m_TerrainShader->SetInt("rteWetMap", 8);
+	m_TerrainShader->SetBool("rteWetMapOn", m_Settings.WetnessMap && m_WetMap[0].Texture);
+	m_TerrainShader->SetFloat("rtePuddles", m_Settings.Enabled ? std::clamp(m_Settings.Puddles, 0.0F, 1.0F) : 0.0F);
+	m_TerrainShader->SetFloat("rteRainNow", WeatherRain());
+	m_TerrainShader->SetInt("rteFlowField", 7);
+	m_TerrainShader->SetFloat("rteFlowSurface", 0.0F);
+	m_TerrainShader->SetInt("rteWorldGrid", 6);
+	m_TerrainShader->SetInt("rteTreePass", 0); // (SceneMan::Draw gives each foreground draw its own.)
+	// What each terrain pixel is made of, so only pixels of a liquid's material are drawn as it, not terrain that happens to share its palette colour.
+	{
+		SLTerrain* terrain = g_SceneMan.GetTerrain();
+		GLuint materialMap = terrain ? terrain->GetMaterialTextureId() : 0;
+		g_RenderMan.SetGlobalTexture(9, materialMap);
+		m_TerrainShader->SetInt("rteMaterialMap", 9);
+		m_TerrainShader->SetBool("rteMaterialMapOn", materialMap != 0);
+		int32_t location = m_TerrainShader->GetUniformLocation("rteMaterialLooks[0]");
+		if (location >= 0) {
+			glUniform4fv(location, 64, g_RenderMan.GetMaterialLiquidLooks().data());
+		}
+		// Which materials are trees', for drawing trees behind units (SceneMan::Draw).
+		location = m_TerrainShader->GetUniformLocation("rteTreeMaterials[0]");
+		if (location >= 0) {
+			static const std::array<float, 256> noTrees{};
+			glUniform4fv(location, 64, noTrees.data());
+		}
+	}
+	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
+	// The sprite shader reads sprites' own shading as relief too.
+	if (const Shader* spriteShader = g_RenderMan.GetDefaultShader()) {
+		spriteShader->Enable();
+		spriteShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
+		m_TerrainShader->Enable();
+	}
+	m_TerrainShader->SetBool("rteLivingWorld", m_Settings.LivingWorld);
+	m_TerrainShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+	// The wind as it blows now, gusts and all (AirPressure::GetNaturalWind): plants sway with it and open water chops.
+	m_TerrainShader->SetFloat("rteWind", VisualWind::GetWind());
+	m_TerrainShader->SetFloat("rteSnowCover", m_Settings.LivingWorld ? m_SnowCover : 0.0F);
+	m_TerrainShader->SetFloat("rteWetness", m_Settings.LivingWorld ? m_Wetness : 0.0F);
+	m_TerrainShader->SetFloat("rteWaterFoam", m_Settings.Enabled ? m_Settings.WaterFoam : 0.0F);
+	m_TerrainShader->SetFloat("rteThinFlow", m_Settings.Enabled ? std::clamp(m_Settings.WaterThinFlow, 0.0F, 2.0F) : 0.0F);
+	m_TerrainShader->SetBool("rteWaterCaustics", m_Settings.WaterCaustics);
+	m_TerrainShader->SetFloat("rteWaterFoamStray", std::clamp(m_Settings.WaterFoamStray, 0.0F, 1.0F));
+	m_TerrainShader->SetFloat("rteWaterFoamBright", m_Settings.WaterFoamBrightness);
+	m_TerrainShader->SetFloat("rteWaterFoamGlow", m_Settings.WaterFoamGlow);
+	m_TerrainShader->SetFloat("rteWaterFoamBubbles", std::clamp(m_Settings.WaterFoamBubbles, 0.0F, 2.0F));
+	// The liquid looks. With distinct looks off, every look past acid is drawn as water, as all liquids but lava and acid were before.
+	{
+		std::array<RenderMan::LiquidLook, RenderMan::c_MaxLiquidLooks> looks = g_RenderMan.GetLiquidLooks();
+		if (!m_Settings.DistinctLiquidLooks) {
+			std::fill(looks.begin() + 4, looks.end(), looks[1]);
+		}
+		std::array<glm::vec4, RenderMan::c_MaxLiquidLooks> column;
+		auto upload = [&](const char* name, glm::vec4 RenderMan::LiquidLook::*part) {
+			for (int look = 0; look < RenderMan::c_MaxLiquidLooks; ++look) {
+				column[look] = looks[look].*part;
+			}
+			int32_t location = m_TerrainShader->GetUniformLocation(name);
+			if (location >= 0) {
+				glUniform4fv(location, RenderMan::c_MaxLiquidLooks, &column[0].x);
+			}
+		};
+		upload("rteLiquidShallow[0]", &RenderMan::LiquidLook::Shallow);
+		upload("rteLiquidDeep[0]", &RenderMan::LiquidLook::Deep);
+		upload("rteLiquidSurface[0]", &RenderMan::LiquidLook::Surface);
+		upload("rteLiquidStyle[0]", &RenderMan::LiquidLook::Style);
+		upload("rteLiquidLine[0]", &RenderMan::LiquidLook::Line);
+	}
+	m_TerrainShader->SetFloat("rteWaterRipples", (m_Settings.Enabled && m_Settings.WaterReflections) ? std::clamp(m_Settings.WaterRipples, 0.0F, 2.0F) : 0.0F);
+	// Snow drifts on the wind far more than rain does. Capped well short of level, so cover still only lies on what's under some sky.
+	{
+		const Weather* weather = CurrentWeather();
+		glm::vec2 fall = (weather && weather->GetParams().SnowCover > 0.0F) ? weather->GetMeanFall(m_Settings.Wind) : glm::vec2(m_Settings.Wind, 640.0F);
+		// Cover from rising or hovering weather has no way down to slant along, so it settles as plain falling weather would.
+		if (fall.y <= 0.0F) {
+			fall = glm::vec2(m_Settings.Wind, 640.0F);
+		}
+		fall.x = std::clamp(fall.x, -fall.y * 2.0F, fall.y * 2.0F);
+		m_TerrainShader->SetVector2f("rteWeatherFall", glm::normalize(fall));
+		// The shelter map is made for the falling weather; the ground uses it when it was made for the way the ground's cover goes by (as close as the map is kept),
+		// and otherwise marches as before (snow slanted past the cap above, or wetness left under falling ash).
+		bool shelterFits = m_ShelterMapReady && std::abs(-fall.x / fall.y - m_ShelterMapSlope) * static_cast<float>(m_SceneHeight) <= 2.0F;
+		g_RenderMan.SetGlobalTexture(10, shelterFits ? m_ShelterMap.Texture : 0);
+		SetShelterUniforms(*m_TerrainShader, shelterFits, 10);
+	}
+	m_TerrainShader->SetInt("rteSkyline", 5);
+	m_TerrainShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
+	{
+		std::vector<glm::vec4> blasts;
+		if (m_Settings.LivingWorld) {
+			g_PostProcessMan.GetActiveShockwaves(blasts);
+		}
+		constexpr size_t maxBlasts = 8;
+		if (blasts.size() > maxBlasts) {
+			blasts.resize(maxBlasts);
+		}
+		m_TerrainShader->SetInt("rteBlastCount", static_cast<int>(blasts.size()));
+		if (!blasts.empty()) {
+			glUniform4fv(m_TerrainShader->GetUniformLocation("rteBlasts"), static_cast<GLsizei>(blasts.size()), &blasts[0].x);
+		}
+	}
+	m_TerrainShader->SetInt("rteStains", 4);
+	m_TerrainShader->SetBool("rteStainsEnabled", m_Settings.Stains);
+	m_TerrainShader->SetFloat("rteStainShine", m_Settings.StainSurface ? std::clamp(m_Settings.StainShine, 0.0F, 1.0F) : 0.0F);
+
+	// Hot spots: the most recent marks, cooling over HotSpotSeconds.
+	std::vector<PostProcessMan::ScorchMark> hotMarks = g_PostProcessMan.GetHotScorchMarks(std::max(m_Settings.HotSpotSeconds, 0.01F));
+	float now = PostProcessMan::GetSmoothSimTime();
+	std::array<glm::vec4, 16> hotSpots{};
+	int hotSpotCount = 0;
+	for (auto mark = hotMarks.rbegin(); mark != hotMarks.rend() && hotSpotCount < static_cast<int>(hotSpots.size()); ++mark) {
+		float age = (now - mark->m_StartTime) / std::max(m_Settings.HotSpotSeconds, 0.01F);
+		float heat = std::clamp(1.0F - age, 0.0F, 1.0F);
+		heat *= heat;
+		if (heat > 0.0F) {
+			hotSpots[hotSpotCount++] = glm::vec4(mark->m_Pos.m_X, mark->m_Pos.m_Y, mark->m_Radius * 1.1F, heat);
+		}
+	}
+	m_TerrainShader->SetInt("rteHotSpotCount", hotSpotCount);
+	if (hotSpotCount > 0) {
+		glUniform4fv(m_TerrainShader->GetUniformLocation("rteHotSpots"), hotSpotCount, &hotSpots[0].x);
+	}
+	return m_TerrainShader.get();
+}
+
+void SceneLighting::UpdateFlowField() {
+	if (!m_FlowTexture.Texture) {
+		return;
+	}
+	// No liquid flow in this build: only clears what was marked before.
+	if (m_FlowTiles.empty()) {
+		return;
+	}
+	ZoneScoped;
+	auto tileCells = [this](int tile, int& firstColumn, int& firstRow, int& endColumn, int& endRow) {
+		firstColumn = (tile % m_FlowTileColumns) * c_FlowTileCells;
+		firstRow = (tile / m_FlowTileColumns) * c_FlowTileCells;
+		endColumn = std::min(firstColumn + c_FlowTileCells, m_GridWidth);
+		endRow = std::min(firstRow + c_FlowTileCells, m_GridHeight);
+	};
+	// Last frame's moving liquid is cleared away; those tiles are uploaded again whether or not anything moves in them now.
+	std::vector<int> uploads;
+	uploads.swap(m_FlowTiles);
+	for (int tile: uploads) {
+		int firstColumn, firstRow, endColumn, endRow;
+		tileCells(tile, firstColumn, firstRow, endColumn, endRow);
+		for (int row = firstRow; row < endRow; ++row) {
+			for (int column = firstColumn; column < endColumn; ++column) {
+				unsigned char* cell = &m_Flow[(static_cast<size_t>(row) * m_GridWidth + column) * 4];
+				cell[0] = 128;
+				cell[1] = cell[2] = cell[3] = 0;
+			}
+		}
+		m_FlowTileMarks[tile] = 1;
+	}
+	glBindTexture(GL_TEXTURE_2D, m_FlowTexture.Texture);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 1);
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, m_GridWidth);
+	for (int tile: uploads) {
+		int firstColumn, firstRow, endColumn, endRow;
+		tileCells(tile, firstColumn, firstRow, endColumn, endRow);
+		GL_CHECK(glTexSubImage2D(GL_TEXTURE_2D, 0, firstColumn, firstRow, endColumn - firstColumn, endRow - firstRow, GL_RGBA, GL_UNSIGNED_BYTE, &m_Flow[(static_cast<size_t>(firstRow) * m_GridWidth + firstColumn) * 4]));
+		m_FlowTileMarks[tile] = 0;
+	}
+	glPixelStorei(GL_UNPACK_ROW_LENGTH, 0);
+	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
+}
+
+void SceneLighting::UpdateLampCache() {
+	if (!m_Settings.Enabled || !m_Settings.LampCache || m_SceneWidth <= 0 || m_SceneHeight <= 0) {
+		if (m_LampCache.Texture) {
+			m_LampCache.Destroy();
+			m_LampDirection.Destroy();
+		}
+		m_LampCacheCell = 0;
+		m_LampCacheReady = false;
+		m_LampCacheLamps = 0;
+		m_LampDirtyEndX = m_LampDirtyMinX;
+		return;
+	}
+	// The map's texel: the player's detail, made coarser on big scenes so it stays under about 8 million texels (64 MB with its direction map).
+	static constexpr int c_LampCacheCells[3] = {8, 4, 2};
+	int cell = c_LampCacheCells[std::clamp(m_Settings.LampCacheDetail, 0, 2)];
+	while (cell < 32 && static_cast<long long>((m_SceneWidth + cell - 1) / cell) * ((m_SceneHeight + cell - 1) / cell) > 8'000'000LL) {
+		cell *= 2;
+	}
+	int width = (m_SceneWidth + cell - 1) / cell;
+	int height = (m_SceneHeight + cell - 1) / cell;
+	bool relightAll = false;
+	if (!m_LampCache.Framebuffer || cell != m_LampCacheCell || m_LampCache.Width != width || m_LampCache.Height != height) {
+		GLint wrapS = m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE;
+		m_LampCache.Create(width, height, GL_R11F_G11F_B10F, GL_RGB, GL_FLOAT, GL_LINEAR, wrapS, GL_CLAMP_TO_EDGE, true);
+		m_LampDirection.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, wrapS, GL_CLAMP_TO_EDGE, false);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_LampCache.Framebuffer);
+		GL_CHECK(glFramebufferTexture2D(GL_FRAMEBUFFER, GL_COLOR_ATTACHMENT1, GL_TEXTURE_2D, m_LampDirection.Texture, 0));
+		const GLenum drawBuffers[2] = {GL_COLOR_ATTACHMENT0, GL_COLOR_ATTACHMENT1};
+		glDrawBuffers(2, drawBuffers);
+		m_LampCacheCell = cell;
+		relightAll = true;
+	}
+
+	// The steady lamps as the screens would draw them, and what shapes their light: any change relights the whole map.
+	auto styled = [this](const glm::vec3& color) {
+		float grey = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+		return glm::max(glm::mix(glm::vec3(grey), color, m_Settings.LightSaturation), glm::vec3(0.0F)) * m_Settings.LightTint;
+	};
+	std::vector<SceneLight> lamps;
+	uint64_t signature = 1469598103934665603ULL;
+	auto hashIn = [&signature](float value) {
+		uint32_t bits;
+		std::memcpy(&bits, &value, sizeof(bits));
+		signature = (signature ^ bits) * 1099511628211ULL;
+	};
+	for (const SceneLight& light: g_PostProcessMan.GetSceneLights()) {
+		if (light.m_Steady && light.m_ConeCos < -1.0F) {
+			lamps.push_back(light);
+			lamps.back().m_Color = styled(light.m_Color);
+			hashIn(light.m_Pos.m_X);
+			hashIn(light.m_Pos.m_Y);
+			hashIn(light.m_Radius);
+			hashIn(lamps.back().m_Color.r);
+			hashIn(lamps.back().m_Color.g);
+			hashIn(lamps.back().m_Color.b);
+		}
+	}
+	hashIn(m_Settings.ShadowStrength);
+	hashIn(m_Settings.LightShadowField ? 1.0F : 0.0F);
+	hashIn(m_Settings.LightShadowSoftness);
+	hashIn(m_Settings.SoftWallLight ? 1.0F : 0.0F);
+	hashIn(static_cast<float>(lamps.size()));
+	if (signature != m_LampCacheSignature) {
+		relightAll = true;
+	}
+	m_LampCacheSignature = signature;
+	m_LampCacheLamps = static_cast<int>(lamps.size());
+	m_LampCacheReady = true;
+
+	// What to relight: everything, or the lamps that reach where the ground changed and everything those lamps reach.
+	float sceneWidth = static_cast<float>(m_SceneWidth);
+	int areaMinX = 0;
+	int areaMinY = 0;
+	int areaEndX = m_SceneWidth;
+	int areaEndY = m_SceneHeight;
+	bool changed = m_LampDirtyEndX > m_LampDirtyMinX && m_LampDirtyEndY > m_LampDirtyMinY;
+	if (!relightAll) {
+		if (!changed) {
+			return;
+		}
+		areaMinX = m_LampDirtyMinX;
+		areaMinY = m_LampDirtyMinY;
+		areaEndX = m_LampDirtyEndX;
+		areaEndY = m_LampDirtyEndY;
+		bool any = false;
+		for (const SceneLight& lamp: lamps) {
+			for (int wrap = -1; wrap <= 1; ++wrap) {
+				if (wrap != 0 && !m_WrapX) {
+					continue;
+				}
+				float x = lamp.m_Pos.m_X + static_cast<float>(wrap) * sceneWidth;
+				float y = lamp.m_Pos.m_Y;
+				if (x + lamp.m_Radius >= static_cast<float>(m_LampDirtyMinX) && x - lamp.m_Radius <= static_cast<float>(m_LampDirtyEndX) && y + lamp.m_Radius >= static_cast<float>(m_LampDirtyMinY) && y - lamp.m_Radius <= static_cast<float>(m_LampDirtyEndY)) {
+					areaMinX = std::min(areaMinX, static_cast<int>(std::floor(x - lamp.m_Radius)));
+					areaEndX = std::max(areaEndX, static_cast<int>(std::ceil(x + lamp.m_Radius)));
+					areaMinY = std::min(areaMinY, static_cast<int>(std::floor(y - lamp.m_Radius)));
+					areaEndY = std::max(areaEndY, static_cast<int>(std::ceil(y + lamp.m_Radius)));
+					any = true;
+				}
+			}
+		}
+		m_LampDirtyEndX = m_LampDirtyMinX;
+		if (!any) {
+			return;
+		}
+		// Across the seam of a wrapping scene the area would need two pieces: relight it all.
+		if (m_WrapX && (areaMinX < 0 || areaEndX > m_SceneWidth)) {
+			areaMinX = 0;
+			areaEndX = m_SceneWidth;
+		}
+	}
+	m_LampDirtyEndX = m_LampDirtyMinX;
+	int firstColumn = std::clamp(areaMinX / cell - 1, 0, width);
+	int endColumn = std::clamp((areaEndX + cell - 1) / cell + 1, 0, width);
+	int firstRow = std::clamp(areaMinY / cell - 1, 0, height);
+	int endRow = std::clamp((areaEndY + cell - 1) / cell + 1, 0, height);
+	if (endColumn <= firstColumn || endRow <= firstRow) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Lamp Cache");
+
+	// The lamps that reach the area, with their copies across the seam, in texels; their radius stays in pixels for the shadows' softness.
+	m_QuadVertices.clear();
+	glm::vec2 areaMin(static_cast<float>(firstColumn * cell), static_cast<float>(firstRow * cell));
+	glm::vec2 areaEnd(static_cast<float>(endColumn * cell), static_cast<float>(endRow * cell));
+	float texel = 1.0F / static_cast<float>(cell);
+	for (const SceneLight& lamp: lamps) {
+		for (int wrap = -1; wrap <= 1; ++wrap) {
+			if (wrap != 0 && !m_WrapX) {
+				continue;
+			}
+			glm::vec2 center(lamp.m_Pos.m_X + static_cast<float>(wrap) * sceneWidth, lamp.m_Pos.m_Y);
+			if (center.x + lamp.m_Radius < areaMin.x || center.x - lamp.m_Radius > areaEnd.x || center.y + lamp.m_Radius < areaMin.y || center.y - lamp.m_Radius > areaEnd.y) {
+				continue;
+			}
+			const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
+			for (const glm::vec2& corner: corners) {
+				glm::vec2 position = (center + corner * lamp.m_Radius) * texel;
+				m_QuadVertices.push_back({position.x, position.y, 0.0F, corner.x, corner.y, lamp.m_Color.r, lamp.m_Color.g, lamp.m_Color.b, 1.0F, center.x * texel, center.y * texel, lamp.m_Radius, 1.0F, 0.0F, -2.0F});
+			}
+		}
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, m_LampCache.Framebuffer);
+	glViewport(0, 0, width, height);
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(firstColumn, firstRow, endColumn - firstColumn, endRow - firstRow);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if (!m_QuadVertices.empty()) {
+		UploadQuads();
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		glm::vec2 gridWorldSize(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize));
+		m_PointLightShader->Enable();
+		m_PointLightShader->SetBool("rteCacheMode", true);
+		m_PointLightShader->SetFloat("rteCacheCell", static_cast<float>(cell));
+		m_PointLightShader->SetBool("rteBeamMode", false);
+		m_PointLightShader->SetFloat("rteUnitShadows", 0.0F);
+		m_PointLightShader->SetInt("rteOccupancy", 0);
+		m_PointLightShader->SetVector2f("rteScreenSize", glm::vec2(static_cast<float>(width), static_cast<float>(height)));
+		m_PointLightShader->SetVector2f("rteScreenOrigin", glm::vec2(0.0F));
+		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
+		SetShadowFieldUniforms();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		DrawQuads(0, m_QuadVertices.size() / 4);
+		m_PointLightShader->SetBool("rteCacheMode", false);
+		glDisable(GL_BLEND);
+		glBindVertexArray(0);
+	}
+	glDisable(GL_SCISSOR_TEST);
+}
+
+void SceneLighting::UpdateSunShadowMap(bool terrainChanged, const glm::ivec4& changedArea) {
+	if (!m_Settings.Enabled || !m_Settings.SunShadowMap || m_Settings.SunShadows <= 0.0F || m_WrapY || m_SceneWidth <= 0 || m_SceneHeight <= 0 || !m_OccupancyTexture.Texture) {
+		if (m_SunMap.Texture) {
+			m_SunMap.Destroy();
+		}
+		m_SunMapReady = false;
+		return;
+	}
+	// The rays come down along the sun's direction, as steep as the cloud shadows take it (no flatter than five across for one down). They stop at what stops light (R).
+	float slope = m_SunDirection.x / std::max(-m_SunDirection.y, 0.2F);
+	ZoneScoped;
+	TracyGpuZone("Sun Shadow Map");
+	MarchCoverStrip(m_SunMap, m_SunMapSlope, m_SunMapStart, m_SunMapTexel, m_SunMapReady, slope, 0, 0.5F, terrainChanged, changedArea);
+}
+
+glm::vec2 SceneLighting::WeatherFall() const {
+	// The mean way the drops fall (snow 45 px/s at 0.6 of the wind, ash 24): rain's way when there's no weather, or it's blown level (a dust storm), for the wetness
+	// and snow that are left.
+	const Weather* weather = CurrentWeather();
+	if (weather && weather->GetParams().Shelter && !weather->GetParams().Blown && weather->GetMeanFall(m_Settings.Wind).y > 0.0F) {
+		return weather->GetMeanFall(m_Settings.Wind);
+	}
+	return glm::vec2(m_Settings.Wind, 640.0F);
+}
+
+const Weather* SceneLighting::CurrentWeather() const {
+	return Weather::GetSlot(m_Settings.WeatherType, m_Settings.CustomWeather);
+}
+
+float SceneLighting::WeatherAmount() const {
+	return CurrentWeather() ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+}
+
+float SceneLighting::WeatherRain() const {
+	const Weather* weather = CurrentWeather();
+	return weather ? std::clamp(weather->GetParams().Rain * m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+}
+
+float SceneLighting::WeatherOvercast() const {
+	const Weather* weather = CurrentWeather();
+	return weather ? std::clamp(weather->GetParams().Overcast * m_Settings.WeatherIntensity, 0.0F, 1.0F) : 0.0F;
+}
+
+void SceneLighting::UpdateShelterMap(bool terrainChanged, const glm::ivec4& changedArea) {
+	glm::vec2 fall = WeatherFall();
+	// The rays come down the way the weather falls: x moves the other way to the wind for each pixel down, as the strip counts it.
+	float slope = -fall.x / fall.y;
+	const Weather* weather = CurrentWeather();
+	bool falling = weather && weather->GetParams().Shelter && !weather->GetParams().Blown && weather->GetParams().DropsPerScreen > 0.0F && fall.y > 0.0F && m_Settings.WeatherIntensity > 0.0F;
+	bool coverLeft = m_Settings.LivingWorld && (m_SnowCover > 0.01F || m_Wetness > 0.01F);
+	// Weather driven flatter than six across for one down is marched as before: the strip would be far wider than the scene for little gain.
+	if (!m_Settings.ShelterMask || !(falling || coverLeft) || std::abs(slope) > c_ShelterMaxSlope || m_WrapY || m_SceneWidth <= 0 || m_SceneHeight <= 0 || !m_OccupancyTexture.Texture) {
+		if (m_ShelterMap.Texture) {
+			m_ShelterMap.Destroy();
+		}
+		m_ShelterMapReady = false;
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Shelter Map");
+	// They stop at anything solid, water included (A), as the falling drops always have.
+	MarchCoverStrip(m_ShelterMap, m_ShelterMapSlope, m_ShelterMapStart, m_ShelterMapTexel, m_ShelterMapReady, slope, 3, 0.55F, terrainChanged, changedArea);
+}
+
+void SceneLighting::MarchCoverStrip(GLTarget& map, float& mapSlope, float& mapStart, float& mapTexel, bool& ready, float slope, int channel, float threshold, bool terrainChanged, const glm::ivec4& changedArea) {
+	float sceneWidth = static_cast<float>(m_SceneWidth);
+	float sceneHeight = static_cast<float>(m_SceneHeight);
+	// The rays that reach the scene: across its width on a wrapping scene (they repeat around it), and with the extra that comes in slanting from one side otherwise.
+	// Two pixels apart, or wider on huge scenes so the map stays at most 8192 texels.
+	float start = m_WrapX ? 0.0F : std::min(0.0F, slope * sceneHeight);
+	float range = m_WrapX ? sceneWidth : sceneWidth + std::abs(slope) * sceneHeight;
+	float texel = std::max(2.0F, std::ceil(range / 8192.0F));
+	int count = std::max(1, static_cast<int>(std::ceil(range / texel)));
+	if (m_WrapX) {
+		// A whole number of rays around the scene, so the map wraps with it.
+		count = std::max(1, static_cast<int>(std::round(range / texel)));
+		texel = range / static_cast<float>(count);
+	}
+	bool remakeAll = !ready || std::abs(slope - mapSlope) * sceneHeight > 2.0F;
+	if (map.Width != count || !map.Framebuffer) {
+		map.Create(count, 1, GL_R32F, GL_RED, GL_FLOAT, GL_LINEAR, m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		remakeAll = true;
+	}
+	if (remakeAll) {
+		mapSlope = slope;
+		mapStart = start;
+		mapTexel = texel;
+	} else if (!terrainChanged) {
+		return;
+	}
+	// Where only the ground changed, just the rays through the changed area are marched again (with the map as it was made, so they line up with the rest).
+	int firstTexel = 0;
+	int endTexel = count;
+	if (!remakeAll) {
+		float lowest = std::numeric_limits<float>::max();
+		float highest = std::numeric_limits<float>::lowest();
+		for (int corner = 0; corner < 4; ++corner) {
+			float x = static_cast<float>(corner & 1 ? changedArea.z : changedArea.x);
+			float y = static_cast<float>(corner & 2 ? changedArea.w : changedArea.y);
+			lowest = std::min(lowest, x + mapSlope * y);
+			highest = std::max(highest, x + mapSlope * y);
+		}
+		firstTexel = static_cast<int>(std::floor((lowest - mapStart) / mapTexel)) - 1;
+		endTexel = static_cast<int>(std::ceil((highest - mapStart) / mapTexel)) + 2;
+		if (m_WrapX && (firstTexel < 0 || endTexel > count)) {
+			// Across the seam of a wrapping scene the rays would be in two pieces: march them all.
+			firstTexel = 0;
+			endTexel = count;
+		}
+		firstTexel = std::clamp(firstTexel, 0, count);
+		endTexel = std::clamp(endTexel, 0, count);
+		if (endTexel <= firstTexel) {
+			return;
+		}
+	}
+	ready = true;
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glBindFramebuffer(GL_FRAMEBUFFER, map.Framebuffer);
+	glViewport(0, 0, count, 1);
+	glEnable(GL_SCISSOR_TEST);
+	glScissor(firstTexel, 0, endTexel - firstTexel, 1);
+	m_SunShadowMapShader->Enable();
+	m_SunShadowMapShader->SetInt("rteOccupancy", 0);
+	m_SunShadowMapShader->SetVector2f("rteGridWorldSize", glm::vec2(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize)));
+	m_SunShadowMapShader->SetVector2f("rteSceneSize", glm::vec2(sceneWidth, sceneHeight));
+	m_SunShadowMapShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
+	m_SunShadowMapShader->SetFloat("rteSlope", mapSlope);
+	m_SunShadowMapShader->SetFloat("rteStripStart", mapStart);
+	m_SunShadowMapShader->SetFloat("rteStripTexel", mapTexel);
+	m_SunShadowMapShader->SetBool("rteWrapX", m_WrapX);
+	m_SunShadowMapShader->SetInt("rteCoverChannel", channel);
+	m_SunShadowMapShader->SetFloat("rteCoverThreshold", threshold);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	DrawFullscreen();
+	glBindVertexArray(0);
+	glDisable(GL_SCISSOR_TEST);
+}
+
+void SceneLighting::SetShelterUniforms(const Shader& shader, bool use, int unit) const {
+	shader.SetBool("rteShelterOn", use && m_ShelterMap.Texture);
+	shader.SetInt("rteShelterMap", unit);
+	shader.SetFloat("rteShelterSlope", m_ShelterMapSlope);
+	shader.SetFloat("rteShelterStart", m_ShelterMapStart);
+	shader.SetFloat("rteShelterTexel", m_ShelterMapTexel);
+	// Lines spread up to four pixels either way at 1.
+	shader.SetFloat("rteShelterSoftness", std::clamp(m_Settings.ShelterSoftness, 0.0F, 2.0F) * 4.0F);
+}
+
+void SceneLighting::UpdateWetMap(float seconds) {
+	if (!m_Settings.WetnessMap || !m_WetMap[0].Framebuffer || seconds <= 0.0F) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Wetness");
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glViewport(0, 0, m_GridWidth, m_GridHeight);
+	const GLTarget& source = m_WetMap[m_CurrentWetMap];
+	const GLTarget& destination = m_WetMap[1 - m_CurrentWetMap];
+	glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+	m_WetnessUpdateShader->Enable();
+	m_WetnessUpdateShader->SetInt("rtePrevious", 0);
+	m_WetnessUpdateShader->SetInt("rteOccupancy", 1);
+	m_WetnessUpdateShader->SetFloat("rteRain", WeatherRain());
+	m_WetnessUpdateShader->SetFloat("rteSeconds", seconds);
+	m_WetnessUpdateShader->SetFloat("rteDrySeconds", std::clamp(m_Settings.WetDrySeconds, 10.0F, 600.0F));
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, source.Texture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE0);
+	DrawFullscreen();
+	glBindVertexArray(0);
+	m_CurrentWetMap = 1 - m_CurrentWetMap;
+}
+
+void SceneLighting::UpdateFog() {
+	if (!m_Fog[0].Texture) {
+		return;
+	}
+	bool on = m_Settings.Enabled && m_Settings.FogVolume > 0.0F;
+	std::vector<glm::vec4> puffs = g_PostProcessMan.TakeFogPuffs();
+	if (!on) {
+		if (m_FogLive) {
+			// Turned off: the next time it's turned on starts from clear air.
+			for (const GLTarget& fog: m_Fog) {
+				glBindFramebuffer(GL_FRAMEBUFFER, fog.Framebuffer);
+				glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+				glClear(GL_COLOR_BUFFER_BIT);
+			}
+			m_FogLive = false;
+		}
+		m_PendingFogPuffs.clear();
+		m_LastFogTime = -1.0;
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Fog Volume");
+	m_PendingFogPuffs.insert(m_PendingFogPuffs.end(), puffs.begin(), puffs.end());
+	// A step takes 16; under a long downpour of steam or dust the oldest past a backlog of 128 are dropped rather than queued for ever.
+	if (m_PendingFogPuffs.size() > 128) {
+		m_PendingFogPuffs.erase(m_PendingFogPuffs.begin(), m_PendingFogPuffs.end() - 128);
+	}
+	// In game time, so it holds while paused and keeps pace with slow motion. A step back (a new scene) counts as no time.
+	double now = PostProcessMan::GetSmoothSimTimePrecise();
+	float seconds = m_LastFogTime >= 0.0 ? static_cast<float>(std::clamp(now - m_LastFogTime, 0.0, 0.25)) : 0.0F;
+	m_LastFogTime = now;
+	if (seconds <= 0.0F && m_PendingFogPuffs.empty()) {
+		return;
+	}
+	float cell = static_cast<float>(m_CellSize);
+	// Dawn mist: thickest from five to seven, a little through the night, more in rain.
+	float hour = m_Settings.TimeOfDay;
+	float dawn = glm::smoothstep(3.5F, 5.5F, hour) * (1.0F - glm::smoothstep(6.5F, 9.0F, hour));
+	float night = (hour >= 21.0F || hour < 3.5F) ? 0.25F : 0.0F;
+	float rain = CurrentWeather() ? CurrentWeather()->GetParams().Mist * m_Settings.WeatherIntensity : 0.0F;
+	float mist = std::clamp(m_Settings.FogMorningMist, 0.0F, 1.0F) * std::max(dawn, std::max(night, rain)) * seconds * 0.15F;
+
+	constexpr int maxPuffs = 16;
+	std::array<glm::vec4, maxPuffs> stepPuffs{};
+	int puffCount = 0;
+	for (; puffCount < maxPuffs && puffCount < static_cast<int>(m_PendingFogPuffs.size()); ++puffCount) {
+		const glm::vec4& puff = m_PendingFogPuffs[puffCount];
+		stepPuffs[puffCount] = glm::vec4(puff.x / cell, puff.y / cell, puff.z / cell, puff.w);
+	}
+	m_PendingFogPuffs.erase(m_PendingFogPuffs.begin(), m_PendingFogPuffs.begin() + puffCount);
+
+	glDisable(GL_BLEND);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glViewport(0, 0, m_GridWidth, m_GridHeight);
+	const GLTarget& source = m_Fog[m_CurrentFog];
+	const GLTarget& destination = m_Fog[1 - m_CurrentFog];
+	glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+	m_FogUpdateShader->Enable();
+	m_FogUpdateShader->SetInt("rtePrevious", 0);
+	m_FogUpdateShader->SetInt("rteOccupancy", 1);
+	m_FogUpdateShader->SetInt("rteSkyLight", 2);
+	m_FogUpdateShader->SetVector2f("rteGridSize", glm::vec2(m_GridWidth, m_GridHeight));
+	// Mist drifts at a fraction of the wind (pixels per second), and a little even in still air.
+	m_FogUpdateShader->SetVector2f("rteDrift", glm::vec2((VisualWind::GetWind() * 0.5F + 2.0F) * seconds / cell, 0.0F));
+	m_FogUpdateShader->SetFloat("rteKeep", std::exp(-seconds / std::max(m_Settings.FogClearSeconds, 1.0F)));
+	m_FogUpdateShader->SetFloat("rteMist", mist);
+	m_FogUpdateShader->SetInt("rtePuffCount", puffCount);
+	if (puffCount > 0) {
+		glUniform4fv(m_FogUpdateShader->GetUniformLocation("rtePuffs[0]"), puffCount, &stepPuffs[0].x);
+	}
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, source.Texture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+	glActiveTexture(GL_TEXTURE0);
+	DrawFullscreen();
+	m_CurrentFog = 1 - m_CurrentFog;
+	m_FogLive = true;
+}
+
+void SceneLighting::Update() {
+	ZoneScoped;
+
+	// Advance the time of day in sim time, so it pauses with the game.
+	long long simUpdateCount = g_TimerMan.GetSimUpdateCount();
+	if (m_LastSimUpdateCount >= 0 && m_Settings.DayLengthMinutes > 0.0F) {
+		float elapsedSeconds = static_cast<float>(simUpdateCount - m_LastSimUpdateCount) * g_TimerMan.GetDeltaTimeSecs();
+		float hoursPerSecond = 24.0F / (m_Settings.DayLengthMinutes * 60.0F);
+		m_Settings.TimeOfDay = std::fmod(m_Settings.TimeOfDay + elapsedSeconds * hoursPerSecond, 24.0F);
+	}
+	m_LastSimUpdateCount = simUpdateCount;
+	// The wind the effects follow: worked out here from the setting alone, so the simulation never sees it.
+	VisualWind::Update(PostProcessMan::GetSmoothSimTimePrecise(), m_Settings.Wind);
+	glm::vec3 daylight = GetDaylightTint(m_Settings.TimeOfDay);
+	float dayFactor = std::clamp(glm::dot(daylight, glm::vec3(0.2126F, 0.7152F, 0.0722F)), 0.0F, 1.0F);
+	// Deep night is darker than early night by a chosen amount: from nightfall the light on the scene falls away to its least at eleven, and comes back from two until first light.
+	float hourNow = m_Settings.TimeOfDay;
+	float deepNight = hourNow >= 19.6F ? glm::smoothstep(19.6F, 23.0F, hourNow) : (hourNow <= 4.6F ? 1.0F - glm::smoothstep(2.0F, 4.6F, hourNow) : 0.0F);
+	// The slider is how much darker it looks, so the light itself falls by more than that (eyes and screens don't see light in proportion).
+	float nightDim = std::pow(1.0F - std::clamp(m_Settings.DeepNightDarkness, 0.0F, 0.97F) * deepNight, 2.2F);
+	m_NightDim = nightDim;
+	m_EffectiveSky = m_Settings.SkyColor * daylight * nightDim;
+	// Weather can tint the sky's light (Weather::SceneTint), as far as it's heavy.
+	if (const Weather* weather = CurrentWeather(); weather && weather->GetParams().SceneTint != glm::vec3(1.0F)) {
+		m_EffectiveSky *= glm::mix(glm::vec3(1.0F), weather->GetParams().SceneTint, std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F));
+	}
+	m_NightSky = std::clamp(1.0F - dayFactor * 3.0F, 0.0F, 1.0F);
+	m_SkyDaylight = daylight;
+	{
+		// The sky of the hour, for recoloring the sky art (which is painted as a blue day): overhead, at the horizon, and on cloud. Linear colours.
+		struct SkyOfHour {
+			float Hour;
+			glm::vec3 Zenith, Horizon, Cloud;
+		};
+		// Early night and the hour before dawn are a deep navy; from eleven to two the sky is all but black, as it is with no sun anywhere near.
+		static const glm::vec3 navy[3] = {{0.004F, 0.007F, 0.028F}, {0.016F, 0.028F, 0.075F}, {0.03F, 0.04F, 0.075F}};
+		static const glm::vec3 black[3] = {{0.0003F, 0.0005F, 0.0022F}, {0.0014F, 0.0024F, 0.007F}, {0.004F, 0.005F, 0.01F}};
+		static const SkyOfHour hours[] = {
+		    {0.0F, black[0], black[1], black[2]},
+		    {2.0F, black[0], black[1], black[2]},
+		    {4.6F, navy[0], navy[1], navy[2]},
+		    {5.6F, {0.03F, 0.045F, 0.16F}, {0.5F, 0.2F, 0.16F}, {0.45F, 0.22F, 0.24F}},
+		    {6.4F, {0.1F, 0.19F, 0.5F}, {1.0F, 0.52F, 0.25F}, {1.0F, 0.62F, 0.48F}},
+		    {8.0F, {0.16F, 0.38F, 0.82F}, {0.5F, 0.7F, 0.95F}, {1.0F, 0.98F, 0.95F}},
+		    {16.0F, {0.16F, 0.38F, 0.82F}, {0.5F, 0.7F, 0.95F}, {1.0F, 0.98F, 0.95F}},
+		    {17.6F, {0.1F, 0.14F, 0.45F}, {1.0F, 0.42F, 0.16F}, {1.0F, 0.55F, 0.35F}},
+		    {18.5F, {0.03F, 0.04F, 0.16F}, {0.45F, 0.14F, 0.14F}, {0.4F, 0.18F, 0.22F}},
+		    {19.6F, navy[0], navy[1], navy[2]},
+		    {23.0F, black[0], black[1], black[2]},
+		    {24.0F, black[0], black[1], black[2]},
+		};
+		float hour = std::clamp(m_Settings.TimeOfDay, 0.0F, 24.0F);
+		size_t next = 1;
+		while (next + 1 < std::size(hours) && hours[next].Hour < hour) {
+			++next;
+		}
+		float between = std::clamp((hour - hours[next - 1].Hour) / std::max(hours[next].Hour - hours[next - 1].Hour, 0.001F), 0.0F, 1.0F);
+		m_SkyZenith = glm::mix(hours[next - 1].Zenith, hours[next].Zenith, between);
+		m_SkyHorizon = glm::mix(hours[next - 1].Horizon, hours[next].Horizon, between);
+		m_SkyCloud = glm::mix(hours[next - 1].Cloud, hours[next].Cloud, between);
+		// Around midday the art is right as it is and is left alone; the replacement comes in through the afternoon and goes out through the morning.
+		float away = hour < 12.0F ? 1.0F - glm::smoothstep(7.5F, 9.5F, hour) : glm::smoothstep(14.5F, 16.5F, hour);
+		// Bad weather greys the sky at any hour.
+		float overcast = WeatherOvercast();
+		if (overcast > 0.0F) {
+			auto grey = [overcast](const glm::vec3& color) {
+				float brightness = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+				return glm::mix(color, glm::vec3(0.75F, 0.8F, 0.88F) * brightness * 0.8F, overcast * 0.75F);
+			};
+			m_SkyZenith = grey(m_SkyZenith);
+			m_SkyHorizon = grey(m_SkyHorizon);
+			m_SkyCloud = grey(m_SkyCloud);
+			away = std::max(away, overcast * 0.7F);
+		}
+		m_SkyRecolor = std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) * away;
+	}
+	m_MoonHours = std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F);
+
+	// The sun crosses the sky with the time of day, and at night the moon takes over (as for the god rays). Shadows fall away from it.
+	// They fade out as the two swap at the horizon, are fainter by moonlight, and fainter under an overcast sky.
+	bool sunIsUp = m_Settings.TimeOfDay >= 6.0F && m_Settings.TimeOfDay <= 18.0F;
+	float sunArc = ((sunIsUp ? m_Settings.TimeOfDay : std::fmod(m_Settings.TimeOfDay + 12.0F, 24.0F)) - 12.0F) / 6.0F;
+	m_SunDirection = glm::normalize(glm::vec2(sunArc * 1.05F, -1.0F));
+	float overcast = WeatherOvercast();
+	float sunLight = (1.0F - glm::smoothstep(0.8F, 1.0F, std::abs(sunArc))) * (sunIsUp ? 1.0F : 0.6F) * (1.0F - 0.8F * overcast);
+	m_SunShadowStrength = m_Settings.SunShadows * sunLight;
+	m_BackgroundShadowStrength = std::clamp(m_Settings.BackgroundShadows, 0.0F, 1.0F) * sunLight;
+	m_SunArc = sunArc;
+	m_SunLight = sunLight;
+	// The sun's disc sinks into the horizon haze at dawn and dusk, and weather hides it.
+	m_SunDiscStrength = sunIsUp ? m_Settings.SunDisc * (1.0F - glm::smoothstep(0.9F, 1.0F, std::abs(sunArc))) * (1.0F - overcast) : 0.0F;
+
+	// Lightning in heavy rain: a bright double flicker every so often that briefly lights the whole sky.
+	long long lightningUpdates = m_LightningLastSimUpdate >= 0 ? simUpdateCount - m_LightningLastSimUpdate : 0;
+	m_LightningLastSimUpdate = simUpdateCount;
+	// Sim time, so storms pause with the game.
+	float frameSeconds = std::min(static_cast<float>(lightningUpdates) * g_TimerMan.GetDeltaTimeSecs(), 0.1F);
+	auto nextRandom = [this]() {
+		m_LightningRandom = m_LightningRandom * 1664525u + 1013904223u;
+		return static_cast<float>(m_LightningRandom >> 8) / static_cast<float>(1u << 24);
+	};
+	float lightningRate = CurrentWeather() ? CurrentWeather()->GetParams().Lightning : 0.0F;
+	if (lightningRate > 0.0F && m_Settings.WeatherIntensity > 0.5F && m_Settings.StormFlashes) {
+		m_NextLightningSeconds -= frameSeconds;
+		if (m_NextLightningSeconds <= 0.0F) {
+			m_LightningSecondsLeft = 0.45F;
+			// Heavier storms flash more often, and weather with more lightning in it (Weather::Lightning, 1 as rain) more often still.
+			float storm = (m_Settings.WeatherIntensity - 0.5F) * 2.0F;
+			// Never closer than 3 s apart, however much lightning a weather asks for: whole-sky flashes any faster are hard on the eyes. Rain's (3.6 s at the least) is untouched.
+			m_NextLightningSeconds = std::max((6.0F + nextRandom() * 16.0F) * (1.2F - 0.6F * storm) / lightningRate, 3.0F);
+		}
+	}
+	if (m_LightningSecondsLeft > 0.0F) {
+		m_LightningSecondsLeft = std::max(m_LightningSecondsLeft - frameSeconds, 0.0F);
+		float t = 0.45F - m_LightningSecondsLeft;
+		// Two strokes: a sharp first flash and a weaker echo.
+		m_Lightning = 1.6F * std::exp(-t * 18.0F) + 0.9F * std::exp(-std::abs(t - 0.2F) * 25.0F);
+	} else {
+		m_Lightning = 0.0F;
+	}
+	// The player's lightning brightness scales the flash too, and Storm flashes off stops it (an accessibility switch: whole-sky flashes).
+	if (!m_Settings.StormFlashes) {
+		m_Lightning = 0.0F;
+		m_LightningSecondsLeft = 0.0F;
+	}
+	m_EffectiveSky += glm::vec3(0.75F, 0.8F, 1.0F) * m_Lightning * std::clamp(m_Settings.LightningBrightness, 0.0F, 2.0F);
+
+	// Snow settles over about a minute of heavy snowfall and melts slower than that; rain wets the ground quickly and dries slowly.
+	const Weather* weatherNow = CurrentWeather();
+	float snowTarget = weatherNow ? weatherNow->GetParams().SnowCover * m_Settings.WeatherIntensity : 0.0F;
+	float wetTarget = weatherNow ? std::min(1.0F, weatherNow->GetParams().Rain * m_Settings.WeatherIntensity * 1.3F) : 0.0F;
+	m_SnowCover += std::clamp(snowTarget - m_SnowCover, -frameSeconds / 90.0F, frameSeconds / 60.0F);
+	m_Wetness += std::clamp(wetTarget - m_Wetness, -frameSeconds / 60.0F, frameSeconds / 8.0F);
+	// Cloud cover gathers over about twenty seconds when rain, snow or ash sets in and breaks up over a minute and a half after.
+	{
+		float weatherCloud = weatherNow ? std::clamp(m_Settings.WeatherIntensity, 0.0F, 1.0F) * weatherNow->GetParams().CloudCover : 0.0F;
+		auto targetFor = [weatherCloud](float clearCover) {
+			float coverClear = std::clamp(clearCover, 0.0F, 1.0F);
+			return coverClear + (1.0F - coverClear) * std::min(weatherCloud * 1.4F, 1.0F);
+		};
+		float coverTarget = targetFor(m_Settings.CloudCover);
+		if (m_CloudCover >= 0.0F && m_Settings.CloudCover != m_CloudCoverSetting) {
+			// The Cloud cover setting itself was moved: the sky follows it at once, by as much as it moved the target, and only the weather's part eases.
+			m_CloudCover = std::clamp(m_CloudCover + coverTarget - targetFor(m_CloudCoverSetting), 0.0F, 1.0F);
+		}
+		m_CloudCoverSetting = m_Settings.CloudCover;
+		m_CloudCover = m_CloudCover < 0.0F ? coverTarget : m_CloudCover + std::clamp(coverTarget - m_CloudCover, -frameSeconds / 90.0F, frameSeconds / 20.0F);
+	}
+	// Interiors and caves get a little darker at night too, but much less than the outdoors: bunkers are artificially lit and should stay playable.
+	m_EffectiveAmbient = m_Settings.Ambient * (0.85F + 0.15F * dayFactor) * nightDim;
+	// The readability floor drops more at night than the interior ambient does, so night battles outdoors stay dark and moody.
+	m_EffectiveForegroundAmbient = m_Settings.ForegroundAmbient * (0.4F + 0.6F * dayFactor) * nightDim;
+
+	if (!EnsureWorldResources()) {
+		return;
+	}
+	++m_FrameCounter;
+
+	// Round-robin refresh of the terrain into the grid, so digging and explosions show up in the lighting within a fraction of a second.
+	int rowsPerFrame = std::max(4, m_GridHeight / 30);
+	int firstRow = m_NextRefreshRow;
+	int endRow = std::min(firstRow + rowsPerFrame, m_GridHeight);
+	RefreshOccupancyRows(firstRow, endRow);
+	UploadOccupancyRows(firstRow, endRow);
+	m_NextRefreshRow = (endRow >= m_GridHeight) ? 0 : endRow;
+	// Where terrain actually changed since the last frame (a piece falling, liquid moving, digging, a crater) is brought up to date at once, so shade and light
+	// follow it as it moves instead of catching up when the round-robin gets there.
+	// The changes come as tiles (SLTerrain::TakeChangedTiles), so two far-apart changes refresh two small areas, not the scene between them.
+	int changedTiles = 0;
+	glm::ivec4 terrainChangedArea(0); // Scene pixels: min x, min y, end x, end y, of the cells refreshed.
+	// Where the scorch and stain maps' ground is worked out again, in scene pixels: min x, min y, end x, end y. Patches far apart are kept as boxes of their
+	// own (with the slowdown fix on): as one box round them all, two drying puddles at the ends of the map read every material pixel between them each frame.
+	std::vector<glm::ivec4> pendingDecalGround;
+	const bool splitDecalGround = true;
+	auto addDecalGround = [&pendingDecalGround, splitDecalGround](const glm::ivec4& box) {
+		constexpr int c_JoinGap = 64;
+		constexpr size_t c_MaxBoxes = 8;
+		glm::ivec4* nearest = nullptr;
+		int nearestGap = INT_MAX;
+		for (glm::ivec4& pending: pendingDecalGround) {
+			int gap = std::max({pending.x - box.z, box.x - pending.z, pending.y - box.w, box.y - pending.w, 0});
+			if (gap < nearestGap) {
+				nearest = &pending;
+				nearestGap = gap;
+			}
+		}
+		if (!nearest || (splitDecalGround && nearestGap > c_JoinGap && pendingDecalGround.size() < c_MaxBoxes)) {
+			pendingDecalGround.push_back(box);
+		} else {
+			*nearest = glm::ivec4(std::min(nearest->x, box.x), std::min(nearest->y, box.y), std::max(nearest->z, box.z), std::max(nearest->w, box.w));
+		}
+	};
+	if (int tilesWide, tilesHigh; SLTerrain::TakeChangedTiles(m_ChangedTiles, tilesWide, tilesHigh)) {
+		const int tile = SLTerrain::c_ChangeTileSize;
+		// The cells refreshed, as one box, for the lamp cache below.
+		int changedFirstColumn = m_GridWidth;
+		int changedEndColumn = 0;
+		int changedFirstRow = m_GridHeight;
+		int changedEndRow = 0;
+		if (tilesWide != (m_SceneWidth + tile - 1) / tile || tilesHigh != (m_SceneHeight + tile - 1) / tile) {
+			// (A map of another size than this grid's scene: refresh it all rather than guess.)
+			RefreshOccupancyRows(0, m_GridHeight);
+			UploadOccupancyRows(0, m_GridHeight);
+			changedTiles = tilesWide * tilesHigh;
+			changedFirstColumn = 0;
+			changedEndColumn = m_GridWidth;
+			changedFirstRow = 0;
+			changedEndRow = m_GridHeight;
+			pendingDecalGround.assign(1, glm::ivec4(0, 0, m_SceneWidth, m_SceneHeight));
+		} else {
+			auto changed = [this, tilesWide](int tileX, int tileY) {
+				size_t index = static_cast<size_t>(tileY) * tilesWide + tileX;
+				return (m_ChangedTiles[index / 64] >> (index % 64)) & 1;
+			};
+			for (int tileY = 0; tileY < tilesHigh; ++tileY) {
+				// Each run of changed tiles along the row is refreshed (a cell of margin round it, as before); the row's span of them is uploaded at once.
+				int firstRow = std::clamp((tileY * tile) / m_CellSize - 1, 0, m_GridHeight);
+				int endRow = std::clamp(((tileY + 1) * tile - 1) / m_CellSize + 2, 0, m_GridHeight);
+				int uploadFirstColumn = m_GridWidth;
+				int uploadEndColumn = 0;
+				for (int tileX = 0; tileX < tilesWide;) {
+					if (!changed(tileX, tileY)) {
+						++tileX;
+						continue;
+					}
+					int runStart = tileX;
+					while (tileX < tilesWide && changed(tileX, tileY)) {
+						++tileX;
+						++changedTiles;
+					}
+					// The decal ground over the changed tiles (a box across the seam takes the width between, which is only more work).
+					glm::ivec4 runPixels(runStart * tile, tileY * tile, std::min(tileX * tile, m_SceneWidth), std::min((tileY + 1) * tile, m_SceneHeight));
+					addDecalGround(runPixels);
+					int firstColumn = std::clamp((runStart * tile) / m_CellSize - 1, 0, m_GridWidth);
+					int endColumn = std::clamp((tileX * tile - 1) / m_CellSize + 2, 0, m_GridWidth);
+					if (endRow > firstRow && endColumn > firstColumn) {
+						RefreshOccupancyRows(firstRow, endRow, firstColumn, endColumn);
+						uploadFirstColumn = std::min(uploadFirstColumn, firstColumn);
+						uploadEndColumn = std::max(uploadEndColumn, endColumn);
+						changedFirstColumn = std::min(changedFirstColumn, firstColumn);
+						changedEndColumn = std::max(changedEndColumn, endColumn);
+						changedFirstRow = std::min(changedFirstRow, firstRow);
+						changedEndRow = std::max(changedEndRow, endRow);
+					}
+				}
+				if (uploadEndColumn > uploadFirstColumn) {
+					UploadOccupancyRect(firstRow, endRow, uploadFirstColumn, uploadEndColumn);
+				}
+			}
+		}
+		// The lamps around it are relit in the lamp cache, as far as the cells the shadows read were refreshed.
+		if (changedEndColumn > changedFirstColumn && changedEndRow > changedFirstRow) {
+			int changedMinX = changedFirstColumn * m_CellSize;
+			int changedEndX = changedEndColumn * m_CellSize;
+			int changedMinY = changedFirstRow * m_CellSize;
+			int changedEndY = changedEndRow * m_CellSize;
+			if (m_LampDirtyEndX > m_LampDirtyMinX && m_LampDirtyEndY > m_LampDirtyMinY) {
+				m_LampDirtyMinX = std::min(m_LampDirtyMinX, changedMinX);
+				m_LampDirtyMinY = std::min(m_LampDirtyMinY, changedMinY);
+				m_LampDirtyEndX = std::max(m_LampDirtyEndX, changedEndX);
+				m_LampDirtyEndY = std::max(m_LampDirtyEndY, changedEndY);
+			} else {
+				m_LampDirtyMinX = changedMinX;
+				m_LampDirtyMinY = changedMinY;
+				m_LampDirtyEndX = changedEndX;
+				m_LampDirtyEndY = changedEndY;
+			}
+			terrainChangedArea = glm::ivec4(changedMinX, changedMinY, changedEndX, changedEndY);
+		}
+	}
+	bool terrainChanged = changedTiles > 0;
+	RecomputeSkyline();
+	UpdateFlowField();
+	if (m_WallChangeEndColumn > m_WallChangeMinColumn && m_WallChangeEndRow > m_WallChangeMinRow) {
+		RefreshShadowField(m_WallChangeMinColumn, m_WallChangeMinRow, m_WallChangeEndColumn, m_WallChangeEndRow);
+		m_WallChangeEndColumn = m_WallChangeMinColumn;
+	}
+
+	GLint previousFramebuffer = 0;
+	glGetIntegerv(GL_DRAW_FRAMEBUFFER_BINDING, &previousFramebuffer);
+	GLint previousViewport[4];
+	glGetIntegerv(GL_VIEWPORT, previousViewport);
+	// Sky light spreads a cell a step, so it gets more steps while the ground is changing, to keep up with it: up to three times as many, by how much
+	// changed (16 tiles of 32 px or more get all of them; one small hole gets one more), so a trickle of liquid doesn't triple the passes every frame.
+	int iterations = m_Settings.PropagationIterationsPerFrame;
+	if (terrainChanged) {
+		iterations += std::min(2 * iterations, (2 * iterations * changedTiles + 15) / 16);
+	}
+	PropagateSkyLight(iterations);
+	if (UpdateDecalGroundMaterials()) {
+		// Which materials flow changed (a new scene's liquids, or settings): what counts as ground is worked out afresh, without wiping anything for it.
+		RefreshDecalGround(0, 0, m_SceneWidth, m_SceneHeight, false);
+	}
+	for (const glm::ivec4& box: pendingDecalGround) {
+		RefreshDecalGround(box.x, box.y, box.z, box.w);
+	}
+	StampScorchMarks();
+	StampStains();
+	FadeDecals(frameSeconds);
+	UpdateFog();
+	UpdateLampCache();
+	UpdateWetMap(frameSeconds);
+	// The strips go by the cells that really changed, whichever refresh found them: the flagged area above, or the round-robin catching a change nobody reported.
+	bool coverChanged = m_CoverChangeEndColumn > m_CoverChangeMinColumn && m_CoverChangeEndRow > m_CoverChangeMinRow;
+	// A cell further, all round, since the grid is read linearly filtered and a cell's change reaches half way into its neighbours.
+	// (Kept inside the grid, so a change by the seam of a wrapping scene doesn't remake the whole strip.)
+	glm::ivec4 coverChangedArea = glm::ivec4(std::max(m_CoverChangeMinColumn - 1, 0), std::max(m_CoverChangeMinRow - 1, 0), std::min(m_CoverChangeEndColumn + 1, m_GridWidth), std::min(m_CoverChangeEndRow + 1, m_GridHeight)) * m_CellSize;
+	m_CoverChangeEndColumn = m_CoverChangeMinColumn;
+	UpdateSunShadowMap(coverChanged, coverChangedArea);
+	UpdateShelterMap(coverChanged, coverChangedArea);
+	glBindFramebuffer(GL_FRAMEBUFFER, previousFramebuffer);
+	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+}
+
+#pragma endregion
+
+#pragma region Player Screen
+
+const SceneLighting::GlowInfo& SceneLighting::GetGlowInfo(const BitmapTexture* glowTexture) {
+	if (auto cached = m_GlowInfoCache.find(glowTexture); cached != m_GlowInfoCache.end()) {
+		return cached->second;
+	}
+	GlowInfo info{glm::vec3(1.0F), std::max(glowTexture->GetDimensions().w, glowTexture->GetDimensions().h)};
+	if (const BITMAP* bitmap = glowTexture->GetBitmap(); bitmap && bitmap_color_depth(const_cast<BITMAP*>(bitmap)) == 32) {
+		// Average the glow's visible pixels for the color of the light it casts. Glow art is light on black, so weight by brightness.
+		glm::vec3 sum(0.0F);
+		float weight = 0.0F;
+		for (int y = 0; y < bitmap->h; ++y) {
+			const uint32_t* line = reinterpret_cast<const uint32_t*>(bitmap->line[y]);
+			for (int x = 0; x < bitmap->w; ++x) {
+				uint32_t pixel = line[x];
+				glm::vec3 color = ToLinear(static_cast<float>(getr32(pixel)), static_cast<float>(getg32(pixel)), static_cast<float>(getb32(pixel)));
+				float brightness = std::max(color.r, std::max(color.g, color.b));
+				sum += color * brightness;
+				weight += brightness;
+			}
+		}
+		if (weight > 0.0F) {
+			glm::vec3 average = sum / weight;
+			float peak = std::max(average.r, std::max(average.g, average.b));
+			info.LightColor = peak > 0.0F ? average / peak : glm::vec3(1.0F);
+		}
+	}
+	return m_GlowInfoCache.emplace(glowTexture, info).first->second;
+}
+
+GLuint SceneLighting::BuildOccluderField(RenderTarget* playerScreen, float foregroundDepth) {
+	std::shared_ptr<Texture> surface = playerScreen->GetSurfaceTexture().lock();
+	std::shared_ptr<DepthTexture> depth = playerScreen->GetDepthTexture().lock();
+	if (!surface || !depth || !m_OccluderSeeds[0].Texture) {
+		return 0;
+	}
+	TracyGpuZone("Occluder Field");
+	glDisable(GL_BLEND);
+	glViewport(0, 0, m_OccluderSeeds[0].Width, m_OccluderSeeds[0].Height);
+
+	// Seeds: every pixel of a solid object holds its own position.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_OccluderSeeds[0].Framebuffer);
+	m_OccluderSeedShader->Enable();
+	m_OccluderSeedShader->SetInt("rteSurface", 0);
+	m_OccluderSeedShader->SetInt("rteSceneDepth", 1);
+	m_OccluderSeedShader->SetFloat("rteForegroundDepth", foregroundDepth);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, depth->GetTextureId());
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+	DrawFullscreen();
+
+	// Jump flooding: each pass, every pixel takes the nearest seed among itself and eight pixels a step away. A final extra pass at one pixel tidies up the few it gets wrong.
+	m_OccluderJumpShader->Enable();
+	m_OccluderJumpShader->SetInt("rteSeeds", 0);
+	int current = 0;
+	for (int step: {32, 16, 8, 4, 2, 1, 1}) {
+		glBindFramebuffer(GL_FRAMEBUFFER, m_OccluderSeeds[1 - current].Framebuffer);
+		m_OccluderJumpShader->SetInt("rteStep", step);
+		glBindTexture(GL_TEXTURE_2D, m_OccluderSeeds[current].Texture);
+		DrawFullscreen();
+		current = 1 - current;
+	}
+	return m_OccluderSeeds[current].Texture;
+}
+
+void SceneLighting::UploadQuads() {
+	size_t quadCount = m_QuadVertices.size() / 4;
+	if (quadCount * 6 > m_QuadIndexCapacity) {
+		m_QuadIndexCapacity = std::max<size_t>(quadCount * 6, 6 * 256);
+		std::vector<GLuint> indices(m_QuadIndexCapacity);
+		for (size_t quad = 0; quad < m_QuadIndexCapacity / 6; ++quad) {
+			GLuint base = static_cast<GLuint>(quad * 4);
+			indices[quad * 6 + 0] = base;
+			indices[quad * 6 + 1] = base + 1;
+			indices[quad * 6 + 2] = base + 2;
+			indices[quad * 6 + 3] = base;
+			indices[quad * 6 + 4] = base + 2;
+			indices[quad * 6 + 5] = base + 3;
+		}
+		glBindVertexArray(m_QuadVAO);
+		glBindBuffer(GL_ELEMENT_ARRAY_BUFFER, m_QuadIBO);
+		glBufferData(GL_ELEMENT_ARRAY_BUFFER, indices.size() * sizeof(GLuint), indices.data(), GL_STATIC_DRAW);
+	}
+	glBindBuffer(GL_ARRAY_BUFFER, m_QuadVBO);
+	// Keep the buffer's size, growing it only when needed: orphan it at the same size (the driver hands back fresh storage without a stall) and fill what's used, instead of a new allocation of a new size every upload.
+	if (m_QuadVertices.size() > m_QuadVertexCapacity) {
+		m_QuadVertexCapacity = std::max(m_QuadVertices.size() + m_QuadVertices.size() / 2, static_cast<size_t>(4 * 256));
+	}
+	glBufferData(GL_ARRAY_BUFFER, m_QuadVertexCapacity * sizeof(QuadVertex), nullptr, GL_STREAM_DRAW);
+	if (!m_QuadVertices.empty()) {
+		glBufferSubData(GL_ARRAY_BUFFER, 0, m_QuadVertices.size() * sizeof(QuadVertex), m_QuadVertices.data());
+	}
+}
+
+void SceneLighting::DrawQuads(size_t firstQuad, size_t quadCount) {
+	if (quadCount == 0) {
+		return;
+	}
+	glBindVertexArray(m_QuadVAO);
+	GL_CHECK(glDrawElements(GL_TRIANGLES, static_cast<GLsizei>(quadCount * 6), GL_UNSIGNED_INT, reinterpret_cast<void*>(firstQuad * 6 * sizeof(GLuint))));
+}
+
+void SceneLighting::DrawFullscreen() const {
+	glBindVertexArray(m_FullscreenVAO);
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+}
+
+void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScreen, const Vector& screenOrigin, const std::vector<PostEffect>& screenEffects, const std::vector<SceneLight>& screenLights, const std::vector<ScreenShockwave>& screenShockwaves) {
+	screenIndex = std::clamp(screenIndex, 0, c_MaxScreens - 1);
+	ZoneScoped;
+	TracyGpuZone("Scene Lighting");
+	if (!EnsureWorldResources()) {
+		return;
+	}
+	int width = static_cast<int>(playerScreen->GetSize().w);
+	int height = static_cast<int>(playerScreen->GetSize().h);
+	EnsureScreenResources(width, height);
+
+	GLint previousViewport[4];
+	glGetIntegerv(GL_VIEWPORT, previousViewport);
+	glDisable(GL_DEPTH_TEST);
+	glDisable(GL_SCISSOR_TEST);
+	glDisable(GL_CULL_FACE);
+	glViewport(0, 0, width, height);
+
+	glm::vec2 screenSize(static_cast<float>(width), static_cast<float>(height));
+	glm::vec2 origin(std::floor(screenOrigin.m_X), std::floor(screenOrigin.m_Y));
+	glm::vec2 gridWorldSize(static_cast<float>(m_GridWidth * m_CellSize), static_cast<float>(m_GridHeight * m_CellSize));
+
+	// What's in the effects layer (LightingSettings::Behind) is hidden wherever the scene's depth is nearer than it, halfway between it and what's drawn in front.
+	std::shared_ptr<DepthTexture> effectsLayerDepth = m_Settings.AnyBehind() ? playerScreen->GetDepthTexture().lock() : nullptr;
+	float effectsFrontDepth = ((2.0F * (c_EffectsDepth * 0.5F) - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F;
+
+	// Build light and emissive quads from the glow effects. Lights first, emissives after, so each can be drawn as one range.
+	m_QuadVertices.clear();
+	auto addQuad = [this](glm::vec2 center, glm::vec2 halfSize, float angle, glm::vec3 color, float radius, float alpha = 1.0F) {
+		const glm::vec2 corners[4] = {{-1.0F, -1.0F}, {1.0F, -1.0F}, {1.0F, 1.0F}, {-1.0F, 1.0F}};
+		float cosAngle = std::cos(angle);
+		float sinAngle = std::sin(angle);
+		for (const glm::vec2& corner: corners) {
+			glm::vec2 local = corner * halfSize;
+			glm::vec2 rotated(local.x * cosAngle - local.y * sinAngle, local.x * sinAngle + local.y * cosAngle);
+			glm::vec2 position = center + rotated;
+			m_QuadVertices.push_back({position.x, position.y, 0.0F, (corner.x + 1.0F) * 0.5F, (corner.y + 1.0F) * 0.5F, color.r, color.g, color.b, alpha, center.x, center.y, radius, 1.0F, 0.0F, -2.0F});
+		}
+	};
+	// Z on the last quad added marks it as in the effects layer (LightingSettings::Behind): the glow and particle shaders hide it where something in front is.
+	auto markLayer = [this](bool behind) {
+		for (size_t vertex = m_QuadVertices.size() - 4; vertex < m_QuadVertices.size(); ++vertex) {
+			m_QuadVertices[vertex].Z = behind ? 1.0F : 0.0F;
+		}
+	};
+	size_t lightCount = 0;
+	size_t coneLightStart = SIZE_MAX; // The first cone light's quad; all lights before it shine all round.
+	size_t lineLightStart = SIZE_MAX; // The first line light's quad, between the lights from a point and the cone lights.
+	// The light sources overlay's copy of the first screen's lights, in scene coordinates.
+	bool recordLights = m_RecordDebugLights && screenIndex == 0;
+	if (recordLights) {
+		m_DebugLights.clear();
+		m_DebugLightCounts = DebugLightCounts();
+	}
+	auto recordLight = [&](const Vector& pos, const glm::vec3& color, float radius, const glm::vec2& direction, float coneCos, bool glow, bool dropped) {
+		DebugLight light;
+		light.Pos = screenOrigin + pos;
+		light.Color = color;
+		light.Radius = radius;
+		light.Direction = direction;
+		light.ConeCos = coneCos;
+		light.Glow = glow;
+		light.Dropped = dropped;
+		m_DebugLights.push_back(light);
+		if (dropped) {
+			++m_DebugLightCounts.Dropped;
+			return;
+		}
+		++(glow ? m_DebugLightCounts.Glows : coneCos >= -1.0F ? m_DebugLightCounts.Cones
+		                                                      : m_DebugLightCounts.Lights);
+		m_DebugLightCounts.ReachSquared += radius * radius;
+	};
+	if (m_Settings.Enabled) {
+		// Every lamp, glow, flash and fire light goes through the player's light color settings: how colorful light is, and a tint on all of it.
+		auto styled = [this](const glm::vec3& color) {
+			float grey = glm::dot(color, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+			return glm::max(glm::mix(glm::vec3(grey), color, m_Settings.LightSaturation), glm::vec3(0.0F)) * m_Settings.LightTint;
+		};
+		for (const PostEffect& effect: screenEffects) {
+			if (!effect.m_Bitmap || effect.m_NoLight) {
+				continue;
+			}
+			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
+			float radius = std::max(24.0F, glow.Size * 0.5F * m_Settings.GlowLightRadiusScale) * effect.m_LightReach;
+			glm::vec3 color = styled(glm::mix(glow.LightColor, glm::vec3(1.0F), 0.25F) * (static_cast<float>(effect.m_Strength) / 255.0F) * m_Settings.GlowLightIntensity * effect.m_LightScale);
+			glm::vec2 center(effect.m_Pos.m_X, effect.m_Pos.m_Y);
+			size_t firstVertex = m_QuadVertices.size();
+			addQuad(center, glm::vec2(radius), 0.0F, color, radius);
+			if (recordLights) {
+				recordLight(effect.m_Pos, color, radius, glm::vec2(1.0F, 0.0F), -2.0F, true, false);
+			}
+			// The point light shader wants local positions in -1..1 rather than 0..1 UVs.
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
+				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
+			}
+			++lightCount;
+		}
+		// First, all-round lights that sit on the same couple of pixels with about the same reach (a unit's glow and its headlamp's spill, a burst of tracers, a fire's hot spots) are drawn as one light of their summed colour:
+		// one quad and one shadow march instead of several that light the same pixels the same way.
+		std::vector<SceneLight> mergedLights;
+		mergedLights.reserve(screenLights.size());
+		{
+			// Kept from screen to screen and only cleared, so it isn't allocated anew each time. Only looked up, never walked, so what it held before can't matter.
+			std::unordered_map<uint64_t, size_t>& mergedAt = m_MergedLightAt;
+			mergedAt.clear();
+			mergedAt.reserve(screenLights.size());
+			for (const SceneLight& light: screenLights) {
+				// Steady scenery lamps come from the lamp cache instead.
+				if (m_LampCacheReady && light.m_Steady && light.m_ConeCos < -1.0F) {
+					continue;
+				}
+				if (light.m_ConeCos >= -1.0F || light.m_Line != glm::vec2(0.0F)) {
+					mergedLights.push_back(light);
+					continue;
+				}
+				// Two pixel cells, and reach in 10 percent steps.
+				auto cellX = static_cast<uint32_t>(static_cast<int32_t>(std::floor(light.m_Pos.m_X * 0.5F)));
+				auto cellY = static_cast<uint32_t>(static_cast<int32_t>(std::floor(light.m_Pos.m_Y * 0.5F)));
+				auto reachStep = static_cast<uint64_t>(std::clamp(std::log(std::max(light.m_Radius, 1.0F)) / std::log(1.1F), 0.0F, 4095.0F));
+				uint64_t key = (static_cast<uint64_t>(cellX & 0xFFFFFu) << 32) | (static_cast<uint64_t>(cellY & 0xFFFFFu) << 12) | reachStep;
+				if (auto [found, added] = mergedAt.try_emplace(key, mergedLights.size()); !added) {
+					SceneLight& into = mergedLights[found->second];
+					into.m_Color += light.m_Color;
+					into.m_Radius = std::max(into.m_Radius, light.m_Radius);
+					if (recordLights) {
+						++m_DebugLightCounts.Merged;
+					}
+				} else {
+					mergedLights.push_back(light);
+				}
+			}
+		}
+		// Past the cap, keep the lights that matter most (brightest over the widest area) and leave out the faintest.
+		std::vector<const SceneLight*> shownLights;
+		shownLights.reserve(mergedLights.size());
+		for (const SceneLight& light: mergedLights) {
+			shownLights.push_back(&light);
+		}
+		size_t lightBudget = static_cast<size_t>(std::max(m_Settings.MaxScreenLights, 0));
+		lightBudget = lightBudget > lightCount ? lightBudget - lightCount : 0;
+		if (shownLights.size() > lightBudget) {
+			auto weight = [](const SceneLight* light) { return std::max({light->m_Color.r, light->m_Color.g, light->m_Color.b}) * light->m_Radius; };
+			std::nth_element(shownLights.begin(), shownLights.begin() + lightBudget, shownLights.end(), [&weight](const SceneLight* a, const SceneLight* b) { return weight(a) > weight(b); });
+			if (recordLights) {
+				for (size_t dropped = lightBudget; dropped < shownLights.size(); ++dropped) {
+					const SceneLight& light = *shownLights[dropped];
+					recordLight(light.m_Pos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, false, true);
+				}
+			}
+			shownLights.resize(lightBudget);
+		}
+		// All-round lights from a point first, then line lights, then cone lights, so the pass that draws light in the air (line lights' glow, cone
+		// lights' beams) draws only those instead of rasterising every light to discard it.
+		auto lightOrder = [](const SceneLight* light) { return light->m_ConeCos >= -1.0F ? 2 : (light->m_Line != glm::vec2(0.0F) ? 1 : 0); };
+		std::stable_sort(shownLights.begin(), shownLights.end(), [&lightOrder](const SceneLight* a, const SceneLight* b) { return lightOrder(a) < lightOrder(b); });
+		for (const SceneLight* shownLight: shownLights) {
+			const SceneLight& light = *shownLight;
+			bool line = lightOrder(&light) == 1;
+			if (line && lineLightStart == SIZE_MAX) {
+				lineLightStart = lightCount;
+			}
+			if (light.m_ConeCos >= -1.0F && coneLightStart == SIZE_MAX) {
+				coneLightStart = lightCount;
+			}
+			glm::vec2 center(light.m_Pos.m_X, light.m_Pos.m_Y);
+			size_t firstVertex = m_QuadVertices.size();
+			if (line) {
+				// A box round the whole line, as far out as the light reaches; the shader rounds the ends off.
+				addQuad(center, glm::vec2(glm::length(light.m_Line) + light.m_Radius, light.m_Radius), std::atan2(light.m_Line.y, light.m_Line.x), styled(light.m_Color), light.m_Radius);
+			} else {
+				addQuad(center, glm::vec2(light.m_Radius), 0.0F, styled(light.m_Color), light.m_Radius);
+			}
+			if (recordLights) {
+				recordLight(light.m_Pos, light.m_Color, light.m_Radius, light.m_Direction, light.m_ConeCos, false, false);
+			}
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
+				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
+				// Line lights pass the half line instead of a direction, and a cone cosine below -2.5 to mark them.
+				m_QuadVertices[vertex].ConeX = line ? light.m_Line.x : light.m_Direction.x;
+				m_QuadVertices[vertex].ConeY = line ? light.m_Line.y : light.m_Direction.y;
+				m_QuadVertices[vertex].ConeCos = line ? -3.0F : light.m_ConeCos;
+			}
+			++lightCount;
+		}
+	}
+	coneLightStart = std::min(coneLightStart, lightCount);
+	lineLightStart = std::min(lineLightStart, coneLightStart);
+	m_LastLightCount = static_cast<int>(lightCount);
+	size_t emissiveStart = m_QuadVertices.size() / 4;
+	std::vector<GLuint> emissiveTextures;
+	// How hot each glow quad is, 0..1, for the heat haze (LightingSettings::HazeFromHeat): fire and warm glows, not lamps.
+	std::vector<float> emissiveHeat;
+	for (const PostEffect& effect: screenEffects) {
+		if (!effect.m_Bitmap) {
+			continue;
+		}
+		float strength = static_cast<float>(effect.m_Strength) / 255.0F;
+		{
+			// Warm glows (fire on burning things, muzzle flashes, molten bits) are hot; white, blue and green ones (lamps, screens, plasma) aren't.
+			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
+			emissiveHeat.push_back(glow.LightColor.r > glow.LightColor.b * 1.4F ? strength : 0.0F);
+		}
+		glm::vec2 halfSize(effect.m_Bitmap->GetDimensions().w * 0.5F, effect.m_Bitmap->GetDimensions().h * 0.5F);
+		// CC angles are counter-clockwise, screen space is Y down.
+		addQuad(glm::vec2(std::floor(effect.m_Pos.m_X), std::floor(effect.m_Pos.m_Y)), halfSize, -effect.m_Angle, glm::vec3(strength), 0.0F);
+		const FloatRect& uvRect = effect.m_Bitmap->GetUVRect();
+		for (size_t vertex = m_QuadVertices.size() - 4; vertex < m_QuadVertices.size(); ++vertex) {
+			m_QuadVertices[vertex].U = uvRect.x + m_QuadVertices[vertex].U * uvRect.w;
+			m_QuadVertices[vertex].V = uvRect.y + m_QuadVertices[vertex].V * uvRect.h;
+		}
+		emissiveTextures.push_back(effect.m_Bitmap->GetTextureId());
+	}
+
+	// Visual sparks from explosions and impacts: short glowing streaks along their motion.
+	{
+		std::vector<EffectsParticles::Spark> sparks;
+		EffectsParticles::GetSparks(origin, width, height, sparks);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		for (const EffectsParticles::Spark& spark: sparks) {
+			float angle = std::atan2(spark.Direction.y, spark.Direction.x);
+			addQuad(spark.Position - spark.Direction * (spark.Length * 0.5F), glm::vec2(spark.Length * 0.5F + 0.5F, 0.6F), angle, glm::min(spark.Color, glm::vec3(1.0F)), 0.0F);
+			markLayer(spark.Behind);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+		}
+		// Lightning bolts: each straight piece a white-hot core in a wider blue halo.
+		std::vector<LightningBoltSegment> bolts;
+		g_PostProcessMan.GetLightningBolts(Vector(origin.x, origin.y), width, height, bolts);
+		for (const LightningBoltSegment& segment: bolts) {
+			glm::vec2 along = segment.To - segment.From;
+			float length = glm::length(along);
+			if (length < 0.01F) {
+				continue;
+			}
+			float angle = std::atan2(along.y, along.x);
+			glm::vec2 middle = (segment.From + segment.To) * 0.5F;
+			addQuad(middle, glm::vec2(length * 0.5F + 2.0F, segment.Width * 2.5F + 1.5F), angle, glm::min(glm::vec3(0.3F, 0.38F, 0.7F) * segment.Brightness, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+			addQuad(middle, glm::vec2(length * 0.5F + 0.5F, segment.Width * 0.5F + 0.2F), angle, glm::min(glm::vec3(0.9F, 0.94F, 1.0F) * segment.Brightness * 1.2F, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+		}
+	}
+
+	// Energy beams (lightsaber blades): only a thin white-hot core, rounded at the tip. The colour round it is all light, from the beam's line light.
+	{
+		std::vector<EnergyBeamSegment> beams;
+		g_PostProcessMan.GetEnergyBeams(Vector(origin.x, origin.y), width, height, beams);
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		GLuint puffTexture = EffectsParticles::GetPuffTexture();
+		for (const EnergyBeamSegment& beam: beams) {
+			glm::vec2 along = beam.To - beam.From;
+			float length = glm::length(along);
+			float angle = length > 0.01F ? std::atan2(along.y, along.x) : 0.0F;
+			glm::vec3 core = glm::min(glm::mix(beam.Color, glm::vec3(1.0F), 0.65F) * beam.Brightness, glm::vec3(1.0F));
+			float halfWidth = beam.Width * 0.5F;
+			// The core stops short of the tip by its half width, and a round dot of the same width finishes it, so it never ends square.
+			float coreLength = std::max(length - halfWidth, 0.0F);
+			addQuad(beam.From + (length > 0.01F ? along / length : glm::vec2(0.0F)) * (coreLength * 0.5F), glm::vec2(coreLength * 0.5F, halfWidth), angle, core, 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+			addQuad(beam.To - (length > 0.01F ? along / length : glm::vec2(0.0F)) * halfWidth, glm::vec2(halfWidth * 1.6F), 0.0F, core, 0.0F);
+			emissiveTextures.push_back(puffTexture);
+			emissiveHeat.push_back(0.0F);
+		}
+	}
+
+	// The fire of explosions: soft glowing balls, drawn into the glow buffer with the puff's round shape.
+	{
+		std::vector<EffectsParticles::Puff> fire;
+		EffectsParticles::GetFire(origin, width, height, fire);
+		GLuint puffTexture = EffectsParticles::GetPuffTexture();
+		for (const EffectsParticles::Puff& ball: fire) {
+			addQuad(ball.Position, glm::vec2(ball.Size * 0.5F), 0.0F, glm::min(glm::vec3(ball.Color), glm::vec3(1.0F)), 0.0F);
+			markLayer(ball.Behind);
+			emissiveTextures.push_back(puffTexture);
+			emissiveHeat.push_back(1.0F);
+		}
+	}
+
+	// Burning terrain: each pixel flickers between yellow and deep orange as it burns down, and sometimes throws an ember.
+	// With the fire shader, the pixels only glow and the flames are drawn over them a stretch of the fire front at a time (see FireFlame.frag).
+	struct FlameCell {
+		float MinX, MaxX, MinY, MaxY, Heat;
+		int Count;
+	};
+	std::unordered_map<long long, FlameCell> flameCells;
+	// Fire style (LightingSettings::FireStyle): the pixel fire (per-pixel tongues on burning ground, the flame sprites of flame particles), the
+	// shader's flames, or both, the shader's over the pixels.
+	const bool fireShader = m_Settings.FireStyle != LightingSettings::FirePixel && m_FireFlameShader;
+	const bool firePixels = !fireShader || m_Settings.FireStyle != LightingSettings::FireShaderOnly;
+	{
+		std::vector<glm::vec3> burning;
+		std::vector<glm::vec3> embers;
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		float time = PostProcessMan::GetEffectTime();
+		// How much fire burns around the middle of the screen, where the player's unit usually is, for the grade to warm by (LightingSettings::EventLooks).
+		float warmth = 0.0F;
+		float warmthReach = 0.5F * static_cast<float>(std::max(std::min(width, height), 1));
+		for (const glm::vec3& pixel: burning) {
+			glm::vec2 position(pixel.x, pixel.y);
+			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F)) + std::floor(time * 14.0F) * 3.1F) * 43758.5453F);
+			float heat = pixel.z;
+			float nearMiddle = std::max(1.0F - glm::length(position - screenSize * 0.5F) / warmthReach, 0.0F);
+			warmth += heat * nearMiddle * nearMiddle;
+			glm::vec3 color = glm::mix(glm::vec3(0.9F, 0.25F, 0.03F), glm::vec3(1.0F, 0.85F, 0.35F), std::clamp(heat * 0.7F + noise * 0.5F, 0.0F, 1.0F)) * (0.7F + 0.6F * noise);
+			if (fireShader) {
+				// The shader's flame comes from the pixel's cell of the fire front (24 px of the scene, so cells stay put as the camera moves). Shader
+				// only: the burning pixel itself just glows, dimmer.
+				if (!firePixels) {
+					addQuad(position + glm::vec2(0.5F), glm::vec2(0.5F), 0.0F, glm::min(color * 0.6F, glm::vec3(1.0F)), 0.0F);
+					emissiveTextures.push_back(whiteTexture);
+					emissiveHeat.push_back(heat);
+				}
+				long long cellX = static_cast<long long>(std::floor((position.x + origin.x) / 24.0F));
+				long long cellY = static_cast<long long>(std::floor((position.y + origin.y) / 24.0F));
+				FlameCell& flame = flameCells.try_emplace((cellY << 32) ^ (cellX & 0xFFFFFFFFLL), FlameCell{position.x, position.x, position.y, position.y, 0.0F, 0}).first->second;
+				flame.MinX = std::min(flame.MinX, position.x);
+				flame.MaxX = std::max(flame.MaxX, position.x);
+				flame.MinY = std::min(flame.MinY, position.y);
+				flame.MaxY = std::max(flame.MaxY, position.y);
+				flame.Heat += heat;
+				++flame.Count;
+				if (!firePixels) {
+					continue;
+				}
+			}
+			// A flame tongue above the pixel, taller where it's hotter.
+			float flameHeight = 1.0F + std::floor(noise * 3.0F * (0.4F + heat));
+			addQuad(position + glm::vec2(0.5F, 0.5F - flameHeight * 0.5F), glm::vec2(0.5F, flameHeight * 0.5F + 0.5F), 0.0F, glm::min(color, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(heat);
+			if (noise > 0.995F) {
+				EffectsParticles::SpawnEmber(Vector(position.x + origin.x, position.y + origin.y - 2.0F));
+			}
+		}
+		// Smouldering charcoal: each pixel glows, deep red to orange, pulsing slowly and dimming as it goes out. No flame.
+		for (const glm::vec3& ember: embers) {
+			glm::vec2 position(ember.x, ember.y);
+			float noise = glm::fract(std::sin(glm::dot(position + origin, glm::vec2(12.9898F, 78.233F))) * 43758.5453F);
+			float pulse = 0.5F + 0.5F * std::sin(time * 2.5F + noise * 6.2832F);
+			float glow = (0.35F + 0.65F * ember.z) * (0.55F + 0.45F * pulse);
+			glm::vec3 color = glm::mix(glm::vec3(0.55F, 0.06F, 0.01F), glm::vec3(1.0F, 0.45F, 0.08F), std::clamp(ember.z * 0.6F + pulse * 0.4F, 0.0F, 1.0F)) * glow;
+			addQuad(position + glm::vec2(0.5F), glm::vec2(0.5F), 0.0F, glm::min(color, glm::vec3(1.0F)), 0.0F);
+			emissiveTextures.push_back(whiteTexture);
+			emissiveHeat.push_back(0.0F);
+		}
+		m_ScreenWarmthTarget[screenIndex] = 1.0F - std::exp(-warmth / 150.0F);
+	}
+
+	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the shader's flames they join the fire front's
+	// cells, so the same flames as the ground's burn over them (and their sprites are drawn under, unless the style is shader only). A lone one's flame stands about as big as its sprite.
+	if (fireShader) {
+		std::vector<glm::vec4> flames;
+		EffectsParticles::GetFlames(origin, width, height, flames);
+		for (const glm::vec4& particle: flames) {
+			float size = particle.z;
+			float minX = particle.x - 3.0F * size;
+			float maxX = particle.x + 3.0F * size;
+			float minY = particle.y - 4.0F * size;
+			float maxY = particle.y + 2.0F * size;
+			long long cellX = static_cast<long long>(std::floor((particle.x + origin.x) / 24.0F));
+			long long cellY = static_cast<long long>(std::floor((particle.y + origin.y) / 24.0F));
+			FlameCell& flame = flameCells.try_emplace((cellY << 32) ^ (cellX & 0xFFFFFFFFLL), FlameCell{minX, maxX, minY, maxY, 0.0F, 0}).first->second;
+			flame.MinX = std::min(flame.MinX, minX);
+			flame.MaxX = std::max(flame.MaxX, maxX);
+			flame.MinY = std::min(flame.MinY, minY);
+			flame.MaxY = std::max(flame.MaxY, maxY);
+			flame.Heat += particle.w;
+			++flame.Count;
+		}
+	}
+
+	// Embers rising from fire and other warm glows. Procedural from a seed tied to the glow's world position (quantized, so flickering flames keep the same embers), no simulation needed.
+	if (m_Settings.Embers > 0.0F) {
+		auto hash = [](float n) { return glm::fract(std::sin(n) * 43758.5453F); };
+		float time = PostProcessMan::GetEffectTime();
+		GLuint whiteTexture = g_RenderMan.GetShapeTexture();
+		for (const PostEffect& effect: screenEffects) {
+			if (!effect.m_Bitmap) {
+				continue;
+			}
+			const GlowInfo& glow = GetGlowInfo(effect.m_Bitmap.get());
+			float strength = static_cast<float>(effect.m_Strength) / 255.0F;
+			if (glow.LightColor.r < glow.LightColor.b * 1.4F || strength < 0.25F || glow.Size < 6.0F) {
+				continue;
+			}
+			glm::vec2 world = origin + glm::vec2(effect.m_Pos.m_X, effect.m_Pos.m_Y);
+			glm::vec2 cell = glm::floor(world / 10.0F);
+			float seedBase = hash(cell.x * 12.9898F + cell.y * 78.233F) * 1000.0F;
+			int count = std::clamp(static_cast<int>(glow.Size / 14.0F * m_Settings.Embers), 1, 5);
+			for (int i = 0; i < count; ++i) {
+				float seed = hash(seedBase + static_cast<float>(i) * 17.31F);
+				float seed2 = hash(seedBase + static_cast<float>(i) * 41.17F + 3.0F);
+				float rate = 0.45F + seed * 0.7F;
+				float phase = glm::fract(time * rate + seed * 7.0F);
+				float rise = 25.0F + seed2 * 45.0F;
+				glm::vec2 emberWorld(cell.x * 10.0F + 5.0F + (seed2 - 0.5F) * glow.Size * 0.5F + std::sin(time * 2.3F + seed * 20.0F) * 3.0F * phase, cell.y * 10.0F - phase * rise);
+				float fade = std::pow(1.0F - phase, 1.5F) * strength;
+				glm::vec3 emberColor = glm::mix(glm::vec3(1.0F, 0.85F, 0.45F), glm::vec3(1.0F, 0.35F, 0.08F), phase) * fade;
+				glm::vec2 screen = glm::floor(emberWorld - origin) + glm::vec2(0.5F);
+				addQuad(screen, glm::vec2(0.5F), 0.0F, emberColor, 0.0F);
+				emissiveTextures.push_back(whiteTexture);
+				emissiveHeat.push_back(0.3F * fade);
+			}
+		}
+	}
+	// The flames of burning ground, one quad per cell of the fire front, after every other glow (drawn with their own shader). Each stands on the
+	// cell's lowest burning pixel and rises by how much burns there and how hot; now and then one throws an ember off its tip.
+	size_t flameStart = m_QuadVertices.size() / 4;
+	size_t flameCount = 0;
+	if (fireShader && !flameCells.empty()) {
+		float time = PostProcessMan::GetEffectTime();
+		// Seconds since the flames were last drawn on this screen, so embers come at the same pace at any frame rate and on every split screen.
+		float& lastFlameTime = m_LastFlameTime[screenIndex];
+		float elapsed = lastFlameTime < 0.0F ? 0.0F : std::clamp(time - lastFlameTime, 0.0F, 0.1F);
+		lastFlameTime = time;
+		float size = std::clamp(m_Settings.FireFlameSize, 0.2F, 3.0F);
+		float brightness = std::clamp(m_Settings.FireFlameBrightness, 0.2F, 2.0F);
+		for (const auto& [key, flame]: flameCells) {
+			float heat = std::clamp(flame.Heat / static_cast<float>(flame.Count), 0.0F, 1.0F);
+			float width = flame.MaxX - flame.MinX + 8.0F;
+			float height = std::clamp((flame.MaxY - flame.MinY) + (8.0F + 5.0F * std::sqrt(static_cast<float>(flame.Count)) * (0.5F + heat)) * size, 6.0F, 90.0F);
+			float base = flame.MaxY + 1.5F;
+			addQuad(glm::vec2((flame.MinX + flame.MaxX) * 0.5F + 0.5F, base - height * 0.5F), glm::vec2(width * 0.5F, height * 0.5F), 0.0F, glm::vec3(brightness), 0.0F);
+			for (size_t vertex = m_QuadVertices.size() - 4; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].A = heat;
+			}
+			++flameCount;
+			// Embers off the tips: about one a second from a busy cell, at a pace that doesn't depend on the frame rate.
+			float chance = std::min(0.02F * static_cast<float>(flame.Count) * (0.5F + heat), 1.0F) * elapsed;
+			float roll = glm::fract(std::sin(static_cast<float>(key % 100003) * 12.9898F + time * 78.233F) * 43758.5453F);
+			if (roll < chance) {
+				EffectsParticles::SpawnEmber(Vector(origin.x + flame.MinX + roll / std::max(chance, 0.0001F) * (flame.MaxX - flame.MinX), origin.y + base - height * 0.7F));
+			}
+		}
+	}
+	size_t shockwaveStart = m_QuadVertices.size() / 4;
+	if (m_Settings.DistortionEnabled) {
+		for (const ScreenShockwave& shockwave: screenShockwaves) {
+			// Amplitude and progress travel in the color, radius in the light parameters.
+			size_t firstVertex = m_QuadVertices.size();
+			addQuad(shockwave.m_Pos, glm::vec2(shockwave.m_Radius), 0.0F, glm::vec3(shockwave.m_Amplitude, shockwave.m_Progress, 0.0F), shockwave.m_Radius);
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].U = m_QuadVertices[vertex].U * 2.0F - 1.0F;
+				m_QuadVertices[vertex].V = m_QuadVertices[vertex].V * 2.0F - 1.0F;
+			}
+		}
+	}
+	size_t shockwaveCount = m_QuadVertices.size() / 4 - shockwaveStart;
+	// Dust puffs, lit and drawn over the scene after the composite.
+	size_t puffStart = m_QuadVertices.size() / 4;
+	{
+		std::vector<EffectsParticles::Puff> puffs;
+		EffectsParticles::GetPuffs(origin, width, height, puffs);
+		for (const EffectsParticles::Puff& puff: puffs) {
+			size_t firstVertex = m_QuadVertices.size();
+			// Each turned and maybe mirrored its own way (from when it was made), so puffs of spray and dust don't all show the same shape (PuffVariety).
+			bool varied = m_Settings.PuffVariety;
+			addQuad(puff.Position, glm::vec2(puff.Size * 0.5F * (varied && puff.Mirrored ? -1.0F : 1.0F), puff.Size * 0.5F), varied ? puff.Angle : 0.0F, glm::vec3(puff.Color), 0.0F);
+			for (size_t vertex = firstVertex; vertex < m_QuadVertices.size(); ++vertex) {
+				m_QuadVertices[vertex].A = puff.Color.a;
+				// Z marks what's in the effects layer, which is hidden where units and the ground in front are (LitParticle.frag).
+				m_QuadVertices[vertex].Z = puff.Behind ? 1.0F : 0.0F;
+			}
+		}
+	}
+	size_t puffCount = m_QuadVertices.size() / 4 - puffStart;
+	// Smoke density splats, in half resolution pixels.
+	size_t smokeStart = m_QuadVertices.size() / 4;
+	if (m_Settings.Enabled && m_Settings.SmokeScattering > 0.0F) {
+		std::vector<EffectsParticles::Puff> smoke;
+		EffectsParticles::GetSmoke(origin, width, height, smoke);
+		for (const EffectsParticles::Puff& puff: smoke) {
+			if (m_Settings.SmokeShading) {
+				// Its colour times its density, and the density in alpha (the glow shader's heat alpha), so the scattered light takes the smoke's colour.
+				addQuad(puff.Position * 0.5F, glm::vec2(puff.Size * 0.25F), 0.0F, glm::vec3(puff.Color) * puff.Color.a, 0.0F, puff.Color.a);
+			} else {
+				addQuad(puff.Position * 0.5F, glm::vec2(puff.Size * 0.25F), 0.0F, glm::vec3(puff.Color.a), 0.0F);
+			}
+		}
+	}
+	size_t smokeCount = m_QuadVertices.size() / 4 - smokeStart;
+	if (m_Settings.HazeFromHeat) {
+		// How hot each glow quad is goes in its vertex alpha, for the heat haze (the glows' shader writes it to the glow buffer's alpha). Nothing else
+		// in the glow pass reads that alpha.
+		for (size_t quad = 0; quad < emissiveHeat.size() && quad < emissiveTextures.size(); ++quad) {
+			for (size_t vertex = (emissiveStart + quad) * 4; vertex < (emissiveStart + quad + 1) * 4; ++vertex) {
+				m_QuadVertices[vertex].A = std::clamp(emissiveHeat[quad], 0.0F, 1.0F);
+			}
+		}
+	}
+	UploadQuads();
+
+	// The map of distances to solid objects, for their shadows and for contact shading.
+	float foregroundDepth = ((2.0F * (c_TerrainBGDepth * 0.5F) - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F;
+	std::shared_ptr<Texture> surface = playerScreen->GetSurfaceTexture().lock();
+	GLuint occluders = (m_Settings.Enabled && surface && (m_Settings.UnitShadows > 0.0F || m_Settings.ContactShading > 0.0F)) ? BuildOccluderField(playerScreen, foregroundDepth) : 0;
+	float unitShadows = occluders ? m_Settings.UnitShadows : 0.0F;
+
+	// Shockwave displacement.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Distortion.Framebuffer);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if (shockwaveCount > 0) {
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_ShockwaveShader->Enable();
+		m_ShockwaveShader->SetVector2f("rteScreenSize", screenSize);
+		DrawQuads(shockwaveStart, shockwaveCount);
+		glDisable(GL_BLEND);
+	}
+
+	std::shared_ptr<Texture> normals = playerScreen->GetNormalTexture().lock();
+	GLuint normalTexture = normals ? normals->GetTextureId() : 0;
+	// Metallic and glossy objects are rounded off, so they turn from the sky above to the ground below instead of being flat with a thin rim. Everything after this reads the rounded normals.
+	if (std::shared_ptr<DepthTexture> roundingDepth = playerScreen->GetDepthTexture().lock(); m_Settings.Enabled && m_Settings.Metals > 0.0F && normals && surface && roundingDepth && m_RoundedNormals.Texture) {
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_RoundedNormals.Framebuffer);
+		m_SurfaceRoundShader->Enable();
+		m_SurfaceRoundShader->SetInt("rteNormals", 0);
+		m_SurfaceRoundShader->SetInt("rteSurface", 1);
+		m_SurfaceRoundShader->SetInt("rteSceneDepth", 2);
+		m_SurfaceRoundShader->SetFloat("rteRounding", m_Settings.Metals);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, roundingDepth->GetTextureId());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, normalTexture);
+		DrawFullscreen();
+		normalTexture = m_RoundedNormals.Texture;
+	}
+
+	// Dynamic lights.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_DynamicLight.Framebuffer);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if (lightCount > 0) {
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_PointLightShader->Enable();
+		m_PointLightShader->SetInt("rteOccupancy", 0);
+		m_PointLightShader->SetVector2f("rteScreenSize", screenSize);
+		m_PointLightShader->SetVector2f("rteScreenOrigin", origin);
+		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
+		m_PointLightShader->SetInt("rteNormals", 1);
+		m_PointLightShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
+		m_PointLightShader->SetFloat("rteSpecular", m_Settings.Specular);
+		m_PointLightShader->SetBool("rteUnitShine", m_Settings.UnitShineLights);
+		m_PointLightShader->SetBool("rteBeamMode", false);
+		m_PointLightShader->SetInt("rteOccluders", 2);
+		m_PointLightShader->SetInt("rteSurface", 3);
+		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
+		SetShadowFieldUniforms();
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, normalTexture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, occluders);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		DrawQuads(0, lightCount);
+		glDisable(GL_BLEND);
+	}
+	if (m_LampCacheReady && m_LampCacheLamps > 0 && m_Settings.Enabled) {
+		// The steady scenery lamps, from the lamp cache, shaded on this screen's surfaces.
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_LampCacheApplyShader->Enable();
+		m_LampCacheApplyShader->SetInt("rteLampCache", 0);
+		m_LampCacheApplyShader->SetInt("rteLampDirection", 1);
+		m_LampCacheApplyShader->SetInt("rteNormals", 2);
+		m_LampCacheApplyShader->SetInt("rteSurface", 3);
+		m_LampCacheApplyShader->SetVector2f("rteScreenOrigin", origin);
+		m_LampCacheApplyShader->SetVector2f("rteScreenSize", screenSize);
+		m_LampCacheApplyShader->SetVector2f("rteCacheWorldSize", glm::vec2(static_cast<float>(m_LampCache.Width * m_LampCacheCell), static_cast<float>(m_LampCache.Height * m_LampCacheCell)));
+		m_LampCacheApplyShader->SetFloat("rteEdgeLighting", m_Settings.EdgeLighting);
+		m_LampCacheApplyShader->SetFloat("rteSpecular", m_Settings.Specular);
+		m_LampCacheApplyShader->SetBool("rteUnitShine", m_Settings.UnitShineLamps);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_LampDirection.Texture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, normalTexture);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_LampCache.Texture);
+		DrawFullscreen();
+		glDisable(GL_BLEND);
+	}
+
+	// Glows, screen blended into their own buffer like the original glows.
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Emissive.Framebuffer);
+	glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+	glClear(GL_COLOR_BUFFER_BIT);
+	if (!emissiveTextures.empty()) {
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+		m_EmissiveShader->Enable();
+		m_EmissiveShader->SetInt("rteTexture", 0);
+		m_EmissiveShader->SetVector2f("rteScreenSize", screenSize);
+		// The heat haze reads how hot each glow is from the buffer's alpha (the quads carry it in their vertex alpha, set before the upload).
+		m_EmissiveShader->SetBool("rteHeatAlpha", m_Settings.HazeFromHeat);
+		m_EmissiveShader->SetInt("rteSceneDepth", 3);
+		m_EmissiveShader->SetBool("rteEffectsLayer", effectsLayerDepth != nullptr);
+		m_EmissiveShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		size_t runStart = 0;
+		for (size_t i = 1; i <= emissiveTextures.size(); ++i) {
+			if (i == emissiveTextures.size() || emissiveTextures[i] != emissiveTextures[runStart]) {
+				glBindTexture(GL_TEXTURE_2D, emissiveTextures[runStart]);
+				// Puffs (the fire of explosions) are a round shape in the texture's alpha.
+				m_EmissiveShader->SetBool("rteUseAlpha", emissiveTextures[runStart] == EffectsParticles::GetPuffTexture());
+				DrawQuads(emissiveStart + runStart, i - runStart);
+				runStart = i;
+			}
+		}
+		m_EmissiveShader->SetBool("rteUseAlpha", false);
+		m_EmissiveShader->SetBool("rteHeatAlpha", false);
+		m_EmissiveShader->SetBool("rteEffectsLayer", false);
+		glDisable(GL_BLEND);
+	}
+	if (flameCount > 0) {
+		// The flames of burning ground, screen blended over the other glows the same way.
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+		m_FireFlameShader->Enable();
+		m_FireFlameShader->SetVector2f("rteScreenSize", screenSize);
+		m_FireFlameShader->SetVector2f("rteScreenOrigin", origin);
+		m_FireFlameShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		m_FireFlameShader->SetBool("rteHeatAlpha", m_Settings.HazeFromHeat);
+		m_FireFlameShader->SetFloat("rteWind", VisualWind::GetParticleWind());
+		DrawQuads(flameStart, flameCount);
+		glDisable(GL_BLEND);
+	}
+
+	// Global illumination by radiance cascades, from the glows drawn above and last frame's lit surfaces.
+	std::shared_ptr<DepthTexture> cascadeDepth = playerScreen->GetDepthTexture().lock();
+	bool useRadianceCascades = m_Settings.Enabled && m_Settings.RadianceCascades && cascadeDepth;
+	float foregroundCascadeThresholdZ = c_TerrainBGDepth * 0.5F;
+	float foregroundCascadeDepth = ((2.0F * foregroundCascadeThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F;
+	if (useRadianceCascades) {
+		TracyGpuZone("Radiance Cascades");
+		glDisable(GL_BLEND);
+		glm::vec2 rcSize(static_cast<float>(m_RCScene.Width), static_cast<float>(m_RCScene.Height));
+		glBindFramebuffer(GL_FRAMEBUFFER, m_RCScene.Framebuffer);
+		glViewport(0, 0, m_RCScene.Width, m_RCScene.Height);
+		m_RCSceneShader->Enable();
+		m_RCSceneShader->SetInt("rteEmissive", 0);
+		m_RCSceneShader->SetInt("rteSceneDepth", 1);
+		m_RCSceneShader->SetInt("rtePreviousLit", 2);
+		m_RCSceneShader->SetVector2f("rtePreviousOffset", m_RCPreviousValid[screenIndex] ? (origin - m_RCPreviousOrigin[screenIndex]) : glm::vec2(0.0F));
+		m_RCSceneShader->SetVector2f("rteTargetSize", rcSize);
+		m_RCSceneShader->SetVector2f("rteScreenSize", screenSize);
+		m_RCSceneShader->SetFloat("rteForegroundDepth", foregroundCascadeDepth);
+		m_RCSceneShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
+		m_RCSceneShader->SetFloat("rteBounce", m_Settings.GIBounce);
+		m_RCSceneShader->SetBool("rteHavePrevious", m_RCPreviousValid[screenIndex]);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, cascadeDepth->GetTextureId());
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_RCPreviousLit[screenIndex].Texture);
+		DrawFullscreen();
+
+		m_RCCascadeShader->Enable();
+		m_RCCascadeShader->SetInt("rteScene", 0);
+		m_RCCascadeShader->SetInt("rteUpper", 1);
+		m_RCCascadeShader->SetInt("rteCascadeCount", c_RCCascadeCount);
+		m_RCCascadeShader->SetVector2f("rteTargetSize", rcSize);
+		m_RCCascadeShader->SetFloat("rteBaseInterval", 1.5F);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_RCScene.Texture);
+		int written = 0;
+		for (int cascade = c_RCCascadeCount - 1; cascade >= 0; --cascade) {
+			int target = (c_RCCascadeCount - 1 - cascade) % 2;
+			glBindFramebuffer(GL_FRAMEBUFFER, m_RCCascades[target].Framebuffer);
+			m_RCCascadeShader->SetInt("rteCascade", cascade);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, m_RCCascades[1 - target].Texture);
+			DrawFullscreen();
+			written = target;
+		}
+
+		glBindFramebuffer(GL_FRAMEBUFFER, m_RCIrradiance.Framebuffer);
+		glViewport(0, 0, m_RCIrradiance.Width, m_RCIrradiance.Height);
+		m_RCIrradianceShader->Enable();
+		m_RCIrradianceShader->SetInt("rteCascade0", 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_RCCascades[written].Texture);
+		DrawFullscreen();
+		glViewport(0, 0, width, height);
+	}
+
+	// Composite the lit scene into HDR.
+	std::shared_ptr<Texture> albedo = playerScreen->GetColorTexture().lock();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+	m_CompositeShader->Enable();
+	m_CompositeShader->SetInt("rteAlbedo", 0);
+	m_CompositeShader->SetInt("rteDynamicLight", 1);
+	m_CompositeShader->SetInt("rteSkyLight", 2);
+	m_CompositeShader->SetInt("rteSceneDepth", 3);
+	m_CompositeShader->SetInt("rteDebugView", m_Settings.DebugView);
+	m_CompositeShader->SetInt("rteEmissive", 4);
+	m_CompositeShader->SetInt("rteNormals", 5);
+	m_CompositeShader->SetInt("rteIndirect", 6);
+	// Radiance cascades include bounced light, so the simpler indirect light is left out with them.
+	bool useIndirect = m_Settings.Enabled && m_Settings.IndirectLight > 0.0F && m_IndirectHistoryValid[screenIndex] && !useRadianceCascades;
+	m_CompositeShader->SetInt("rteGI", 7);
+	m_CompositeShader->SetFloat("rteGIStrength", useRadianceCascades ? m_Settings.GIStrength : 0.0F);
+	m_CompositeShader->SetFloat("rteIndirectStrength", useIndirect ? m_Settings.IndirectLight : 0.0F);
+	m_CompositeShader->SetVector2f("rteIndirectOffset", useIndirect ? (origin - m_IndirectHistoryOrigin[screenIndex]) : glm::vec2(0.0F));
+	m_CompositeShader->SetFloat("rteEdgeLighting", normals ? m_Settings.EdgeLighting : 0.0F);
+	float foregroundCompositeThresholdZ = c_TerrainBGDepth * 0.5F;
+	m_CompositeShader->SetFloat("rteForegroundDepth", ((2.0F * foregroundCompositeThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+	m_CompositeShader->SetVector3f("rteForegroundAmbient", m_Settings.Enabled ? m_EffectiveForegroundAmbient : glm::vec3(1.0F));
+	m_CompositeShader->SetFloat("rteEmissiveIntensity", m_Settings.EmissiveIntensity);
+	m_CompositeShader->SetFloat("rteMaxDynamicLight", 2.0F);
+	// Layers are drawn at depth z mapped linearly through the cameras' ortho projection. Background layers sit at c_BackgroundDepth, terrain background at c_TerrainBGDepth.
+	float backgroundThresholdZ = (c_BackgroundDepth + c_TerrainBGDepth) * 0.5F;
+	float backgroundThresholdNDC = (2.0F * backgroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth);
+	m_CompositeShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+	auto depthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
+	m_CompositeShader->SetFloat("rteBackgroundNearDepth", depthForZ(c_BackgroundDepth));
+	m_CompositeShader->SetFloat("rteBackgroundFarDepth", depthForZ(c_BackgroundDepth + c_BackgroundDepthRange));
+	// Weather hazes the distance: a dust storm tan, ash fall grey (Weather::HazeColor, HazeColorAmount and Haze).
+	glm::vec3 atmosphereColor = m_Settings.AtmosphereColor;
+	float atmosphereHaze = m_Settings.AtmosphereHaze;
+	if (const Weather* weather = CurrentWeather(); weather && (weather->GetParams().HazeColorAmount > 0.0F || weather->GetParams().Haze > 0.0F)) {
+		atmosphereColor = glm::mix(atmosphereColor, weather->GetParams().HazeColor, std::min(m_Settings.WeatherIntensity, 1.0F) * weather->GetParams().HazeColorAmount);
+		atmosphereHaze = std::min(atmosphereHaze + weather->GetParams().Haze * m_Settings.WeatherIntensity, 1.0F);
+	}
+	m_CompositeShader->SetVector3f("rteAtmosphereColor", atmosphereColor * GetDaylightTint(m_Settings.TimeOfDay));
+	m_CompositeShader->SetFloat("rteAtmosphereHaze", m_Settings.Enabled ? atmosphereHaze : 0.0F);
+	m_CompositeShader->SetVector3f("rteBackgroundLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	m_CompositeShader->SetFloat("rteSkyRecolor", m_Settings.Enabled ? m_SkyRecolor : 0.0F);
+	m_CompositeShader->SetFloat("rteWaterGlow", m_Settings.Enabled ? m_Settings.WaterLightGlow : 0.0F);
+	// Reflection and refraction find the water's surface in the surface buffer's water flag, so they need it.
+	bool waterReflections = m_Settings.Enabled && m_Settings.WaterReflections && surface;
+	m_CompositeShader->SetFloat("rteWaterReflection", waterReflections ? std::clamp(m_Settings.WaterReflectionStrength, 0.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetFloat("rteWaterRefraction", waterReflections ? std::clamp(m_Settings.WaterRefraction, 0.0F, 1.5F) : 0.0F);
+	m_CompositeShader->SetBool("rteWaterMirrorSurface", m_Settings.WaterMirrorSurface);
+	m_CompositeShader->SetBool("rteWaterSoftReflection", m_Settings.WaterSoftReflection);
+	m_CompositeShader->SetVector3f("rteSkyDaylight", m_SkyDaylight);
+	m_CompositeShader->SetFloat("rteSkyOwnLight", m_Settings.Enabled ? std::clamp(m_Settings.SkyFollowsTime, 0.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetVector3f("rteSkyZenith", m_SkyZenith);
+	m_CompositeShader->SetVector3f("rteSkyHorizon", m_SkyHorizon);
+	m_CompositeShader->SetVector3f("rteSkyCloud", m_SkyCloud);
+	m_CompositeShader->SetFloat("rteNightSky", m_Settings.Enabled ? m_NightSky * (1.0F - std::clamp(CurrentWeather() ? CurrentWeather()->GetParams().Overcast * m_Settings.WeatherIntensity * 1.5F : 0.0F, 0.0F, 1.0F)) : 0.0F);
+	m_CompositeShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+	{
+		const LightingSettings::RetroLayers comicRetro = m_Settings.ActiveRetro();
+		m_CompositeShader->SetFloat("rteCelShading", std::clamp(comicRetro.CelShading, 0.0F, 1.0F));
+		m_CompositeShader->SetFloat("rteCelBands", std::clamp(comicRetro.CelBands, 2.0F, 5.0F));
+		m_CompositeShader->SetFloat("rteHalftone", std::clamp(comicRetro.Halftone, 0.0F, 1.0F));
+	}
+	{
+		// The moon follows the same arc as the sun, high in the sky behind everything. Player screens are drawn top down, so y 0 is the top.
+		float arc = (m_MoonHours - 12.0F) / 6.0F;
+		glm::vec2 moonPosition((0.5F + arc * 0.38F) * screenSize.x, (0.34F - 0.14F * (1.0F - arc * arc)) * screenSize.y);
+		m_CompositeShader->SetVector2f("rteMoonPosition", moonPosition);
+	}
+	m_CompositeShader->SetVector2f("rteScreenSize", screenSize);
+	m_CompositeShader->SetVector2f("rteScreenOrigin", origin);
+	m_CompositeShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+	m_CompositeShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_EffectiveAmbient : glm::vec3(1.0F));
+	m_CompositeShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+	m_CompositeShader->SetInt("rteOccupancy", 8);
+	m_CompositeShader->SetInt("rteOccluders", 9);
+	m_CompositeShader->SetInt("rteSurface", 10);
+	m_CompositeShader->SetInt("rteFog", 11);
+	m_CompositeShader->SetInt("rteSunMap", 12);
+	m_CompositeShader->SetBool("rteSunMapOn", m_SunMapReady);
+	m_CompositeShader->SetFloat("rteSunMapSlope", m_SunMapSlope);
+	m_CompositeShader->SetFloat("rteSunMapStart", m_SunMapStart);
+	m_CompositeShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
+	m_CompositeShader->SetFloat("rteSunMapSoftness", std::clamp(m_Settings.SunShadowSoftness, 0.0F, 2.0F));
+	m_CompositeShader->SetFloat("rteFogOpacity", std::clamp(m_Settings.FogOpacity, 0.0F, 1.0F));
+	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
+	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
+	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
+	m_CompositeShader->SetFloat("rteBackgroundShadows", m_Settings.Enabled ? m_BackgroundShadowStrength : 0.0F);
+	m_CompositeShader->SetFloat("rteBackgroundShadowLength", std::clamp(m_Settings.BackgroundShadowLength, 0.25F, 3.0F));
+	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));
+	m_CompositeShader->SetFloat("rteUnitShadows", unitShadows);
+	m_CompositeShader->SetFloat("rteContactShading", occluders ? m_Settings.ContactShading : 0.0F);
+	m_CompositeShader->SetFloat("rteMetals", (m_Settings.Enabled && surface) ? m_Settings.Metals : 0.0F);
+	m_CompositeShader->SetFloat("rteBackgroundBlur", m_Settings.Enabled ? m_Settings.BackgroundBlur : 0.0F);
+	// The sun follows the same arc across the sky as the moon does at night: low at the sides, high in the middle. Warm near the horizon.
+	m_CompositeShader->SetVector2f("rteSunPosition", glm::vec2((0.5F + m_SunArc * 0.38F) * screenSize.x, (0.34F - 0.14F * (1.0F - m_SunArc * m_SunArc)) * screenSize.y));
+	m_CompositeShader->SetVector3f("rteSunDisc", m_Settings.Enabled ? glm::mix(glm::vec3(1.0F, 0.97F, 0.88F), glm::vec3(1.0F, 0.6F, 0.3F), glm::smoothstep(0.55F, 1.0F, std::abs(m_SunArc))) * m_SunDiscStrength : glm::vec3(0.0F));
+	// Clouds only shade while there's direct sun to block, and they drift with the wind (slowly even in still air), in sim time.
+	// (Worked out in double and wrapped far out, so the drift stays smooth after hours of play; the clouds jump once when it wraps, every few hours.)
+	// (Gusts and shifts of the natural wind add how far they have carried things beyond the steady wind, so the clouds speed up and slow down without jumping.)
+	m_CloudDrift = static_cast<float>(std::fmod(PostProcessMan::GetSmoothSimTimePrecise() * static_cast<double>(m_Settings.Wind * 0.35F + 6.0F) + static_cast<double>(VisualWind::GetDrift()) * 0.35, 65536.0));
+	m_CompositeShader->SetFloat("rteCloudShadows", m_Settings.Enabled ? m_Settings.CloudShadows * std::min(m_SunShadowStrength * 2.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetFloat("rteCloudDrift", m_CloudDrift);
+	// The cloud layer, and the cover its shadows share with it. Off, the shadows keep the spread they always had (a cover of 0.5).
+	bool cloudLayer = m_Settings.Enabled && m_Settings.CloudLayer && m_CloudCover >= 0.0F;
+	m_CompositeShader->SetFloat("rteCloudLayer", cloudLayer ? std::clamp(m_Settings.CloudOpacity, 0.0F, 1.0F) : 0.0F);
+	m_CompositeShader->SetFloat("rteCloudCover", cloudLayer ? m_CloudCover : 0.5F);
+	m_CompositeShader->SetFloat("rteCloudStorm", cloudLayer ? glm::smoothstep(0.6F, 1.0F, m_CloudCover) : 0.0F);
+	// On a wrapping scene the clouds repeat once around it, so neither the sky nor the shadows jump at the seam.
+	m_CompositeShader->SetFloat("rteCloudPeriod", (cloudLayer && m_WrapX) ? static_cast<float>(m_SceneWidth) : 0.0F);
+	// How big the clouds are (the shadows' patches too, so they keep matching the sky) and how high their band sits.
+	m_CompositeShader->SetFloat("rteCloudSize", cloudLayer ? std::clamp(m_Settings.CloudSize, 0.4F, 2.5F) : 1.0F);
+	m_CompositeShader->SetFloat("rteCloudHeight", cloudLayer ? std::clamp(m_Settings.CloudHeight, 0.0F, 1.0F) : 1.0F);
+	m_CompositeShader->SetFloat("rteSpecular", m_Settings.Enabled ? m_Settings.Specular : 0.0F);
+	m_CompositeShader->SetBool("rteUnitSunGlint", m_Settings.UnitShineSun);
+	glActiveTexture(GL_TEXTURE8);
+	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+	glActiveTexture(GL_TEXTURE9);
+	glBindTexture(GL_TEXTURE_2D, occluders);
+	glActiveTexture(GL_TEXTURE10);
+	glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE11);
+	glBindTexture(GL_TEXTURE_2D, m_Fog[m_CurrentFog].Texture);
+	glActiveTexture(GL_TEXTURE12);
+	glBindTexture(GL_TEXTURE_2D, m_SunMap.Texture);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, albedo ? albedo->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+	std::shared_ptr<DepthTexture> sceneDepth = playerScreen->GetDepthTexture().lock();
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+	glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, normalTexture);
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, m_IndirectHistory[screenIndex].Texture);
+	glActiveTexture(GL_TEXTURE7);
+	glBindTexture(GL_TEXTURE_2D, m_RCIrradiance.Texture);
+	glActiveTexture(GL_TEXTURE0);
+	DrawFullscreen();
+
+	// Keep this frame's lit scene for next frame's bounces.
+	if (useRadianceCascades) {
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_RCPreviousLit[screenIndex].Framebuffer);
+		glBlitFramebuffer(0, 0, width, height, 0, 0, m_RCPreviousLit[screenIndex].Width, m_RCPreviousLit[screenIndex].Height, GL_COLOR_BUFFER_BIT, GL_LINEAR);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		m_RCPreviousOrigin[screenIndex] = origin;
+		m_RCPreviousValid[screenIndex] = true;
+	} else {
+		m_RCPreviousValid[screenIndex] = false;
+	}
+
+	// Blur the lit scene down for next frame's indirect light. Taken before glows, rain and god rays so only lit surfaces bounce.
+	if (m_Settings.Enabled && m_Settings.IndirectLight > 0.0F) {
+		TracyGpuZone("Indirect Light");
+		m_BloomDownsampleShader->Enable();
+		m_BloomDownsampleShader->SetInt("rteSource", 0);
+		m_BloomDownsampleShader->SetBool("rteFirstPass", false);
+		glActiveTexture(GL_TEXTURE0);
+		for (int mip = 0; mip < c_IndirectMipCount; ++mip) {
+			const GLTarget& source = mip == 0 ? m_HDRScene : m_IndirectMips[mip - 1];
+			const GLTarget& destination = mip == c_IndirectMipCount - 1 ? m_IndirectHistory[screenIndex] : m_IndirectMips[mip];
+			glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+			glViewport(0, 0, destination.Width, destination.Height);
+			m_BloomDownsampleShader->SetVector2f("rteSourceTexelSize", glm::vec2(1.0F / source.Width, 1.0F / source.Height));
+			glBindTexture(GL_TEXTURE_2D, source.Texture);
+			DrawFullscreen();
+		}
+		m_IndirectHistoryOrigin[screenIndex] = origin;
+		m_IndirectHistoryValid[screenIndex] = true;
+		glViewport(0, 0, width, height);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+	}
+
+	// Translucent particles (dust) lit like the scene behind them.
+	if (puffCount > 0) {
+		TracyGpuZone("Lit Particles");
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		m_LitParticleShader->Enable();
+		m_LitParticleShader->SetVector2f("rteScreenSize", screenSize);
+		m_LitParticleShader->SetVector2f("rteScreenOrigin", origin);
+		m_LitParticleShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_LitParticleShader->SetVector3f("rteAmbient", m_Settings.Enabled ? m_EffectiveAmbient : glm::vec3(1.0F));
+		m_LitParticleShader->SetVector3f("rteSkyColor", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+		m_LitParticleShader->SetFloat("rteMistBright", m_Settings.WaterMistBrightness);
+		m_LitParticleShader->SetFloat("rteMistGlow", m_Settings.Enabled ? m_Settings.WaterMistGlow : 0.0F);
+		m_LitParticleShader->SetInt("rteTexture", 0);
+		m_LitParticleShader->SetInt("rteSkyLight", 1);
+		m_LitParticleShader->SetInt("rteDynamicLight", 2);
+		m_LitParticleShader->SetInt("rteSceneDepth", 3);
+		m_LitParticleShader->SetBool("rteEffectsLayer", effectsLayerDepth != nullptr);
+		m_LitParticleShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawQuads(puffStart, puffCount);
+		glDisable(GL_BLEND);
+	}
+
+	// Flashlight beams and the glow round line lights (lightsaber blades) visible in the air, as light catching dust. Only cone and line lights draw
+	// anything here, and they're the last of the lights.
+	if (lightCount > lineLightStart && m_Settings.Enabled) {
+		TracyGpuZone("Light Beams");
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_PointLightShader->Enable();
+		m_PointLightShader->SetInt("rteOccupancy", 0);
+		m_PointLightShader->SetVector2f("rteScreenSize", screenSize);
+		m_PointLightShader->SetVector2f("rteScreenOrigin", origin);
+		m_PointLightShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_PointLightShader->SetFloat("rteShadowStrength", m_Settings.ShadowStrength);
+		m_PointLightShader->SetBool("rteBeamMode", true);
+		m_PointLightShader->SetFloat("rteLineGlow", m_Settings.SaberAirGlow);
+		m_PointLightShader->SetInt("rteOccluders", 2);
+		m_PointLightShader->SetInt("rteSurface", 3);
+		m_PointLightShader->SetFloat("rteUnitShadows", unitShadows);
+		SetShadowFieldUniforms();
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, occluders);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		DrawQuads(lineLightStart, lightCount - lineLightStart);
+		m_PointLightShader->SetBool("rteBeamMode", false);
+		glDisable(GL_BLEND);
+	}
+
+	// Light scattered in smoke: splat the smoke's density, then add the light passing through it.
+	if (smokeCount > 0) {
+		TracyGpuZone("Smoke Scattering");
+		if (m_SmokeDensityShaded != m_Settings.SmokeShading) {
+			CreateSmokeDensity(m_SmokeDensity.Width, m_SmokeDensity.Height);
+		}
+		glBindFramebuffer(GL_FRAMEBUFFER, m_SmokeDensity.Framebuffer);
+		glViewport(0, 0, m_SmokeDensity.Width, m_SmokeDensity.Height);
+		glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+		glClear(GL_COLOR_BUFFER_BIT);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_EmissiveShader->Enable();
+		m_EmissiveShader->SetInt("rteTexture", 0);
+		m_EmissiveShader->SetBool("rteUseAlpha", true);
+		m_EmissiveShader->SetBool("rteHeatAlpha", m_Settings.SmokeShading);
+		m_EmissiveShader->SetVector2f("rteScreenSize", glm::vec2(static_cast<float>(m_SmokeDensity.Width), static_cast<float>(m_SmokeDensity.Height)));
+		glActiveTexture(GL_TEXTURE0);
+		// The puff texture's alpha is its shape; its color is white, so the emissive shader outputs the density from the vertex color.
+		glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
+		DrawQuads(smokeStart, smokeCount);
+		m_EmissiveShader->SetBool("rteUseAlpha", false);
+		m_EmissiveShader->SetBool("rteHeatAlpha", false);
+
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_SmokeScatterShader->Enable();
+		m_SmokeScatterShader->SetInt("rteDensity", 0);
+		m_SmokeScatterShader->SetInt("rteDynamicLight", 1);
+		m_SmokeScatterShader->SetInt("rteGI", 2);
+		m_SmokeScatterShader->SetFloat("rteGIStrength", useRadianceCascades ? m_Settings.GIStrength : 0.0F);
+		m_SmokeScatterShader->SetVector2f("rteScreenSize", screenSize);
+		m_SmokeScatterShader->SetFloat("rteStrength", m_Settings.SmokeScattering * 0.35F);
+		m_SmokeScatterShader->SetVector3f("rteSmokeColor", glm::vec3(0.95F, 0.9F, 0.85F));
+		// Smoke that shadows itself, lit by the sun from its side and taking its own colour: then the far side from the light can also darken what's behind it.
+		m_SmokeScatterShader->SetBool("rteShading", m_Settings.SmokeShading);
+		m_SmokeScatterShader->SetFloat("rteShadingStrength", std::clamp(m_Settings.SmokeShadingStrength, 0.0F, 1.0F));
+		m_SmokeScatterShader->SetInt("rteSkyLight", 3);
+		m_SmokeScatterShader->SetVector2f("rteScreenOrigin", origin);
+		m_SmokeScatterShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_SmokeScatterShader->SetVector2f("rteSunDirection", m_SunDirection);
+		m_SmokeScatterShader->SetVector3f("rteSunLight", m_EffectiveSky * m_SunShadowStrength);
+		// Where the sun reaches, from the sun's shadow map when it's in use (SH-5), so smoke in the open under an overhang's edge is lit as sharply as the ground.
+		m_SmokeScatterShader->SetBool("rteSunMapOn", m_SunMapReady);
+		m_SmokeScatterShader->SetInt("rteSunMap", 4);
+		m_SmokeScatterShader->SetFloat("rteSunMapSlope", m_SunMapSlope);
+		m_SmokeScatterShader->SetFloat("rteSunMapStart", m_SunMapStart);
+		m_SmokeScatterShader->SetFloat("rteSunMapTexel", m_SunMapTexel);
+		m_SmokeScatterShader->SetInt("rteSceneDepth", 5);
+		m_SmokeScatterShader->SetBool("rteEffectsLayer", effectsLayerDepth && m_Settings.Behind(LightingSettings::LayerSmoke));
+		m_SmokeScatterShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+		if (m_Settings.SmokeShading) {
+			// The output's alpha is how much of the scene behind still shows (the scene's own alpha is left as it is).
+			glBlendFuncSeparate(GL_ONE, GL_SRC_ALPHA, GL_ZERO, GL_ONE);
+		}
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_SmokeDensity.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_RCIrradiance.Texture);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+		glActiveTexture(GL_TEXTURE4);
+		glBindTexture(GL_TEXTURE_2D, m_SunMap.Texture);
+		glActiveTexture(GL_TEXTURE5);
+		glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		glBlendFunc(GL_ONE, GL_ONE);
+		glDisable(GL_BLEND);
+	}
+
+	// The weather's drops (Weather.h: rain, snow and every other Weather preset), lit by the sky, over the lit scene.
+	if (const Weather* weather = CurrentWeather(); weather && m_Settings.WeatherIntensity > 0.0F && weather->GetParams().DropsPerScreen > 0.0F) {
+		TracyGpuZone("Precipitation");
+		const Weather::Params& look = weather->GetParams();
+		int dropCount = static_cast<int>(m_Settings.WeatherIntensity * look.DropsPerScreen * (static_cast<float>(width * height) / (960.0F * 540.0F)));
+		// A mod's own drop shader (Weather::DropShader), if it's defined and compiled and mod shaders are on; otherwise the game's.
+		const Shader* dropShader = m_PrecipitationShader.get();
+		if (!look.DropShader.empty() && m_Settings.ModShaders) {
+			const Shader* own = dynamic_cast<const Shader*>(g_PresetMan.GetEntityPreset("Shader", look.DropShader));
+			if (own && own->IsValid()) {
+				dropShader = own;
+			}
+		}
+		float glow = std::clamp(m_Settings.WeatherGlow, 0.0F, 2.0F);
+		// The drops run on their own clock at the weather speed: every motion in the drop shader scales with it, and a change of speed carries on from where they are.
+		float speed = std::clamp(m_Settings.WeatherSpeed, 0.1F, 3.0F);
+		double simTime = PostProcessMan::GetSmoothSimTimePrecise();
+		float drift = VisualWind::GetDrift();
+		double elapsed = simTime - m_WeatherClockSimTime;
+		if (m_WeatherClockSimTime < 0.0 || elapsed < 0.0 || elapsed > 1.0) {
+			// First drawn, or the sim time jumped (a new game, a long hitch): pick up from here rather than leap.
+			elapsed = 0.0;
+			m_WeatherDriftLast = drift;
+		}
+		m_WeatherClock = std::fmod(m_WeatherClock + elapsed * static_cast<double>(speed), PostProcessMan::c_EffectTimePeriod);
+		m_WeatherClockSimTime = simTime;
+		// The drift is reset with the scene and wraps, so a leap in it is let go rather than carried.
+		float driftStep = drift - m_WeatherDriftLast;
+		m_WeatherDrift = std::fmod(m_WeatherDrift + (std::abs(driftStep) < 1000.0F ? driftStep * speed : 0.0F), 65536.0F);
+		m_WeatherDriftLast = drift;
+		// Weather everywhere: the drops ignore shelter and are drawn on their own first, so they can be laid over the scene everywhere but the terrain and its back walls.
+		// Kept off the background (the sky and the distant scenery), they are drawn on their own the same way and left off there.
+		bool everywhere = m_Settings.WeatherEverywhere && sceneDepth && surface;
+		bool masked = (everywhere || !m_Settings.WeatherOverBackground) && sceneDepth && surface;
+		if (masked) {
+			if (m_WeatherDrops.Width != width || m_WeatherDrops.Height != height || !m_WeatherDrops.Texture) {
+				m_WeatherDrops.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, m_WeatherDrops.Framebuffer);
+			glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+			glClear(GL_COLOR_BUFFER_BIT);
+		}
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		// Over a cleared target this leaves the drops premultiplied, with their coverage in alpha, so laying them over the scene later comes out as drawing them there.
+		glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		dropShader->Enable();
+		dropShader->SetBool("rteEverywhere", everywhere);
+		dropShader->SetVector2f("rteScreenSize", screenSize);
+		dropShader->SetVector2f("rteScreenOrigin", origin);
+		dropShader->SetFloat("rteTime", static_cast<float>(m_WeatherClock));
+		dropShader->SetInt("rteType", m_Settings.WeatherType);
+		dropShader->SetFloat("rteWind", m_Settings.Wind);
+		// The natural wind: how far its gusts have carried the drops beyond the steady wind, and how it blows now (which way the streaks lean).
+		dropShader->SetFloat("rteWindDrift", m_WeatherDrift);
+		dropShader->SetFloat("rteWindNow", VisualWind::GetWind());
+		dropShader->SetInt("rteOccupancy", 0);
+		dropShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
+		dropShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		dropShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+		dropShader->SetFloat("rteIntensity", std::clamp(0.6F + 0.4F * m_Settings.WeatherIntensity, 0.0F, 1.0F));
+		dropShader->SetInt("rteDynamicLight", 1);
+		dropShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
+		// How the drops move and look.
+		dropShader->SetVector2f("rteFallSpeed", glm::vec2(look.FallSpeedMin, look.FallSpeedMax));
+		dropShader->SetFloat("rteWindFactor", look.WindFactor);
+		dropShader->SetVector3f("rteSway", glm::vec3(look.Sway, look.SwayRateMin, look.SwayRateMax));
+		dropShader->SetBool("rteBlown", look.Blown);
+		dropShader->SetVector4f("rteBlownWind", glm::vec4(look.BlownWindScale, look.BlownMinSpeed, look.BlownSpeedMin, look.BlownSpeedMax));
+		dropShader->SetVector2f("rteSwirl", glm::vec2(look.Swirl, look.SwirlRate));
+		dropShader->SetVector2f("rteJitter", glm::vec2(look.Jitter, look.JitterRate));
+		dropShader->SetVector2f("rteLength", glm::vec2(look.LengthMin, look.LengthMax));
+		dropShader->SetFloat("rteWidth", look.Width);
+		dropShader->SetVector2f("rteAlpha", glm::vec2(look.AlphaMin, look.AlphaMax));
+		dropShader->SetBool("rteSheltered", look.Shelter);
+		dropShader->SetInt("rteShape", look.Shape);
+		dropShader->SetVector3f("rteDropColor", look.DropColor);
+		dropShader->SetVector3f("rteDropColor2", look.DropColor2);
+		dropShader->SetFloat("rteGlow", look.DropGlow * glow);
+		dropShader->SetVector2f("rtePulse", glm::vec2(look.PulseRate, std::clamp(look.PulseDepth, 0.0F, 1.0F)));
+		dropShader->SetFloat("rteTwinkle", std::clamp(look.Twinkle, 0.0F, 1.0F));
+		dropShader->SetFloat("rteStrength", m_Settings.ModShaderStrength);
+		// The shelter map is made for the drops' mean fall; blown drops go their own way and march instead.
+		SetShelterUniforms(*dropShader, m_ShelterMapReady && look.Shelter && !look.Blown, 3);
+		glActiveTexture(GL_TEXTURE3);
+		glBindTexture(GL_TEXTURE_2D, m_ShelterMap.Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_DynamicLight.Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindVertexArray(m_EmptyVAO);
+		glDrawArrays(GL_TRIANGLES, 0, dropCount * 6);
+		if (masked) {
+			glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+			glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+			m_WeatherEverywhereShader->Enable();
+			m_WeatherEverywhereShader->SetInt("rteDrops", 0);
+			m_WeatherEverywhereShader->SetInt("rteSceneDepth", 1);
+			m_WeatherEverywhereShader->SetInt("rteSurface", 2);
+			m_WeatherEverywhereShader->SetInt("rteOccupancy", 3);
+			m_WeatherEverywhereShader->SetVector2f("rteScreenSize", screenSize);
+			m_WeatherEverywhereShader->SetVector2f("rteScreenOrigin", origin);
+			m_WeatherEverywhereShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+			m_WeatherEverywhereShader->SetFloat("rteForegroundDepth", foregroundDepth);
+			m_WeatherEverywhereShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+			m_WeatherEverywhereShader->SetBool("rteHideTerrain", everywhere);
+			m_WeatherEverywhereShader->SetBool("rteHideBackground", !m_Settings.WeatherOverBackground);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_WeatherDrops.Texture);
+			DrawFullscreen();
+			glBlendFuncSeparate(GL_SRC_ALPHA, GL_ONE_MINUS_SRC_ALPHA, GL_ONE, GL_ONE_MINUS_SRC_ALPHA);
+		}
+		// Drops splashing on whatever they land on (rain's, Weather::Splashes).
+		std::shared_ptr<DepthTexture> splashDepth = playerScreen->GetDepthTexture().lock();
+		if (look.Splashes > 0.0F && m_Settings.RainSplashes > 0.0F && splashDepth) {
+			m_RainSplashShader->Enable();
+			m_RainSplashShader->SetInt("rteSceneDepth", 2);
+			m_RainSplashShader->SetInt("rteOccupancy", 0);
+			m_RainSplashShader->SetInt("rteDynamicLight", 1);
+			// Behind the foreground terrain and objects (z 0), in front of the terrain background (z c_TerrainBGDepth).
+			float splashThresholdZ = c_TerrainBGDepth * 0.5F;
+			m_RainSplashShader->SetFloat("rteForegroundDepth", ((2.0F * splashThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+			m_RainSplashShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+			m_RainSplashShader->SetFloat("rteCellSize", static_cast<float>(m_CellSize));
+			m_RainSplashShader->SetVector2f("rteScreenSize", screenSize);
+			m_RainSplashShader->SetVector2f("rteScreenOrigin", origin);
+			m_RainSplashShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+			m_RainSplashShader->SetVector2f("rteFall", glm::normalize(WeatherFall()));
+			m_RainSplashShader->SetFloat("rteAmount", std::clamp(m_Settings.WeatherIntensity * m_Settings.RainSplashes * 0.45F * look.Splashes, 0.0F, 1.0F));
+			m_RainSplashShader->SetVector3f("rteSkyLight", m_Settings.Enabled ? m_EffectiveSky : glm::vec3(1.0F));
+			m_RainSplashShader->SetFloat("rteOwnLight", m_Settings.Enabled ? m_Settings.WeatherLight : 0.0F);
+			m_RainSplashShader->SetVector3f("rteSplashColor", look.SplashColor);
+			m_RainSplashShader->SetFloat("rteSplashGlow", look.SplashGlow * glow);
+			m_RainSplashShader->SetBool("rteSheltered", look.Shelter);
+			SetShelterUniforms(*m_RainSplashShader, m_ShelterMapReady && look.Shelter, 3);
+			glActiveTexture(GL_TEXTURE2);
+			glBindTexture(GL_TEXTURE_2D, splashDepth->GetTextureId());
+			glActiveTexture(GL_TEXTURE0);
+			DrawFullscreen();
+		}
+		glDisable(GL_BLEND);
+	}
+
+	// God rays: shafts of light in the air of caves and bunkers, wherever the sun (or the moon, dimly) gets in. They fade at the horizon and under an overcast sky, like the shadows.
+	if (m_Settings.Enabled && m_Settings.GodRays > 0.0F && sceneDepth) {
+		TracyGpuZone("God Rays");
+		float sunArc = std::abs(m_SunDirection.x / std::max(-m_SunDirection.y, 0.001F)) / 1.05F;
+		float overcast = WeatherOvercast();
+		float shaftStrength = m_Settings.GodRays * 0.5F * (1.0F - glm::smoothstep(0.8F, 1.0F, sunArc)) * (1.0F - 0.8F * overcast);
+		glViewport(0, 0, m_GodRays.Width, m_GodRays.Height);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_GodRays.Framebuffer);
+		m_GodRaysShader->Enable();
+		m_GodRaysShader->SetInt("rteSkyLight", 0);
+		m_GodRaysShader->SetVector2f("rteScreenOrigin", origin);
+		m_GodRaysShader->SetVector2f("rteScreenSize", screenSize);
+		m_GodRaysShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		m_GodRaysShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		m_GodRaysShader->SetVector2f("rteSunDirection", m_SunDirection);
+		m_GodRaysShader->SetVector3f("rteSunColor", m_EffectiveSky * shaftStrength);
+		m_GodRaysShader->SetVector2f("rteTargetSize", glm::vec2(m_GodRays.Width, m_GodRays.Height));
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
+		DrawFullscreen();
+
+		glViewport(0, 0, width, height);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		m_GodRaysApplyShader->Enable();
+		m_GodRaysApplyShader->SetInt("rteGodRays", 0);
+		m_GodRaysApplyShader->SetInt("rteSceneDepth", 1);
+		// Behind the foreground terrain and objects (z 0), in front of the terrain background (z c_TerrainBGDepth).
+		float foregroundThresholdZ = c_TerrainBGDepth * 0.5F;
+		m_GodRaysApplyShader->SetFloat("rteForegroundDepth", ((2.0F * foregroundThresholdZ - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+		m_GodRaysApplyShader->SetVector2f("rteScreenSize", screenSize);
+		m_GodRaysApplyShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+		m_GodRaysApplyShader->SetVector2f("rteScreenOrigin", origin);
+		m_GodRaysApplyShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		m_GodRaysApplyShader->SetFloat("rteDustMotes", 1.0F);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_GodRays.Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		glDisable(GL_BLEND);
+	}
+
+	// A mod's post pass (a scene's, an activity's or a script's PostShader): it redraws the lit scene from a copy, before exposure, bloom and tonemapping see it.
+	if (const Shader* postShader = m_Settings.ModShaders && m_Settings.ModShaderStrength > 0.0F ? g_PostProcessMan.GetActivePostShader() : nullptr) {
+		TracyGpuZone("Mod Post Pass");
+		if (m_ModPostScene.Width != width || m_ModPostScene.Height != height || !m_ModPostScene.Texture) {
+			m_ModPostScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		}
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_ModPostScene.Framebuffer);
+		glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		postShader->Enable();
+		postShader->SetInt("rteScene", 0);
+		postShader->SetInt("rteSceneDepth", 1);
+		postShader->SetVector2f("rteScreenSize", screenSize);
+		postShader->SetVector2f("rteScreenOrigin", origin);
+		postShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		postShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		postShader->SetFloat("rteStrength", std::clamp(m_Settings.ModShaderStrength, 0.0F, 1.0F));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_ModPostScene.Texture);
+		DrawFullscreen();
+	}
+
+	// A screen style's sky and the edge lines (LightingSettings::RetroLayers): on the lit scene, before bloom so the sun, the grid and neon lines glow.
+	const LightingSettings::RetroLayers retro = m_Settings.ActiveRetro();
+	// ASCII mode's own amounts, with the screen style's ASCII layers adding to them.
+	const LightingSettings::AsciiModeSettings& ascii = m_Settings.Ascii;
+	float asciiEverywhere = std::clamp(std::max(ascii.Everywhere, retro.ASCII), 0.0F, 1.0F);
+	float asciiBackground = sceneDepth ? std::clamp(std::max(ascii.Background, retro.ASCIIBackground), 0.0F, 1.0F) : 0.0F;
+	if ((retro.RetroSky > 0.0F && sceneDepth) || retro.EdgeLines > 0.0F || asciiEverywhere > 0.0F || asciiBackground > 0.0F) {
+		TracyGpuZone("Retro");
+		if (m_RetroScene.Width != width || m_RetroScene.Height != height || !m_RetroScene.Texture) {
+			m_RetroScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+		}
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_RetroScene.Framebuffer);
+		glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glViewport(0, 0, width, height);
+		float skyLevel = glm::dot(m_EffectiveSky, glm::vec3(0.2126F, 0.7152F, 0.0722F));
+		m_RetroSceneShader->Enable();
+		m_RetroSceneShader->SetInt("rteScene", 0);
+		m_RetroSceneShader->SetInt("rteSceneDepth", 1);
+		m_RetroSceneShader->SetVector2f("rteScreenSize", screenSize);
+		m_RetroSceneShader->SetVector2f("rteScreenOrigin", origin);
+		m_RetroSceneShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+		m_RetroSceneShader->SetInt("rteLook", retro.Look);
+		m_RetroSceneShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
+		m_RetroSceneShader->SetFloat("rteASCII", asciiEverywhere);
+		m_RetroSceneShader->SetFloat("rteASCIIBackground", asciiBackground);
+		m_RetroSceneShader->SetFloat("rteAsciiScale", static_cast<float>(std::clamp(ascii.Size, 1, 4)));
+		m_RetroSceneShader->SetFloat("rteAsciiEdges", std::clamp(ascii.EdgeGlyphs, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiContrast", std::clamp(ascii.Contrast, 0.5F, 2.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiExposure", std::clamp(ascii.Exposure, 0.25F, 3.0F));
+		m_RetroSceneShader->SetInt("rteAsciiColours", std::clamp(ascii.Colours, 0, static_cast<int>(LightingSettings::AsciiColourCount) - 1));
+		m_RetroSceneShader->SetFloat("rteAsciiFill", std::clamp(ascii.CellFill, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiGlow", std::clamp(ascii.Glow, 0.0F, 1.0F));
+		m_RetroSceneShader->SetFloat("rteAsciiChurn", std::clamp(ascii.Churn, 0.0F, 1.0F));
+		m_RetroSceneShader->SetBool("rteAsciiWorldLocked", ascii.WorldLocked);
+		m_RetroSceneShader->SetFloat("rteSky", sceneDepth ? std::clamp(retro.RetroSky, 0.0F, 1.0F) : 0.0F);
+		m_RetroSceneShader->SetFloat("rteGridSpeed", std::clamp(retro.GridSpeed, 0.0F, 3.0F));
+		m_RetroSceneShader->SetFloat("rteDaylight", std::clamp(skyLevel, 0.0F, 1.0F) * m_NightDim);
+		m_RetroSceneShader->SetFloat("rteEdges", std::clamp(retro.EdgeLines, 0.0F, 1.0F));
+		m_RetroSceneShader->SetBool("rteInkEdges", retro.InkEdges);
+		m_RetroSceneShader->SetBool("rteHasDepth", sceneDepth != nullptr);
+		m_RetroSceneShader->SetFloat("rteBackgroundDepth", backgroundThresholdNDC * 0.5F + 0.5F);
+		auto retroDepthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
+		m_RetroSceneShader->SetFloat("rteBackgroundNearDepth", retroDepthForZ(c_BackgroundDepth));
+		m_RetroSceneShader->SetFloat("rteBackgroundFarDepth", retroDepthForZ(c_BackgroundDepth + c_BackgroundDepthRange));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_RetroScene.Texture);
+		DrawFullscreen();
+	}
+
+	// Afterglow (LightingSettings::RetroLayers): the bright parts of each frame linger in a history that fades, kept fixed to the world as the camera
+	// moves, and show through wherever they're brighter than the scene now, tinted in the look's colour, so moving lights leave trails.
+	if (retro.Afterglow > 0.0F && screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		TracyGpuZone("Afterglow");
+		GLTarget(&history)[2] = m_AfterglowHistory[screenIndex];
+		bool fresh = !m_AfterglowValid[screenIndex];
+		m_AfterglowValid[screenIndex] = true;
+		for (GLTarget& target: history) {
+			if (target.Width != width || target.Height != height || !target.Texture) {
+				target.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+				fresh = true;
+			}
+		}
+		double nowSeconds = PostProcessMan::GetSmoothSimTimePrecise();
+		float deltaSeconds = fresh ? 0.0F : static_cast<float>(std::clamp(nowSeconds - m_AfterglowLastSeconds[screenIndex], 0.0, 0.25));
+		m_AfterglowLastSeconds[screenIndex] = nowSeconds;
+		glm::vec2 shift = fresh ? glm::vec2(0.0F) : origin - m_AfterglowOrigin[screenIndex];
+		m_AfterglowOrigin[screenIndex] = origin;
+		int previous = m_AfterglowCurrent[screenIndex];
+		int next = 1 - previous;
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, history[next].Framebuffer);
+		glViewport(0, 0, width, height);
+		m_AfterglowShader->Enable();
+		m_AfterglowShader->SetInt("rteScene", 0);
+		m_AfterglowShader->SetInt("rteHistory", 1);
+		m_AfterglowShader->SetInt("rteMode", 0);
+		m_AfterglowShader->SetVector2f("rteScreenSize", screenSize);
+		// The history is in screen space; a step of the camera to the right moves what it holds to the left.
+		m_AfterglowShader->SetVector2f("rteShift", glm::vec2(shift.x, -shift.y) / screenSize);
+		m_AfterglowShader->SetBool("rteFresh", fresh);
+		// Strength 1 keeps about a third of the trail after a quarter second.
+		m_AfterglowShader->SetFloat("rteKeep", std::exp(-deltaSeconds * glm::mix(14.0F, 4.0F, std::clamp(retro.Afterglow, 0.0F, 1.0F))));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[previous].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+		DrawFullscreen();
+		m_AfterglowCurrent[screenIndex] = next;
+
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_MAX);
+		m_AfterglowShader->SetInt("rteMode", 1);
+		m_AfterglowShader->SetInt("rteLook", retro.Look);
+		m_AfterglowShader->SetFloat("rteStrength", std::clamp(retro.Afterglow, 0.0F, 1.0F));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[next].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		glBlendEquation(GL_FUNC_ADD);
+		glDisable(GL_BLEND);
+	} else if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		m_AfterglowValid[screenIndex] = false;
+	}
+
+	// The Game Boy LCD's ghosting: its pixels are slow to change, so what the screen shows only drifts towards the picture now. Kept in screen space,
+	// as the pixels are, so scrolling the view smears the whole picture.
+	if (retro.LCDGhosting > 0.0F && screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		TracyGpuZone("LCD Ghosting");
+		GLTarget(&history)[2] = m_GhostHistory[screenIndex];
+		bool fresh = !m_GhostValid[screenIndex];
+		m_GhostValid[screenIndex] = true;
+		for (GLTarget& target: history) {
+			if (target.Width != width || target.Height != height || !target.Texture) {
+				target.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+				fresh = true;
+			}
+		}
+		// Real time, so the smear settles while paused or in a hit-stop, as a real screen would.
+		double nowSeconds = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+		float deltaSeconds = fresh ? 0.0F : static_cast<float>(std::clamp(nowSeconds - m_GhostLastSeconds[screenIndex], 0.0, 0.25));
+		m_GhostLastSeconds[screenIndex] = nowSeconds;
+		int previous = m_GhostCurrent[screenIndex];
+		int next = 1 - previous;
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, history[next].Framebuffer);
+		glViewport(0, 0, width, height);
+		m_AfterglowShader->Enable();
+		m_AfterglowShader->SetInt("rteScene", 0);
+		m_AfterglowShader->SetInt("rteHistory", 1);
+		m_AfterglowShader->SetInt("rteMode", 2);
+		m_AfterglowShader->SetVector2f("rteScreenSize", screenSize);
+		m_AfterglowShader->SetBool("rteFresh", fresh);
+		// Strength 1 keeps about half of the last picture after a twentieth of a second, a short smear rather than a trail.
+		m_AfterglowShader->SetFloat("rteKeep", std::exp(-deltaSeconds * glm::mix(40.0F, 14.0F, std::clamp(retro.LCDGhosting, 0.0F, 1.0F))));
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[previous].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+		DrawFullscreen();
+		m_GhostCurrent[screenIndex] = next;
+
+		// The smeared picture replaces the scene.
+		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		m_AfterglowShader->SetInt("rteMode", 3);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, history[next].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+	} else if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
+		m_GhostValid[screenIndex] = false;
+	}
+
+	// Depth of field and tilt-shift: the player's (in photo mode only, unless they said otherwise) or a script's, whichever blurs more.
+	{
+		PostProcessMan::ScriptFocus scriptFocus = g_PostProcessMan.GetScriptFocus();
+		bool playerFocus = !m_Settings.FocusEffectsInPhotoModeOnly;
+		float depthStrength = scriptFocus.DepthStrength;
+		float depthFocus = scriptFocus.DepthFocus;
+		if (playerFocus && m_Settings.DepthOfField && m_Settings.DepthOfFieldStrength > depthStrength) {
+			depthStrength = m_Settings.DepthOfFieldStrength;
+			depthFocus = m_Settings.DepthOfFieldFocus;
+		}
+		float tiltStrength = scriptFocus.TiltStrength;
+		float tiltLine = scriptFocus.TiltLine;
+		if (playerFocus && m_Settings.TiltShift && m_Settings.TiltShiftStrength > tiltStrength) {
+			tiltStrength = m_Settings.TiltShiftStrength;
+			tiltLine = m_Settings.TiltShiftLine;
+		}
+		if ((depthStrength > 0.0F && sceneDepth) || tiltStrength > 0.0F) {
+			TracyGpuZone("Depth Of Field");
+			if (m_FocusScene.Width != width || m_FocusScene.Height != height || !m_FocusScene.Texture) {
+				m_FocusScene.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+			}
+			glDisable(GL_BLEND);
+			glBindFramebuffer(GL_READ_FRAMEBUFFER, m_HDRScene.Framebuffer);
+			glBindFramebuffer(GL_DRAW_FRAMEBUFFER, m_FocusScene.Framebuffer);
+			glBlitFramebuffer(0, 0, width, height, 0, 0, width, height, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+			glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+			glViewport(0, 0, width, height);
+			// Layers' depth is linear in their z: the battlefield at 0, the far backgrounds out to c_BackgroundDepth plus its range.
+			auto depthForZ = [](float z) { return ((2.0F * z - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F; };
+			float farZ = c_BackgroundDepth + c_BackgroundDepthRange;
+			m_DepthOfFieldShader->Enable();
+			m_DepthOfFieldShader->SetInt("rteScene", 0);
+			m_DepthOfFieldShader->SetInt("rteSceneDepth", 1);
+			m_DepthOfFieldShader->SetVector2f("rteScreenSize", screenSize);
+			m_DepthOfFieldShader->SetFloat("rteFocusDepth", depthForZ(depthFocus * farZ));
+			m_DepthOfFieldShader->SetFloat("rteDepthRange", depthForZ(c_BackgroundDepth) - depthForZ(0.0F));
+			m_DepthOfFieldShader->SetFloat("rteDepthBlur", sceneDepth ? depthStrength * 8.0F : 0.0F);
+			m_DepthOfFieldShader->SetFloat("rteTiltLine", tiltLine);
+			m_DepthOfFieldShader->SetFloat("rteTiltBlur", tiltStrength * 8.0F);
+			glActiveTexture(GL_TEXTURE1);
+			glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, m_FocusScene.Texture);
+			DrawFullscreen();
+		}
+	}
+
+	// Auto exposure: average the scene's log luminance, then let the adapted value drift towards it.
+	bool useAutoExposure = m_Settings.Enabled && m_Settings.AutoExposure > 0.0F;
+	if (useAutoExposure) {
+		TracyGpuZone("Auto Exposure");
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_Luminance.Framebuffer);
+		glViewport(0, 0, m_Luminance.Width, m_Luminance.Height);
+		m_LuminanceShader->Enable();
+		m_LuminanceShader->SetInt("rteScene", 0);
+		m_LuminanceShader->SetVector2f("rteSourceTexelSize", glm::vec2(1.0F / static_cast<float>(width), 1.0F / static_cast<float>(height)) * (static_cast<float>(width) / static_cast<float>(m_Luminance.Width * 4)));
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+		DrawFullscreen();
+		glBindTexture(GL_TEXTURE_2D, m_Luminance.Texture);
+		glGenerateMipmap(GL_TEXTURE_2D);
+
+		// Adapts in game time, as every other effect moves: it holds while the game is paused or in photo mode, and a capture comes out the same however long
+		// it took to render. (A step back, on a new scene, counts as no time.)
+		double nowSeconds = m_Settings.AutoExposureGameTime ? PostProcessMan::GetSmoothSimTimePrecise() : std::chrono::duration<double>(std::chrono::steady_clock::now().time_since_epoch()).count();
+		float deltaSeconds = m_AdaptedLuminanceValid[screenIndex] ? static_cast<float>(std::clamp(nowSeconds - m_LastAdaptSeconds[screenIndex], 0.0, 0.25)) : 0.0F;
+		m_LastAdaptSeconds[screenIndex] = nowSeconds;
+		int previous = m_AdaptedLuminanceCurrent[screenIndex];
+		int next = 1 - previous;
+		glBindFramebuffer(GL_FRAMEBUFFER, m_AdaptedLuminance[screenIndex][next].Framebuffer);
+		glViewport(0, 0, 1, 1);
+		m_ExposureAdaptShader->Enable();
+		m_ExposureAdaptShader->SetInt("rteLuminance", 0);
+		m_ExposureAdaptShader->SetInt("rtePrevious", 1);
+		m_ExposureAdaptShader->SetFloat("rteLuminanceLod", static_cast<float>(m_LuminanceMaxLod));
+		m_ExposureAdaptShader->SetFloat("rteDeltaSeconds", deltaSeconds);
+		m_ExposureAdaptShader->SetFloat("rteBrightenSpeed", 3.0F);
+		m_ExposureAdaptShader->SetFloat("rteDarkenSpeed", 1.2F);
+		m_ExposureAdaptShader->SetBool("rteReset", !m_AdaptedLuminanceValid[screenIndex]);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][previous].Texture);
+		glActiveTexture(GL_TEXTURE0);
+		DrawFullscreen();
+		m_AdaptedLuminanceCurrent[screenIndex] = next;
+		m_AdaptedLuminanceValid[screenIndex] = true;
+		glViewport(0, 0, width, height);
+	} else {
+		m_AdaptedLuminanceValid[screenIndex] = false;
+	}
+
+	// Bloom.
+	// Neon glow (a screen style's) blooms from much dimmer light, and runs even with the player's bloom off.
+	const float neonGlow = std::clamp(retro.NeonGlow, 0.0F, 1.0F);
+	if (m_Settings.BloomEnabled || neonGlow > 0.0F) {
+		TracyGpuZone("Bloom");
+		m_BloomDownsampleShader->Enable();
+		m_BloomDownsampleShader->SetInt("rteSource", 0);
+		m_BloomDownsampleShader->SetFloat("rteThreshold", glm::mix(m_Settings.BloomEnabled ? m_Settings.BloomThreshold : 1.5F, 0.55F, neonGlow));
+		m_BloomDownsampleShader->SetFloat("rteKnee", m_Settings.BloomKnee);
+		glActiveTexture(GL_TEXTURE0);
+		for (int mip = 0; mip < c_BloomMipCount; ++mip) {
+			const GLTarget& source = mip == 0 ? m_HDRScene : m_BloomMips[mip - 1];
+			glBindFramebuffer(GL_FRAMEBUFFER, m_BloomMips[mip].Framebuffer);
+			glViewport(0, 0, m_BloomMips[mip].Width, m_BloomMips[mip].Height);
+			m_BloomDownsampleShader->SetBool("rteFirstPass", mip == 0);
+			m_BloomDownsampleShader->SetVector2f("rteSourceTexelSize", glm::vec2(1.0F / source.Width, 1.0F / source.Height));
+			glBindTexture(GL_TEXTURE_2D, source.Texture);
+			DrawFullscreen();
+		}
+		m_BloomUpsampleShader->Enable();
+		m_BloomUpsampleShader->SetInt("rteSource", 0);
+		m_BloomUpsampleShader->SetFloat("rteRadius", 1.0F);
+		glEnable(GL_BLEND);
+		glBlendEquation(GL_FUNC_ADD);
+		glBlendFunc(GL_ONE, GL_ONE);
+		for (int mip = c_BloomMipCount - 1; mip > 0; --mip) {
+			const GLTarget& source = m_BloomMips[mip];
+			const GLTarget& destination = m_BloomMips[mip - 1];
+			glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
+			glViewport(0, 0, destination.Width, destination.Height);
+			m_BloomUpsampleShader->SetVector2f("rteSourceTexelSize", glm::vec2(1.0F / source.Width, 1.0F / source.Height));
+			m_BloomUpsampleShader->SetVector2f("rteTargetTexelSize", glm::vec2(1.0F / destination.Width, 1.0F / destination.Height));
+			glBindTexture(GL_TEXTURE_2D, source.Texture);
+			DrawFullscreen();
+		}
+		glDisable(GL_BLEND);
+		glViewport(0, 0, width, height);
+	}
+
+	// Unit outlines, first half: the nearest unit pixel along each row (Tonemap.frag searches the columns and draws the stroke).
+	// Width in the game's pixels at normal zoom; zoomed out the view holds more of them per screen pixel, so the stroke is widened to match.
+	float outlineWidth = 0.0F;
+	float highlightWidth = 0.0F;
+	int outlineRadius = 0;
+	// The comic style inks every unit in bold black, whether or not the player's own outlines are on; the Game Boy style outlines them one pixel wide
+	// in its darkest shade, which is what keeps Game Boy sprites readable.
+	const bool gameBoyInk = retro.Look == LightingSettings::StyleGameBoy && retro.InkEdges && retro.EdgeLines > 0.0F;
+	const bool comicInk = (retro.Look == LightingSettings::StyleComic && retro.InkEdges && retro.EdgeLines > 0.0F) || gameBoyInk;
+	const float comicInkStrength = comicInk ? std::clamp(retro.EdgeLines, 0.0F, 1.0F) : 0.0F;
+	const bool outlines = (m_Settings.UnitOutline && m_Settings.UnitOutlineOpacity > 0.0F) || comicInk;
+	if ((outlines || m_Settings.HighlightUnits) && surface) {
+		float zoom = 1.0F;
+		float baseOutlineWidth = comicInk ? std::max(m_Settings.UnitOutline ? m_Settings.UnitOutlineWidth : 0.0F, gameBoyInk ? 1.0F : 1.0F + 1.5F * comicInkStrength) : m_Settings.UnitOutlineWidth;
+		outlineWidth = outlines ? std::min(std::clamp(baseOutlineWidth, 1.0F, 4.0F) / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		// A highlighted unit's glow (Actor::SetHighlighted): five of the game's pixels, as far as the search reaches.
+		highlightWidth = m_Settings.HighlightUnits ? std::min(5.0F / std::min(zoom, 1.0F), 11.0F) : 0.0F;
+		outlineRadius = static_cast<int>(std::ceil(std::max(outlineWidth, highlightWidth) + 1.0F)) - 1;
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_OutlineRows.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_UnitOutlineRowShader->Enable();
+		m_UnitOutlineRowShader->SetInt("rteSurface", 0);
+		m_UnitOutlineRowShader->SetInt("rteSceneDepth", 1);
+		m_UnitOutlineRowShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		m_UnitOutlineRowShader->SetInt("rteRadius", outlineRadius);
+		m_UnitOutlineRowShader->SetBool("rteOverEverything", m_Settings.UnitOutlineOverEverything);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth ? sceneDepth->GetTextureId() : 0);
+		DrawFullscreen();
+	}
+
+	// The paper grain on the backdrop only: where it may go, from the depth buffer, before the tonemap draws into the screen that owns it.
+	const bool paperMask = retro.PaperGrain > 0.0F && retro.PaperBackgroundOnly && sceneDepth;
+	if (paperMask) {
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_PaperMask.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_PaperMaskShader->Enable();
+		m_PaperMaskShader->SetInt("rteSceneDepth", 0);
+		m_PaperMaskShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+		DrawFullscreen();
+	}
+
+	// Tonemap back into the player screen.
+	playerScreen->Bind();
+	glViewport(0, 0, width, height);
+	m_TonemapShader->Enable();
+	m_TonemapShader->SetInt("rteScene", 0);
+	m_TonemapShader->SetInt("rteBloom", 1);
+	m_TonemapShader->SetVector2f("rteScreenSize", screenSize);
+	// The grade: the player's, pushed by what's happening (LightingSettings::EventLooks), in real time so it plays through a hit-stop.
+	double pulseNow = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
+	LightingSettings::GradeLook grade = m_Settings.CurrentGrade();
+	{
+		float easeSeconds = static_cast<float>(std::clamp(pulseNow - m_EventLookLastTime[screenIndex], 0.0, 0.1));
+		m_EventLookLastTime[screenIndex] = pulseNow;
+		m_ScreenHurt[screenIndex] += (m_ScreenHurtTarget[screenIndex] - m_ScreenHurt[screenIndex]) * (1.0F - std::exp(-easeSeconds * 3.0F));
+		m_ScreenWarmth[screenIndex] += (m_ScreenWarmthTarget[screenIndex] - m_ScreenWarmth[screenIndex]) * (1.0F - std::exp(-easeSeconds * 1.0F));
+		if (m_Settings.EventLooks) {
+			// Badly hurt, the grade drains and closes in, beating faintly like a pulse; by a fire, it warms.
+			float heartbeat = 0.88F + 0.12F * static_cast<float>(std::sin(pulseNow * 6.5));
+			std::vector<std::pair<int, float>> extra = {{LightingSettings::LookHurt, m_ScreenHurt[screenIndex] * heartbeat}, {LightingSettings::LookWarm, m_ScreenWarmth[screenIndex] * 0.8F}};
+			grade = g_PostProcessMan.GetEventGrade(grade, std::clamp(m_Settings.EventLookStrength, 0.0F, 2.0F), extra);
+		}
+	}
+	m_TonemapShader->SetFloat("rteBloomIntensity", (m_Settings.BloomEnabled ? grade.BloomIntensity : 0.0F) + neonGlow * 0.45F);
+	m_TonemapShader->SetFloat("rteNeonGlow", neonGlow);
+	m_TonemapShader->SetInt("rteLook", retro.Look);
+	m_TonemapShader->SetFloat("rteTerminalOverlay", m_Settings.DebugView == 0 ? std::clamp(retro.TerminalOverlay, 0.0F, 1.0F) : 0.0F);
+	m_TonemapShader->SetInt("rtePalette", std::clamp(retro.Palette, 0, static_cast<int>(LightingSettings::PaletteCount) - 1));
+	{
+		const std::array<glm::vec3, 4> lcdShades = LightingSettings::LCDShades(retro.LCDPalette);
+		for (int shade = 0; shade < 4; ++shade) {
+			m_TonemapShader->SetVector3f("rteLCDShades[" + std::to_string(shade) + "]", lcdShades[shade]);
+		}
+	}
+	m_TonemapShader->SetFloat("rteChunkyBlock", LightingSettings::ChunkyBlock(retro.ChunkyPixels));
+	m_TonemapShader->SetFloat("rtePaletteStrength", retro.Palette > LightingSettings::PaletteOff ? std::clamp(retro.PaletteStrength, 0.0F, 1.0F) : 0.0F);
+	m_TonemapShader->SetFloat("rtePosterize", std::clamp(retro.Posterize, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rteDither", std::clamp(retro.Dither, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rteColorHalftone", std::clamp(retro.ColorHalftone, 0.0F, 1.0F));
+	m_TonemapShader->SetFloat("rtePaperGrain", std::clamp(retro.PaperGrain, 0.0F, 1.0F));
+	m_TonemapShader->SetBool("rtePaperBackgroundOnly", paperMask);
+	m_TonemapShader->SetInt("rtePaperMask", 6);
+	m_TonemapShader->SetFloat("rteMisregister", std::clamp(retro.Misregister, 0.0F, 1.0F));
+	{
+		// The comic style's sound-effect burst (PostProcessMan::KickComicBurst), where it went off on this screen.
+		Vector burstPosition;
+		float burstAge = 0.0F;
+		int burstWord = 0;
+		float burstStrength = 0.0F;
+		bool burst = m_Settings.DebugView == 0 && retro.ComicFX > 0.0F && g_PostProcessMan.GetComicBurst(burstPosition, burstAge, burstWord, burstStrength);
+		glm::vec2 burstScreen(-10000.0F);
+		if (burst) {
+			Vector fromOrigin = g_SceneMan.ShortestDistance(Vector(origin.x + screenSize.x * 0.5F, origin.y + screenSize.y * 0.5F), burstPosition, true);
+			burstScreen = screenSize * 0.5F + glm::vec2(fromOrigin.GetX(), fromOrigin.GetY());
+		}
+		m_TonemapShader->SetFloat("rteBurstStrength", burst ? burstStrength : 0.0F);
+		m_TonemapShader->SetVector2f("rteBurstScreen", burstScreen);
+		m_TonemapShader->SetFloat("rteBurstAge", burstAge);
+		m_TonemapShader->SetInt("rteBurstWord", burstWord);
+	}
+	// With lighting off, the image should be the classic one: no exposure, highlight compression, saturation or vignette (the player's own grade still applies).
+	m_TonemapShader->SetFloat("rteExposure", m_Settings.Enabled ? m_Settings.Exposure : 1.0F);
+	m_TonemapShader->SetFloat("rteShoulderStart", m_Settings.Enabled ? m_Settings.ShoulderStart : 1.0F);
+	m_TonemapShader->SetFloat("rteVignette", m_Settings.Enabled ? grade.Vignette : 0.0F);
+	m_TonemapShader->SetFloat("rteSaturation", m_Settings.Enabled ? grade.Saturation : 1.0F);
+	m_TonemapShader->SetInt("rteDistortion", 2);
+	m_TonemapShader->SetInt("rteEmissive", 3);
+	m_TonemapShader->SetBool("rteDistortionEnabled", m_Settings.DistortionEnabled);
+	m_TonemapShader->SetFloat("rteHeatHaze", m_Settings.HeatHaze);
+	m_TonemapShader->SetBool("rteHazeFromHeat", m_Settings.HazeFromHeat);
+	m_TonemapShader->SetFloat("rteTime", PostProcessMan::GetEffectTime());
+	m_TonemapShader->SetInt("rteDebugView", m_Settings.DebugView);
+	m_TonemapShader->SetFloat("rteTemperature", grade.Temperature);
+	m_TonemapShader->SetFloat("rteTint", grade.Tint);
+	m_TonemapShader->SetFloat("rteContrast", grade.Contrast);
+	m_TonemapShader->SetVector3f("rteShadowTint", grade.ShadowTint);
+	m_TonemapShader->SetVector3f("rteHighlightTint", grade.HighlightTint);
+	m_TonemapShader->SetFloat("rteFilmGrain", grade.FilmGrain);
+	// The blast pulse fades in real time, so it also fades during the hit-stop that comes with it.
+	m_BlastPulse *= std::exp(-static_cast<float>(std::clamp(pulseNow - m_BlastPulseLastTime, 0.0, 0.1)) * 9.0F);
+	m_BlastPulseLastTime = pulseNow;
+	m_TonemapShader->SetFloat("rteChromaticAberration", m_Settings.ChromaticAberration + (m_Settings.DistortionEnabled ? m_BlastPulse * 2.2F : 0.0F));
+	m_TonemapShader->SetInt("rteAdaptedLuminance", 4);
+	m_TonemapShader->SetFloat("rteAutoExposure", useAutoExposure ? m_Settings.AutoExposure : 0.0F);
+	// The dead of night is meant to be dark: auto exposure mustn't brighten it back up, so the level it lifts dark scenes towards drops with the light.
+	// The same order the exposure update enforces: GLSL's clamp() is undefined when low is over high, which the settings allow.
+	m_TonemapShader->SetFloat("rteAutoExposureLow", std::min(m_Settings.AutoExposureLow * m_NightDim, m_Settings.AutoExposureHigh));
+	m_TonemapShader->SetFloat("rteAutoExposureHigh", m_Settings.AutoExposureHigh);
+	m_TonemapShader->SetInt("rteOutlineRows", 5);
+	m_TonemapShader->SetFloat("rteOutlineWidth", outlineWidth);
+	m_TonemapShader->SetFloat("rteHighlightWidth", highlightWidth);
+	m_TonemapShader->SetInt("rteOutlineRadius", outlineRadius);
+	m_TonemapShader->SetFloat("rteOutlineOpacity", comicInk ? std::max(m_Settings.UnitOutline ? std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F) : 0.0F, gameBoyInk ? std::min(2.0F * comicInkStrength, 1.0F) : 0.85F * comicInkStrength) : std::clamp(m_Settings.UnitOutlineOpacity, 0.0F, 1.0F));
+	m_TonemapShader->SetBool("rteOutlineTeamColor", m_Settings.UnitOutlineTeamColor && !comicInk);
+	m_TonemapShader->SetVector3f("rteOutlineColor", gameBoyInk ? LightingSettings::LCDShades(retro.LCDPalette)[0] : comicInk ? glm::vec3(0.02F)
+	                                                                                                                         : glm::clamp(m_Settings.UnitOutlineColor, glm::vec3(0.0F), glm::vec3(1.0F)));
+	// The sides' colours, as the headlamps use them (Actor.cpp), and white for no side.
+	static const glm::vec3 outlineSideColors[5] = {{0.92F, 0.92F, 0.92F}, {1.0F, 0.41F, 0.33F}, {0.41F, 1.0F, 0.47F}, {0.43F, 0.65F, 1.0F}, {1.0F, 0.88F, 0.37F}};
+	for (int slot = 0; slot < 5; ++slot) {
+		m_TonemapShader->SetVector3f("rteOutlineSideColors[" + std::to_string(slot) + "]", outlineSideColors[slot]);
+	}
+	glActiveTexture(GL_TEXTURE4);
+	glBindTexture(GL_TEXTURE_2D, m_AdaptedLuminance[screenIndex][m_AdaptedLuminanceCurrent[screenIndex]].Texture);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, m_HDRScene.Texture);
+	glActiveTexture(GL_TEXTURE1);
+	glBindTexture(GL_TEXTURE_2D, m_BloomMips[0].Texture);
+	glActiveTexture(GL_TEXTURE2);
+	glBindTexture(GL_TEXTURE_2D, m_Distortion.Texture);
+	glActiveTexture(GL_TEXTURE3);
+	glBindTexture(GL_TEXTURE_2D, m_Emissive.Texture);
+	glActiveTexture(GL_TEXTURE5);
+	glBindTexture(GL_TEXTURE_2D, m_OutlineRows.Texture);
+	glActiveTexture(GL_TEXTURE6);
+	glBindTexture(GL_TEXTURE_2D, paperMask ? m_PaperMask.Texture : 0);
+	DrawFullscreen();
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindVertexArray(0);
+	glViewport(previousViewport[0], previousViewport[1], previousViewport[2], previousViewport[3]);
+}
+
+#pragma endregion

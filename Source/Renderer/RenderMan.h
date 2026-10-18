@@ -5,11 +5,24 @@
 #include "DrawCall.h"
 #include "Texture.h"
 #include <memory>
+#include <algorithm>
+#include <array>
+#include <vector>
+#include <mutex>
 
 #define g_RenderMan RenderMan::Instance()
 
 namespace RTE {
 	class DrawCall;
+
+	/// The parts of a sprite drawn in its side's colour (MOSprite's TeamColorIndex and TeamColorMapFile), for one draw.
+	struct SpriteTeamColor {
+		bool Active = false; //!< Whether anything is recoloured.
+		glm::vec3 Rgb{0.0F}; //!< The colour, 0 to 1.
+		std::array<float, 8> Indices{-1.0F, -1.0F, -1.0F, -1.0F, -1.0F, -1.0F, -1.0F, -1.0F}; //!< Palette indices recoloured wherever they're drawn, -1 for none.
+		GLuint Map = 0; //!< GL texture of the frame's mask, or 0.
+	};
+
 	class RenderMan: public Singleton<RenderMan> {
 	public:
 		/// Constructor
@@ -41,6 +54,20 @@ namespace RTE {
 		/// @param depth The new offset.
 		void SetCurrentZOffset(float depth) { m_ActiveBatch->m_CurrentZ = depth; }
 
+		/// Sets the surface that upcoming draws are marked with, for the lighting: R how metallic, G how glossy, B whether it's a solid object that casts shadows (0 or 255).
+		/// Set it back to zero after drawing an object, so terrain, particles and effects stay unmarked.
+		/// @param surface The surface values.
+		void SetCurrentSurface(glm::u8vec4 surface) {
+			if (!m_ActiveBatch->m_ShadowCasting) {
+				surface.b = 0;
+			}
+			m_ActiveBatch->m_CurrentSurface = surface;
+		}
+
+		/// Sets whether upcoming surfaces may be marked as casting shadows. Turn it off around parts of an object that are light, not matter (muzzle flashes), and back on afterwards.
+		/// @param shadowCasting Whether shadows may be cast.
+		void SetShadowCasting(bool shadowCasting) { m_ActiveBatch->m_ShadowCasting = shadowCasting; }
+
 		/// Set the default shader for upcoming draw calls.
 		/// @param shader (non owning) pointer to the new shader.
 		void SetCurrentShader(const Shader* shader) { m_ActiveBatch->m_CurrentShader = shader; }
@@ -56,6 +83,37 @@ namespace RTE {
 		/// Clears active uniforms.
 		void ClearUniforms() { m_ActiveBatch->m_CurrentUniforms.clear(); }
 
+		/// Draws what follows with a mod's object shader (MovableObject's Shader), handing it the hook uniforms, until EndObjectShader.
+		/// @param shader The shader, which must be valid. @param time Seconds of effect time. @param objectSeed 0 to 1, the same for the object every frame.
+		/// @param health Its unit's health, 0 to 1. @param strength The player's strength setting for mod shaders. @param relief How much sprites' shading counts as relief.
+		void BeginObjectShader(const Shader* shader, float time, float objectSeed, float health, float strength, float relief);
+
+		/// Goes back to the shader that was drawing before BeginObjectShader. Does nothing if no object shader is on.
+		void EndObjectShader();
+
+		/// Draws what follows with a sprite's authored normal and emissive maps (MOSprite's NormalMapFile and EmissiveMapFile) and its team colour, until EndObjectMaps.
+		/// Call after BeginObjectShader, if any, so the maps go to the shader that draws. The maps are bound on texture units 12, 13 and 14.
+		/// @param normalMap GL texture of the frame's normal map, or 0. @param emissiveMap Of its emissive map, or 0.
+		/// @param spriteUV Where the frame sits in its GL texture (xy corner, zw size, in UV), which differs from the maps when it's in the sprite atlas.
+		/// @param strength The player's strength for authored maps, 0 to 1.
+		/// @param teamColor The parts drawn in the side's colour, if any.
+		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor = {});
+
+		/// Stops drawing with a sprite's maps. Does nothing if none are on.
+		void EndObjectMaps() { m_ActiveBatch->m_ObjectMapUniforms.clear(); }
+
+		/// Gives the draws that follow a value for one of their shader's uniforms, until EndLayerUniforms: for one shader drawing several layers that differ only in
+		/// that (the terrain's background and foreground). Uniforms set straight on the shader would only hold their last value by the time the batch is drawn.
+		/// @param value The uniform and its value; nothing is given if its location is below 0 (not in the shader).
+		void BeginLayerUniform(std::shared_ptr<UniformValueType> value, GLint location) {
+			if (location >= 0) {
+				m_ActiveBatch->m_LayerUniforms.push_back(std::move(value));
+			}
+		}
+
+		/// Stops giving the draws that follow the values from BeginLayerUniform.
+		void EndLayerUniforms() { m_ActiveBatch->m_LayerUniforms.clear(); }
+
 		/// Schedules a new draw call on the current batch, initialized with the current shader, uniforms and camera.
 		std::shared_ptr<DrawCall> BeginDraw();
 
@@ -66,6 +124,78 @@ namespace RTE {
 		/// Returns the texture id for the default palette. TODO: allow palette swapping.
 		GLuint GetPaletteTexture() { return m_PaletteTexture->GetTextureId(); }
 
+		/// Returns the texture marking which palette colors glow (256x1, R = emissive strength), so indexed art can be emissive without new assets.
+		GLuint GetEmissivePaletteTexture() const { return m_EmissivePaletteTexture; }
+
+		/// How the terrain shader draws one liquid look (Terrain.frag's rteLiquid* tables).
+		struct LiquidLook {
+			glm::vec4 Shallow; //!< RGB colour near the surface (molten: the cool colour; bubbling: the bubbles' colour), A opacity there.
+			glm::vec4 Deep; //!< RGB colour in the depths (molten: the hot colour), A opacity there.
+			glm::vec4 Surface; //!< x shine, y metalness, z how much the ripples tilt it, w how strongly light plays through it in lines.
+			glm::vec4 Style; //!< x 0 clear, 1 molten, 2 bubbling; y how much it froths when thin; z its own glow; w 1 if it reflects like water.
+			glm::vec4 Line; //!< RGB the colour of its surface line where it meets open air, A how strongly.
+		};
+		static constexpr int c_MaxLiquidLooks = 16; //!< Looks 0 (not a liquid) to 15. Must match Terrain.frag.
+
+		/// Marks a palette color as a liquid (for the terrain shader's liquid looks) and optionally as emissive.
+		/// @param paletteIndex The palette color.
+		/// @param liquidLook 0 none, 1 water, 2 lava, 3 acid, 4 oil, 5 mud, 6 slime, 7 mercury, 8 to 15 free (drawn as water until set with SetLiquidLook).
+		/// @param emissive How strongly the color glows, 0 to 255.
+		void SetLiquidPaletteColor(int paletteIndex, int liquidLook, int emissive);
+
+		/// Sets how a liquid look is drawn, for new liquids. Looks 1 to 3 are the game's water, lava and acid.
+		/// @param look 1 to 15.
+		/// @param liquidLook The look.
+		void SetLiquidLook(int look, const LiquidLook& liquidLook) {
+			if (look > 0 && look < c_MaxLiquidLooks) {
+				m_LiquidLooks[look] = liquidLook;
+			}
+		}
+
+		/// Gets the liquid looks, by look number (0 unused).
+		const std::array<LiquidLook, c_MaxLiquidLooks>& GetLiquidLooks() const { return m_LiquidLooks; }
+
+		/// Gives a terrain material a liquid look (Terrain.frag's rteMaterialLooks). The terrain shader draws a pixel as a liquid only where it is made of a
+		/// material with a look as well as coloured as a liquid (SetLiquidPaletteColor), so terrain that shares a liquid's palette colour stays as it is.
+		/// @param materialID The material, 1 to 255. @param liquidLook The look, 0 for none to 15.
+		void SetMaterialLiquidLook(int materialID, int liquidLook) {
+			if (materialID > 0 && materialID < 256) {
+				m_MaterialLiquidLooks[materialID] = static_cast<float>(std::clamp(liquidLook, 0, c_MaxLiquidLooks - 1));
+			}
+		}
+
+		/// Takes the liquid look off every material, for a new set of materials.
+		void ClearMaterialLiquidLooks() { m_MaterialLiquidLooks.fill(0.0F); }
+
+		/// Gets each material's liquid look, by material ID, 0 for none: the shader's rteMaterialLooks, four to a vec4.
+		const std::array<float, 256>& GetMaterialLiquidLooks() const { return m_MaterialLiquidLooks; }
+
+		/// Makes a palette colour's glow pulse between two strengths (animated palette flags, LightingSettings::PaletteAnimation).
+		/// @param paletteIndex The colour, 1 to 255. @param low The glow at the bottom of the pulse, 0 to 1. @param high The glow at the top.
+		/// @param period Seconds per pulse; 0 or less removes the colour's pulse. @param phase Where in the pulse it starts, 0 to 1.
+		void SetPalettePulse(int paletteIndex, float low, float high, float period, float phase) { SetPalettePulse(paletteIndex, low, high, period, phase, false); }
+
+		/// Rotates a run of palette colours through each other, the classic palette cycle for water or energy.
+		/// @param from The first colour of the run. @param to The last. @param period Seconds for a whole turn; 0 or less removes the cycle on that run.
+		void SetPaletteCycle(int from, int to, float period);
+
+		/// Removes every pulse and cycle that was asked for. Liquids' own glow pulses (lava) stay.
+		void ClearPaletteAnimation();
+
+		/// Writes this frame's pulsing glows and cycled colours into the palette textures, or puts the palette back as it was when animation stops.
+		/// @param time Seconds, for the pulses and cycles. @param enabled Whether palette animation is on. @param strength 0 to 1, how far pulses swing from the colour's own glow.
+		void UpdatePaletteAnimation(float time, bool enabled, float strength);
+
+		/// Sets a texture that's bound for every batch render, for shaders that sample world space maps. Units 3 to 10.
+		void SetGlobalTexture(int unit, GLuint texture) {
+			if (unit >= 3 && unit < 3 + static_cast<int>(m_GlobalTextures.size())) {
+				m_GlobalTextures[unit - 3] = texture;
+			}
+		}
+
+		/// Gets the textures to bind to units 3 and up for every batch render.
+		const std::array<GLuint, 8>& GetGlobalTextures() const { return m_GlobalTextures; }
+
 		/// Returns the default shader.
 		const Shader* GetDefaultShader() { return m_DefaultShader.get(); }
 
@@ -75,14 +205,66 @@ namespace RTE {
 		/// Begin a set of draws with camera. Clears batched draw calls.
 		void BeginFrame(const Camera* camera = nullptr);
 
+		/// How many times BeginFrame has been called. Between two calls is one set of draws (a player screen's scene, or less), which lets what is
+		/// only needed once per such set (a terrain layer's upload for a view) be done once.
+		unsigned long long GetBeginFrameCount() const { return m_BeginFrameCount; }
+
 		/// Draws current draw calls to the active target and clears the batch for new draws.
 		void DrawActiveBatch();
 	private:
+		unsigned long long m_BeginFrameCount{0}; //!< See GetBeginFrameCount.
 		RenderBatch* m_ActiveBatch;
 		std::unique_ptr<RenderBatch> m_RenderBatch{nullptr};
 		std::unique_ptr<GLState> m_GLState{nullptr};
 		std::shared_ptr<BitmapTexture> m_ShapesTexture{nullptr};
 		std::shared_ptr<BitmapTexture> m_PaletteTexture{nullptr};
+		GLuint m_EmissivePaletteTexture{0};
+		std::array<unsigned char, 1024> m_EmissivePalette{}; //!< RGBA per palette color: R emissive, G vegetation, B liquid look * 16.
+		std::array<LiquidLook, c_MaxLiquidLooks> m_LiquidLooks{MakeLiquidLooks()}; //!< How each liquid look is drawn.
+		std::array<float, 256> m_MaterialLiquidLooks{}; //!< Each material's liquid look, 0 for none (SetMaterialLiquidLook).
+
+		/// The game's liquid looks. Water, lava and acid are exactly as they were drawn before the looks were a table.
+		static std::array<LiquidLook, c_MaxLiquidLooks> MakeLiquidLooks() {
+			const LiquidLook water{{0.27F, 0.6F, 0.8F, 0.6F}, {0.06F, 0.3F, 0.52F, 0.8F}, {0.9F, 0.0F, 1.0F, 1.0F}, {0.0F, 1.0F, 0.0F, 1.0F}, {0.82F, 0.94F, 1.0F, 1.0F}};
+			std::array<LiquidLook, c_MaxLiquidLooks> looks;
+			looks.fill(water);
+			looks[2] = {{0.75F, 0.15F, 0.02F, 1.0F}, {1.0F, 0.75F, 0.25F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {1.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+			looks[3] = {{0.85F, 1.0F, 0.45F, 1.0F}, {0.85F, 1.0F, 0.45F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {2.0F, 0.0F, 1.0F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+			// Oil: near black and nearly opaque, with an oily sheen and a faint violet line, reflecting a little.
+			looks[4] = {{0.10F, 0.08F, 0.06F, 0.92F}, {0.03F, 0.025F, 0.02F, 0.98F}, {0.95F, 0.0F, 0.5F, 0.15F}, {0.0F, 0.0F, 0.0F, 1.0F}, {0.35F, 0.3F, 0.4F, 0.5F}};
+			// Mud: brown, opaque and dull, barely rippling.
+			looks[5] = {{0.42F, 0.31F, 0.2F, 0.95F}, {0.25F, 0.18F, 0.11F, 1.0F}, {0.15F, 0.0F, 0.3F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {0.5F, 0.4F, 0.28F, 0.4F}};
+			// Slime: bubbling like acid, greener and glowing more.
+			looks[6] = {{0.55F, 1.0F, 0.35F, 1.0F}, {0.55F, 1.0F, 0.35F, 1.0F}, {0.0F, 0.0F, 0.0F, 0.0F}, {2.0F, 0.0F, 1.4F, 0.0F}, {0.0F, 0.0F, 0.0F, 0.0F}};
+			// Mercury: a silver mirror, metal and glossy.
+			looks[7] = {{0.72F, 0.74F, 0.78F, 1.0F}, {0.55F, 0.57F, 0.62F, 1.0F}, {1.0F, 1.0F, 0.6F, 0.0F}, {0.0F, 0.0F, 0.0F, 1.0F}, {0.95F, 0.96F, 1.0F, 0.5F}};
+			return looks;
+		}
+
+		/// A palette colour whose glow pulses.
+		struct PalettePulse {
+			int Index = 0;
+			float Low = 0.0F;
+			float High = 0.0F;
+			float Period = 1.0F;
+			float Phase = 0.0F;
+			bool Automatic = false; //!< Set by SetLiquidPaletteColor for a glowing liquid, kept by ClearPaletteAnimation.
+		};
+		/// A run of palette colours rotated through each other.
+		struct PaletteCycle {
+			int From = 0;
+			int To = 0;
+			float Period = 1.0F;
+		};
+		std::vector<PalettePulse> m_PalettePulses;
+		std::vector<PaletteCycle> m_PaletteCycles;
+		std::mutex m_PaletteAnimationMutex; //!< Guards the pulses and cycles: Lua scripts can ask for them from their threaded update while the frame is drawn.
+		std::array<unsigned char, 1024> m_PaletteColors{}; //!< The palette texture's own colours, RGBA, read back once, for cycling from and putting back.
+		bool m_PaletteColorsRead = false;
+		bool m_PaletteAnimated = false; //!< The textures hold animated values, to be put back when animation stops.
+
+		void SetPalettePulse(int paletteIndex, float low, float high, float period, float phase, bool automatic);
+		std::array<GLuint, 8> m_GlobalTextures{};
 		std::shared_ptr<Shader> m_DefaultShader{nullptr};
 		Camera m_DefaultCamera{{-1.0f, -1.0f}, {{0.0f, 0.0f}, {2.0f, 2.0f}}};
 	};

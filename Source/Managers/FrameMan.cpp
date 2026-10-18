@@ -14,6 +14,8 @@
 #include "UInputMan.h"
 #include "GLStateMan.h"
 #include "RenderMan.h"
+#include "SceneLighting.h"
+#include "EffectsParticles.h"
 
 #include "SLTerrain.h"
 #include "SLBackground.h"
@@ -826,10 +828,18 @@ void FrameMan::Draw() {
 	g_PostProcessMan.ClearScreenPostEffects();
 
 	// These accumulate the effects for each player's screen area, and are then transferred to the post-processing lists with the player screen offset applied
-	std::list<PostEffect> screenRelativeEffects;
+	std::vector<PostEffect> screenRelativeEffects;
 	std::list<Box> screenRelativeGlowBoxes;
 
 	const Activity* pActivity = g_ActivityMan.GetActivity();
+
+	SceneLighting* sceneLighting = g_PostProcessMan.GetSceneLighting();
+	sceneLighting->Update();
+	{
+		const LightingSettings& effects = g_PostProcessMan.GetLightingSettings();
+		EffectsParticles::Update(effects.EffectsSparks, effects.EffectsDust, effects.EffectsDebris);
+		EffectsParticles::BeginFrame();
+	}
 
 	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
 		g_CameraMan.Update(playerScreen);
@@ -873,6 +883,7 @@ void FrameMan::Draw() {
 			// g_SceneMan.Draw(drawScreen, drawScreenGUI, targetPos);
 			g_SceneMan.Draw(camera);
 
+			EffectsParticles::Draw(camera);
 			g_PrimitiveMan.DrawPrimitives(playerScreen, camera);
 
 			// Get only the scene-relative post effects that affect this player's screen
@@ -902,14 +913,16 @@ void FrameMan::Draw() {
 		RenderBatch* sceneBatch = g_RenderMan.GetActiveBatch();
 		g_RenderMan.SetActiveBatch(m_ScreenSpaceBatch.get());
 		g_RenderMan.BeginFrame(&screenSpaceCamera);
+		// Scene position of this player screen's top left pixel, as the scene was drawn with it, so the lights and HUD sit on what they belong to.
+		Vector screenTargetPos = g_CameraMan.GetOffset(playerScreen);
+		if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
+			screenTargetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
+		}
+		if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
+			screenTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
+		}
 		if (!IsHudDisabled(playerScreen) && pActivity) {
-			Vector hudTargetPos = g_CameraMan.GetOffset(playerScreen);
-			if (!g_SceneMan.SceneWrapsX() && drawScreen->w > g_SceneMan.GetSceneWidth()) {
-				hudTargetPos.m_X += (drawScreen->w - g_SceneMan.GetSceneWidth()) / 2;
-			}
-			if (!g_SceneMan.SceneWrapsY() && drawScreen->h > g_SceneMan.GetSceneHeight()) {
-				hudTargetPos.m_Y += (drawScreen->h - g_SceneMan.GetSceneHeight()) / 2;
-			}
+			const Vector& hudTargetPos = screenTargetPos;
 			g_MovableMan.DrawHUD(drawScreenGUI, hudTargetPos, playerScreen);
 			g_ActivityMan.GetActivity()->DrawGUI(drawScreenGUI, hudTargetPos, playerScreen);
 		}
@@ -926,6 +939,27 @@ void FrameMan::Draw() {
 			}
 		}
 		g_RenderMan.GetActiveBatch()->ClearDraws();
+
+		// Light the scene (sky light, glow lights, glows as emitted light, bloom, tonemapping) before anything HUD-like is drawn over it.
+		std::vector<SceneLight> screenLights;
+		g_PostProcessMan.GetLightsWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenLights);
+		std::vector<ScreenShockwave> screenShockwaves;
+		g_PostProcessMan.GetShockwavesWrapped(screenTargetPos, drawScreen->w, drawScreen->h, screenShockwaves);
+		// How badly this screen's player's unit is hurt, for the grade to answer (LightingSettings::EventLooks): nothing above 40% health, fully below 12%.
+		{
+			float hurt = 0.0F;
+			if (Activity* activity = g_ActivityMan.GetActivity()) {
+				int player = activity->PlayerOfScreen(playerScreen);
+				Actor* controlled = player >= Players::PlayerOne ? activity->GetControlledActor(player) : nullptr;
+				// The unit may have been deleted in the sim update just before this frame, so make sure it's still in the game before reading it.
+				if (controlled && g_MovableMan.IsActor(controlled) && !controlled->IsDead()) {
+					float health = controlled->GetHealth() / std::max(controlled->GetMaxHealth(), 1.0F);
+					hurt = 1.0F - glm::smoothstep(0.12F, 0.4F, health);
+				}
+			}
+			sceneLighting->SetScreenHurt(playerScreen, hurt);
+		}
+		sceneLighting->LightPlayerScreen(playerScreen, m_PlayerScreen.get(), screenTargetPos, screenRelativeEffects, screenLights, screenShockwaves);
 
 		// Screen-space HUD draws go on top of the scene regardless of scene depth.
 		glClear(GL_DEPTH_BUFFER_BIT);
@@ -1078,7 +1112,7 @@ void FrameMan::DrawWorldDump(bool drawForScenePreview) const {
 
 	// If we're not dumping a scene preview, draw objects and post-effects.
 	if (!drawForScenePreview) {
-		std::list<PostEffect> postEffectsList;
+		std::vector<PostEffect> postEffectsList;
 		BITMAP* effectBitmap = nullptr;
 		int effectPosX = 0;
 		int effectPosY = 0;

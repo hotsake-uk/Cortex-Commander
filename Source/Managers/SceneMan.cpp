@@ -2,6 +2,8 @@
 #include "Shader.h"
 #include "RenderMan.h"
 #include "PostProcessMan.h"
+#include "SceneLighting.h"
+#include "EffectsParticles.h"
 #include "PresetMan.h"
 #include "FrameMan.h"
 #include "ActivityMan.h"
@@ -123,10 +125,13 @@ int SceneMan::LoadScene(Scene* pNewScene, bool placeObjects, bool placeUnits) {
 	}
 
 	m_pCurrentScene = pNewScene;
+	++m_SceneGeneration;
 	if (m_pCurrentScene->LoadData(placeObjects, true, placeUnits) < 0) {
 		g_ConsoleMan.PrintString("ERROR: Loading scene \'" + m_pCurrentScene->GetPresetName() + "\' failed! Has it been properly defined?");
 		return -1;
 	}
+
+	g_PostProcessMan.ApplySceneAtmosphere(m_pCurrentScene);
 
 	// Report successful load to the console
 	g_ConsoleMan.PrintString("SYSTEM: Scene \"" + m_pCurrentScene->GetPresetName() + "\" was loaded");
@@ -568,6 +573,8 @@ bool SceneMan::TryPenetrate(int posX,
 	}
 	Material const* sceneMat = GetMaterialFromID(materialID);
 	Material const* spawnMat;
+	// Visual only: chips, dust and sparks where things hit terrain.
+	EffectsParticles::SpawnImpact(Vector(static_cast<float>(posX), static_cast<float>(posY)), velocity, EffectsParticles::ColorToRGB(sceneMat->GetColor()), sceneMat->GetIntegrity() >= 100.0F ? 1.0F : 0.0F);
 
 	float sprayScale = 0.1F;
 	float sqrImpMag = impulse.GetSqrMagnitude();
@@ -2670,13 +2677,27 @@ void SceneMan::Draw(const Camera& camera) {
 
 	SLTerrain* terrainLayer = m_pCurrentScene->GetTerrain();
 
+	// Terrain layers get scorch marks and the glow of freshly blasted terrain.
+	const Shader* sceneShader = g_RenderMan.GetCurrentShader();
+	const Shader* terrainShader = g_PostProcessMan.GetSceneLighting()->PrepareTerrainShader();
+
+	// The terrain shader is told which layer it draws: only the foreground's pixels are the material map's.
+	GLint foregroundUniform = terrainShader ? terrainShader->GetUniformLocation("rteForegroundLayer") : -1;
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::BackgroundLayer);
+	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
+	g_RenderMan.BeginLayerUniform(std::make_shared<BoolValue>(foregroundUniform, false), foregroundUniform);
 	terrainLayer->Draw(camera);
+	g_RenderMan.EndLayerUniforms();
+	g_RenderMan.SetCurrentShader(sceneShader);
 
 	g_MovableMan.Draw(camera);
 
 	terrainLayer->SetLayerToDraw(SLTerrain::LayerType::ForegroundLayer);
+	g_RenderMan.SetCurrentShader(terrainShader ? terrainShader : sceneShader);
+	g_RenderMan.BeginLayerUniform(std::make_shared<BoolValue>(foregroundUniform, true), foregroundUniform);
 	terrainLayer->Draw(camera);
+	g_RenderMan.EndLayerUniforms();
+	g_RenderMan.SetCurrentShader(sceneShader);
 
 	int teamId = camera.GetTeam();
 	if (teamId != Activity::NoTeam && m_pCurrentScene->GetUnseenLayer(teamId)) {

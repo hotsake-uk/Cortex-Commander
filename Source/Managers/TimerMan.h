@@ -2,6 +2,8 @@
 
 #include "Singleton.h"
 
+#include <algorithm>
+
 #include <deque>
 #include <chrono>
 
@@ -47,6 +49,10 @@ namespace RTE {
 		/// Tells whether there is enough sim time accumulated to do at least one physics update.
 		/// @return Whether there is enough sim time to do a physics update.
 		bool TimeForSimUpdate() const { return m_SimAccumulator >= m_DeltaTime; }
+
+		/// Gets how far the current frame is between the last simulation update and the next one, from 0 to 1. For drawing only: effects that move smoothly between sim updates.
+		/// @return The proportion of a sim update that has elapsed since the last one.
+		float GetSimUpdateProportion() const { return m_DeltaTime > 0 ? std::clamp(static_cast<float>(m_SimAccumulator) / static_cast<float>(m_DeltaTime), 0.0F, 1.0F) : 1.0F; }
 
 		/// Tells whether the current simulation update will be drawn in a frame. Use this to check if it is necessary to draw purely graphical things during the sim update.
 		/// @return Whether this is the last sim update before a frame with its results will appear.

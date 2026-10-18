@@ -7,6 +7,7 @@ in vec2 textureUV;
 in vec4 vertexColor;
 layout(location = 0) out vec4 FragColor;
 layout(location = 1) out vec4 NormalOut;
+layout(location = 2) out vec4 SurfaceOut;
 
 uniform sampler2D rteTexture;
 
@@ -32,4 +33,6 @@ void main() {
 	}
 	FragColor = vec4(0.0, 0.0, 0.0, coverage * vertexColor.a);
 	NormalOut = vec4(0.5, 0.5, 1.0, 0.5);
+	// Nothing under the fog casts a shadow anyone can see.
+	SurfaceOut = vec4(0.0);
 }

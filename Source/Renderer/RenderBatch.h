@@ -5,7 +5,7 @@
 #include "DrawCall.h"
 
 #include "glad/gl.h"
-#include "glm/fwd.hpp"
+#include "glm/glm.hpp"
 #include <optional>
 #include <vector>
 
@@ -19,6 +19,8 @@ namespace RTE {
 		GLuint m_VertexBuffer{0};
 		GLuint m_IndexBuffer{0};
 		int m_BufferElements{c_DefaultBatchVAOElements};
+		size_t m_VertexBufferBytes{0}; //!< How big the GL vertex buffer's store is, so it needn't be asked every upload.
+		size_t m_IndexBufferBytes{0}; //!< How big the GL index buffer's store is.
 		~VertexBuffer();
 		VertexBuffer();
 		VertexBuffer(int bufferSize);
@@ -43,9 +45,16 @@ namespace RTE {
 		std::vector<std::shared_ptr<DrawCall>> m_FreeDrawCalls{}; //!< Finished draw calls kept for reuse, so drawing doesn't allocate every frame.
 		float m_CurrentDepth{0.0f};
 		float m_CurrentZ{0.0f};
+		glm::u8vec4 m_CurrentSurface{0, 0, 0, 0}; //!< The surface new vertices are given (see Vertex::m_Surface). Zero for anything that isn't a solid object.
+		bool m_ShadowCasting{true}; //!< Whether surfaces set from now on may be marked as casting shadows. Turned off around things like muzzle flashes.
 		const DrawCall* m_OpenPixelDraw{nullptr}; //!< The last draw call, if it is a run of single pixels that the next pixel can join (see Draw::PixelBatched). Any other draw closes it.
 		const Shader* m_CurrentShader{nullptr};
 		std::vector<std::shared_ptr<UniformValueType>> m_CurrentUniforms{};
+		std::vector<std::shared_ptr<UniformValueType>> m_ObjectUniforms{}; //!< Given to every new draw call while an object with its own shader is drawn (RenderMan::BeginObjectShader).
+		const Shader* m_ShaderBeforeObject{nullptr}; //!< The shader to go back to after that object.
+		bool m_InObjectShader{false};
+		std::vector<std::shared_ptr<UniformValueType>> m_ObjectMapUniforms{}; //!< Given to every new draw call while a sprite with authored maps is drawn (RenderMan::BeginObjectMaps).
+		std::vector<std::shared_ptr<UniformValueType>> m_LayerUniforms{}; //!< Given to every new draw call while a layer that tells its shader which it is is drawn (RenderMan::BeginLayerUniform).
 		glm::mat4 m_CurrentView{1.0f};
 		glm::mat4 m_CurrentProjection{1.0f};
 		const Camera* m_CurrentCamera{nullptr};
