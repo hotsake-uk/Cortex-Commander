@@ -577,19 +577,23 @@ void LuaMan::ClearUserModuleCache() {
 	}
 }
 
+int LuaMan::GetCurrentStateOrder() const {
+	const LuaStateWrapper* state = s_luaStateOverride ? s_luaStateOverride : s_currentLuaState;
+	if (state == &m_MasterScriptState) {
+		return 0;
+	} else if (state && state >= m_ScriptStates.data() && state < m_ScriptStates.data() + m_ScriptStates.size()) {
+		return static_cast<int>(state - m_ScriptStates.data()) + 1;
+	}
+	return std::numeric_limits<int>::max();
+}
+
 void LuaMan::AddLuaScriptCallback(const std::function<void()>& callback) {
 	// Threaded script states ask from several threads at once, so the order these arrive in is down to timing. Each state's own calls come in the
 	// same order every time though, so they're run in order of state and then of when that state asked, which is the same on every run and machine.
-	const LuaStateWrapper* askingState = s_luaStateOverride ? s_luaStateOverride : s_currentLuaState;
-	int stateOrder = std::numeric_limits<int>::max();
-	if (askingState == &m_MasterScriptState) {
-		stateOrder = 0;
-	} else if (askingState && askingState >= m_ScriptStates.data() && askingState < m_ScriptStates.data() + m_ScriptStates.size()) {
-		stateOrder = static_cast<int>(askingState - m_ScriptStates.data()) + 1;
-	}
+	const int stateOrder = GetCurrentStateOrder();
 
 	std::scoped_lock lock(m_ScriptCallbacksMutex);
-	m_ScriptCallbacks.push_back({stateOrder, m_ScriptCallbackCounts[askingState]++, callback});
+	m_ScriptCallbacks.push_back({stateOrder, m_ScriptCallbackCounts[stateOrder]++, callback});
 }
 
 void LuaMan::ExecuteLuaScriptCallbacks() {

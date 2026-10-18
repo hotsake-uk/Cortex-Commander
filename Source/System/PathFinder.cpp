@@ -14,6 +14,7 @@
 #include "SceneMan.h"
 #include "ThreadMan.h"
 #include "DeterminismChecker.h"
+#include "LuaMan.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -37,7 +38,31 @@ namespace {
 		RequestCountRelease& operator=(const RequestCountRelease&) = delete;
 		std::atomic<int>& m_Count;
 	};
+
+	/// Notes in the console, the first few times, that a path search or its callback threw.
+	void NotePathSearchThrow(const char* what, const char* where) {
+		static std::atomic<int> s_Noted = 0;
+		if (s_Noted.fetch_add(1) < 5) {
+			g_ConsoleMan.PrintString(std::string("ERROR: a path search threw in ") + where + ": " + what + "; answered as no route.");
+		}
+	}
+
+	/// Clears a request's results to no route.
+	void AnswerNoRoute(PathRequest& request) {
+		request.status = MicroPather::NO_SOLUTION;
+		request.path.clear();
+		request.kinds.clear();
+		request.totalCost = 0.0F;
+		request.pathLength = 0.0F;
+		request.cutAtDoor = false;
+		request.skyRoute = false;
+		request.cutMaterial = 0;
+	}
 } // namespace
+
+std::mutex PathFinder::s_DeferredMutex;
+std::vector<PathFinder::DeferredSearch> PathFinder::s_DeferredSearches;
+std::map<int, uint64_t> PathFinder::s_DeferredSequences;
 
 // One pathfinder per thread, lazily initialized. Shouldn't access this directly, use GetPather() instead.
 struct MicroPatherWrapper {
@@ -255,6 +280,7 @@ void PathFinder::Destroy() {
 	// Searches still held when the grid goes (a scene unloaded while its grid waited to be rewritten) are answered as no route: dropped, their
 	// Lua callbacks stayed in their state's table for good, and anything waiting on one waited for ever.
 	FailHeldRequests();
+	FailDeferredRequests();
 	Clear();
 }
 
@@ -1138,104 +1164,146 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 	const_cast<Vector&>(pathRequest->startPos) = start;
 	const_cast<Vector&>(pathRequest->targetPos) = end;
 
+	// The search itself, on whichever thread runs it: a search that throws (out of memory, say) comes back as no route, as a throw out of a pool
+	// task ended the game (push_task has no catch).
+	auto search = [this, start, end, agent, pathRequest]() {
+		// Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
+		PathRequest& request = const_cast<PathRequest&>(*pathRequest);
+		bool searched = false;
+		try {
+			request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
+			request.cutAtDoor = s_LastCutAtDoor;
+			request.skyRoute = s_LastSkyRoute;
+			request.cutMaterial = s_LastCutMaterial;
+			request.pathLength = request.path.size();
+			searched = true;
+		} catch (const std::exception& exception) {
+			NotePathSearchThrow(exception.what(), "the search");
+		} catch (...) {
+			NotePathSearchThrow("unknown exception", "the search");
+		}
+		if (!searched) {
+			AnswerNoRoute(request);
+			// The thread's pather may have been left mid-solve; the next search builds a new one.
+			delete s_Pather.m_Instance;
+			s_Pather.m_Instance = nullptr;
+		}
+	};
+	// The asker told, once the search is done. One caught past the complete flag left the asker waiting on this request for ever, so a callback
+	// that throws is noted and the request is still marked complete.
+	auto finish = [callback, pathRequest]() {
+		if (callback) {
+			try {
+				callback(pathRequest);
+			} catch (const std::exception& exception) {
+				NotePathSearchThrow(exception.what(), "its callback");
+			} catch (...) {
+				NotePathSearchThrow("unknown exception", "its callback");
+			}
+		}
+		// Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
+		// This has the awkward side-effect that the complete flag is actually false during the callback - but that's fine, if it's called we know it's complete anyways
+		pathRequest->complete = true;
+	};
+	// Answered as no route without searching, for a search that never will be (its grid gone).
+	auto fail = [pathRequest, finish]() {
+		AnswerNoRoute(const_cast<PathRequest&>(*pathRequest));
+		finish();
+	};
+
+	// With the determinism checker on, the search is deferred: searched with the others at a fixed point in the update and answered in a fixed
+	// order (DeliverDeferredRequests). Searched in the background whenever a thread got to it, which update the asker first saw its route in, and
+	// how the grid's cost updates fell between searches, were down to how busy the machine was. The order is that of who asked: which script
+	// state, then how many searches that state had asked for before, taken here on the asking thread, as the threaded scripts' states ask from
+	// several threads at once and the order their searches arrive in is down to timing.
+	const bool deferred = DeterminismChecker::IsActive();
+	int askerOrder = 0;
+	uint64_t askerSequence = 0;
+	if (deferred) {
+		askerOrder = g_LuaMan.GetCurrentStateOrder();
+		std::lock_guard<std::mutex> lock(s_DeferredMutex);
+		askerSequence = s_DeferredSequences[askerOrder]++;
+	}
+
 	// Counted from the moment it's queued, not from when a thread picks it up: the grid's cost updates wait for the count to be zero, and
 	// a request still in the queue when they ran was then solved on a grid being written under it. The count goes up under
 	// m_HeldRequestsMutex, which HoldNewRequests takes too, so once a hold has seen zero no search starts until ReleaseHeldRequests, from
 	// whichever thread it is asked for (the AI scripts ask from worker threads).
-	auto send = [this, start, end, agent, callback, pathRequest]() {
+	auto send = [this, search, finish, fail, pathRequest, deferred, askerOrder, askerSequence]() {
+		if (deferred) {
+			// (Counted only while it is searched, in DeliverDeferredRequests: until then nothing reads the grid for it.)
+			std::lock_guard<std::mutex> lock(s_DeferredMutex);
+			s_DeferredSearches.push_back({askerOrder, askerSequence, this, search, finish, fail});
+			return;
+		}
 		++m_CurrentPathingRequests;
-		auto solve = [this, start, end, agent, callback](std::shared_ptr<volatile PathRequest> volRequest) {
-			// Cast away the volatile-ness - only matters outside (and complicates the API otherwise)
-			PathRequest& request = const_cast<PathRequest&>(*volRequest);
+		g_ThreadMan.GetBackgroundThreadPool().push_task([this, search, finish]() {
 			// (The count taken when it was queued, given back at the end, after the complete flag, or if the search or callback throws.)
 			RequestCountRelease countRelease(m_CurrentPathingRequests);
-
-			// A throw out of a pool task ended the game (push_task has no catch), and one caught past the complete flag left the asker waiting on
-			// this request for ever; so a search that throws (out of memory, say) comes back as no route, and the asker is still told.
-			auto noteThrow = [](const char* what, const char* where) {
-				static std::atomic<int> s_Noted = 0;
-				if (s_Noted.fetch_add(1) < 5) {
-					g_ConsoleMan.PrintString(std::string("ERROR: a path search threw in ") + where + ": " + what + "; answered as no route.");
-				}
-			};
-			bool searched = false;
-			try {
-				request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
-				request.cutAtDoor = s_LastCutAtDoor;
-				request.skyRoute = s_LastSkyRoute;
-				request.cutMaterial = s_LastCutMaterial;
-				request.pathLength = request.path.size();
-				searched = true;
-			} catch (const std::exception& exception) {
-				noteThrow(exception.what(), "the search");
-			} catch (...) {
-				noteThrow("unknown exception", "the search");
-			}
-			if (!searched) {
-				request.status = MicroPather::NO_SOLUTION;
-				request.path.clear();
-				request.kinds.clear();
-				request.totalCost = 0.0F;
-				request.pathLength = 0.0F;
-				request.cutAtDoor = false;
-				request.skyRoute = false;
-				request.cutMaterial = 0;
-				// The thread's pather may have been left mid-solve; the next search builds a new one.
-				delete s_Pather.m_Instance;
-				s_Pather.m_Instance = nullptr;
-			}
-
-			if (callback) {
-				try {
-					callback(volRequest);
-				} catch (const std::exception& exception) {
-					noteThrow(exception.what(), "its callback");
-				} catch (...) {
-					noteThrow("unknown exception", "its callback");
-				}
-			}
-
-			// Have to set to complete after the callback, so anything that blocks on it knows that the callback will have been called by now
-			// This has the awkward side-effect that the complete flag is actually false during the callback - but that's fine, if it's called we know it's complete anyways
-			request.complete = true;
-		};
-		if (DeterminismChecker::IsActive()) {
-			// Searched in the background, a route comes back whenever its thread gets to it, so when the asker first sees it, and how the grid's
-			// cost updates (which wait for no search to be running) fall between searches, are down to how busy the machine is. Searched here
-			// and now, both are the same on every run and every machine.
-			solve(pathRequest);
-		} else {
-			g_ThreadMan.GetBackgroundThreadPool().push_task(solve, pathRequest);
-		}
+			search();
+			finish();
+		});
 	};
 	{
 		// Kept back while the grid waits to be rewritten (HoldNewRequests); counted under the lock otherwise, so a hold sees every search sent before it.
 		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
 		if (m_HoldingNewRequests) {
-			auto fail = [callback, pathRequest]() {
-				PathRequest& request = const_cast<PathRequest&>(*pathRequest);
-				request.status = MicroPather::NO_SOLUTION;
-				request.path.clear();
-				request.kinds.clear();
-				request.totalCost = 0.0F;
-				request.pathLength = 0.0F;
-				if (callback) {
-					callback(pathRequest);
-				}
-				request.complete = true;
-			};
 			m_HeldRequests.push_back({std::move(send), std::move(fail)});
 			return pathRequest;
 		}
-		if (!DeterminismChecker::IsActive()) {
-			send();
-			return pathRequest;
-		}
+		send();
 	}
-	// (Searched here, outside the lock, as the search may take a while and other threads ask under it too.)
-	send();
 
 	return pathRequest;
+}
+
+void PathFinder::DeliverDeferredRequests() {
+	std::vector<DeferredSearch> searches;
+	{
+		std::lock_guard<std::mutex> lock(s_DeferredMutex);
+		searches.swap(s_DeferredSearches);
+	}
+	if (searches.empty()) {
+		return;
+	}
+	ZoneScoped;
+	std::sort(searches.begin(), searches.end(), [](const DeferredSearch& lhs, const DeferredSearch& rhs) { return lhs.AskerOrder != rhs.AskerOrder ? lhs.AskerOrder < rhs.AskerOrder : lhs.AskerSequence < rhs.AskerSequence; });
+
+	// Searched in parallel, on the background threads, while the asking thread waits: nothing changes the terrain or the grids meanwhile, and each
+	// search reads only those and what it was asked, so what a search finds doesn't depend on which thread ran it or when.
+	for (const DeferredSearch& search: searches) {
+		++search.Finder->m_CurrentPathingRequests;
+	}
+	g_ThreadMan.GetBackgroundThreadPool()
+	    .parallelize_loop(searches.size(),
+	                      [&searches](size_t first, size_t last) {
+		                      for (size_t i = first; i < last; ++i) {
+			                      RequestCountRelease countRelease(searches[i].Finder->m_CurrentPathingRequests);
+			                      searches[i].Search();
+		                      }
+	                      },
+	                      searches.size())
+	    .wait();
+
+	// Then answered in order here. (Searches their callbacks ask for go to the next delivery.)
+	for (const DeferredSearch& search: searches) {
+		search.Finish();
+	}
+}
+
+void PathFinder::FailDeferredRequests() {
+	std::vector<DeferredSearch> failed;
+	{
+		std::lock_guard<std::mutex> lock(s_DeferredMutex);
+		auto mine = std::stable_partition(s_DeferredSearches.begin(), s_DeferredSearches.end(), [this](const DeferredSearch& search) { return search.Finder != this; });
+		failed.assign(std::make_move_iterator(mine), std::make_move_iterator(s_DeferredSearches.end()));
+		s_DeferredSearches.erase(mine, s_DeferredSearches.end());
+	}
+	std::sort(failed.begin(), failed.end(), [](const DeferredSearch& lhs, const DeferredSearch& rhs) { return lhs.AskerOrder != rhs.AskerOrder ? lhs.AskerOrder < rhs.AskerOrder : lhs.AskerSequence < rhs.AskerSequence; });
+	// (Outside the lock: a callback may ask for another search, which takes it.)
+	for (const DeferredSearch& search: failed) {
+		search.Fail();
+	}
 }
 
 bool PathFinder::WaitForPathingRequests(int timeoutMS) {
@@ -1266,16 +1334,9 @@ void PathFinder::ReleaseHeldRequests() {
 		std::lock_guard<std::mutex> lock(m_HeldRequestsMutex);
 		m_HoldingNewRequests = false;
 		held.swap(m_HeldRequests);
-		if (!DeterminismChecker::IsActive()) {
-			for (HeldRequest& request: held) {
-				request.Send();
-			}
-			return;
+		for (HeldRequest& request: held) {
+			request.Send();
 		}
-	}
-	// (Searched here, outside the lock, as in CalculatePathAsync.)
-	for (HeldRequest& request: held) {
-		request.Send();
 	}
 }
 

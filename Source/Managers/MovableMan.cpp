@@ -1735,6 +1735,9 @@ void MovableMan::Update() {
 		g_SceneMan.GetScene()->BlockUntilAllPathingRequestsComplete();
 	}
 
+	// The path searches deferred since the last update (with the determinism checker on), searched and answered here, so their Lua callbacks run below.
+	PathFinder::DeliverDeferredRequests();
+
 	// Prior to controller/AI update, execute lua callbacks
 	g_LuaMan.ExecuteLuaScriptCallbacks();
 

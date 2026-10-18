@@ -11,6 +11,8 @@
 #include <limits>
 #include <deque>
 #include <list>
+#include <map>
+#include <cstdint>
 #include <memory>
 #include <functional>
 #include <vector>
@@ -368,6 +370,11 @@ namespace RTE {
 		/// Lets new async searches go again, and sends the ones kept back by HoldNewRequests, in the order they were asked for.
 		void ReleaseHeldRequests();
 
+		/// Searches all the deferred async searches (those asked for with the determinism checker on) in parallel on the background threads, waiting
+		/// for them all, then answers them in the order of who asked: script state, then that state's own order. For a fixed point in the update,
+		/// so that what each search finds and when its asker hears of it is the same on every run and every machine.
+		static void DeliverDeferredRequests();
+
 		/// Answers the searches held back by HoldNewRequests as having no route, without searching: their callbacks are called (so a Lua
 		/// callback is taken out of its state's table) and they are marked complete. For when the grid goes away with searches held.
 		void FailHeldRequests();
@@ -619,6 +626,23 @@ namespace RTE {
 			std::function<void()> Fail;
 		};
 		std::vector<HeldRequest> m_HeldRequests; //!< The searches kept back, in the order they were asked for.
+
+		/// An async search deferred to DeliverDeferredRequests: who asked, the grid it's on, how to search it, how to tell the asker, and how to
+		/// answer it as no route if its grid goes first.
+		struct DeferredSearch {
+			int AskerOrder; //!< The asking script state's place (LuaMan::GetCurrentStateOrder).
+			uint64_t AskerSequence; //!< How many searches that state had asked for before this one.
+			PathFinder* Finder;
+			std::function<void()> Search;
+			std::function<void()> Finish;
+			std::function<void()> Fail;
+		};
+		static std::mutex s_DeferredMutex; //!< Guards the deferred searches and the sequence counts.
+		static std::vector<DeferredSearch> s_DeferredSearches; //!< The searches waiting for DeliverDeferredRequests, on every grid.
+		static std::map<int, uint64_t> s_DeferredSequences; //!< How many searches each script state has asked for, by its place.
+
+		/// Answers this grid's deferred searches as having no route, for when the grid goes away.
+		void FailDeferredRequests();
 
 		/// Gets the pather for this thread. Lazily-initialized for each new thread that needs a pather.
 		/// @return The pather for this thread.

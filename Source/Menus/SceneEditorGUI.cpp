@@ -20,6 +20,7 @@
 #include "SLTerrain.h"
 #include "ObjectPickerGUI.h"
 #include "Scene.h"
+#include "PathFinder.h"
 #include "SettingsMan.h"
 #include "Deployment.h"
 #include "BunkerAssemblyScheme.h"
@@ -271,6 +272,7 @@ bool SceneEditorGUI::TestBrainResidence(bool noBrainIsOK) {
 	// (A search held back while a grid waits to be rewritten would never finish under this wait.)
 	if (m_PathRequest && !m_PathRequest->complete && g_SceneMan.GetScene()) {
 		g_SceneMan.GetScene()->ReleaseHeldPathRequests();
+		PathFinder::DeliverDeferredRequests();
 	}
 	while (m_PathRequest && !m_PathRequest->complete) {
 		std::this_thread::yield();
@@ -763,6 +765,7 @@ void SceneEditorGUI::Update() {
 				// (A search held back while a grid waits to be rewritten would never finish under this wait.)
 				if (m_PathRequest && !m_PathRequest->complete && g_SceneMan.GetScene()) {
 					g_SceneMan.GetScene()->ReleaseHeldPathRequests();
+					PathFinder::DeliverDeferredRequests();
 				}
 				while (m_PathRequest && !m_PathRequest->complete) {
 					std::this_thread::yield();

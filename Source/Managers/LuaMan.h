@@ -374,6 +374,11 @@ namespace RTE {
 		/// Clears internal Lua package tables from all user-defined modules. Those must be reloaded with ReloadAllScripts().
 		void ClearUserModuleCache();
 
+		/// Gets the place of the script state running on this thread, for putting what the states ask for from several threads at once in an order
+		/// that doesn't depend on timing: 0 for the master state, then the threaded states in turn, and the greatest int for none.
+		/// @return The running state's place.
+		int GetCurrentStateOrder() const;
+
 		/// Adds a function to be called prior to executing lua scripts. This is used to callback into lua from other threads safely.
 		/// @param callback The callback function that will be executed.
 		void AddLuaScriptCallback(const std::function<void()>& callback);
@@ -511,7 +516,7 @@ namespace RTE {
 			std::function<void()> Function; //!< The callback itself.
 		};
 		std::vector<ScriptCallback> m_ScriptCallbacks; //!< A list of callback functions we'll trigger before processing lua scripts. This allows other threads (i.e pathing requests) to safely trigger callbacks in lua
-		std::unordered_map<const LuaStateWrapper*, int> m_ScriptCallbackCounts; //!< How many callbacks each script state has asked for since they were last run, for their Sequence.
+		std::unordered_map<int, int> m_ScriptCallbackCounts; //!< How many callbacks each script state has asked for since they were last run, for their Sequence.
 		std::mutex m_ScriptCallbacksMutex; //!< Mutex to ensure multiple threads aren't modifying the script callback vector at the same time.
 
 		int m_LastAssignedLuaState = 0;
