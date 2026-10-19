@@ -2208,6 +2208,9 @@ void DebugMan::SettingsGUI() {
 		Tip("Units you send to dig to a place look out for cave-ins too, but never go round: you asked for that tunnel, so they dig it and back off from what comes down (with the setting above on). Off: they just dig.");
 		Check("Dig-to preview warns of cave-ins", &safety.PreviewWarns);
 		Tip("The dig-to line by the cursor adds \"the roof will come down\" when the planned tunnel would bring ground down into it.");
+		Heading("Dig-to orders");
+		Check("Plan only on ground nearby", &safety.NearbyOnly);
+		Tip("On (normal): a dig-to is planned on the ground within about 200 px of the digger only. Ground further off is taken for ground it can dig, so it digs straight on, and only when it reaches something too hard does it go round from there. Its route gives nothing away about what is deep in the ground. Off: the route knows all the ground from the start and goes round hard ground far ahead.");
 		if (Plain()) {
 			ImGui::Spacing();
 			if (ToolUI::Button("Reset to defaults")) {
@@ -2406,7 +2409,7 @@ void DebugMan::SettingsGUI() {
 			if (Slider("Dig cost on a dig-to", &dig, Normal{normal.DigCostScale * 100.0F}, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
 				direct.DigCostScale = dig / 100.0F;
 			}
-			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
+			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 8%.");
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
 			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");

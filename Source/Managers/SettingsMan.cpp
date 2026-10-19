@@ -1320,6 +1320,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DigBackOff", { reader >> m_DigSafety.BackOff; });
 	MatchProperty("DigToAvoidCaveIns", { reader >> m_DigSafety.DigToOrders; });
 	MatchProperty("DigToPreviewWarns", { reader >> m_DigSafety.PreviewWarns; });
+	MatchProperty("DigToNearbyOnly", { reader >> m_DigSafety.NearbyOnly; });
 	MatchProperty("AIDodgesFallingGround", { reader >> m_AIDodgesFallingGround; });
 	MatchProperty("DirectDiveRisk", { reader >> m_DirectOrders.DiveRisk; m_DirectOrders.DiveRisk = std::clamp(m_DirectOrders.DiveRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectDiveChance", { reader >> m_DirectOrders.DiveChance; m_DirectOrders.DiveChance = std::clamp(m_DirectOrders.DiveChance, 0.0F, 1.0F); });
@@ -2060,6 +2061,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DigBackOff", m_DigSafety.BackOff);
 	writer.NewPropertyWithValue("DigToAvoidCaveIns", m_DigSafety.DigToOrders);
 	writer.NewPropertyWithValue("DigToPreviewWarns", m_DigSafety.PreviewWarns);
+	writer.NewPropertyWithValue("DigToNearbyOnly", m_DigSafety.NearbyOnly);
 	writer.NewPropertyWithValue("AIDodgesFallingGround", m_AIDodgesFallingGround);
 	writer.NewPropertyWithValue("DirectDiveRisk", m_DirectOrders.DiveRisk);
 	writer.NewPropertyWithValue("DirectDiveChance", m_DirectOrders.DiveChance);

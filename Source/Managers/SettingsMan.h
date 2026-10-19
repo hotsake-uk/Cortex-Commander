@@ -665,6 +665,7 @@ namespace RTE {
 			bool BackOff = true; //!< With no way round, it digs on, and backs out from under the ground expected to fall while it comes down, waiting for it to settle before going on.
 			bool DigToOrders = true; //!< Units on a dig-to order do the same, but never go round: the player asked for that tunnel, so they dig it and back off.
 			bool PreviewWarns = true; //!< The dig-to preview says when the tunnel would bring the roof down.
+			bool NearbyOnly = true; //!< A dig-to is planned on the ground near the digger only: ground further off is taken for ordinary ground it digs, and found out when it gets there (PathFinder's known reach).
 		};
 
 		/// Gets the digging safety tuning, to read or change ("Digging" settings).

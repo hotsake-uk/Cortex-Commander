@@ -2038,6 +2038,10 @@ PathAgent Actor::GetPathAgent() const {
 		} else {
 			agent.LineWeight += tuning.LineWeight;
 		}
+	} else {
+		// A dig-to keeps to the straight line to its point on every order, not only a dragged one: it digs as directly as it can and goes round
+		// only what it can't dig. (With no line at all, a single-click dig-to walked round the first mound in its way and dug after.)
+		agent.LineWeight = std::max(agent.LineWeight, PathAgent::c_DigToLineWeight);
 	}
 	for (const std::pair<Vector, double>& avoid: m_AvoidPoints) {
 		if (avoid.second > g_TimerMan.GetSimTimeMS()) {

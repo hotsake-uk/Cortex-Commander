@@ -777,29 +777,67 @@ namespace SandboxDetail {
 				}
 			}
 			const float reach = defender.Radius + defender.Chase;
+			// Whether the unit can see an enemy from where it is: only those are gone after. (Every enemy near the place was, through rock and
+			// walls: a defender digging its way to its post was sent after one it couldn't see or get at, then back, then after it again.)
+			auto inSight = [&](const Actor* other) {
+				const Vector eye = unit->GetEyePos();
+				Vector blocked;
+				return !g_SceneMan.CastStrengthRay(eye, g_SceneMan.ShortestDistance(eye, other->GetPos(), wraps), 5.0F, blocked, 3);
+			};
+			auto chaseable = [&](const Actor* other, float within) {
+				// (A player's defenders don't go after what their side can't see, in commander mode: RC-9.)
+				return other->GetTeam() != unit->GetTeam() && g_SceneMan.ShortestDistance(defender.Center, other->GetPos(), wraps).MagnitudeIsLessThan(within) && !(defender.Commanded && HiddenFromCommander(other));
+			};
 			Actor* enemy = nullptr;
+			float nearest = 0.0F;
 			if (g_SceneMan.ShortestDistance(defender.Center, unit->GetPos(), wraps).MagnitudeIsLessThan(reach)) {
-				float nearest = 0.0F;
 				for (Actor* other: fighters) {
-					if (other->GetTeam() == unit->GetTeam() || !g_SceneMan.ShortestDistance(defender.Center, other->GetPos(), wraps).MagnitudeIsLessThan(reach)) {
-						continue;
-					}
-					// (A player's defenders don't go after what their side can't see, in commander mode: RC-9.)
-					if (defender.Commanded && HiddenFromCommander(other)) {
+					if (!chaseable(other, reach)) {
 						continue;
 					}
 					float distance = g_SceneMan.ShortestDistance(unit->GetPos(), other->GetPos(), wraps).GetSqrMagnitude();
-					if (!enemy || distance < nearest) {
+					if ((!enemy || distance < nearest) && inSight(other)) {
 						enemy = other;
 						nearest = distance;
 					}
 				}
 			}
+			// The one it is after already is kept while it lives and is near the place, and has been seen in the last 3 s, and is given up for
+			// another only when that one is much nearer, and not within 3 s of taking it up. (Taken afresh every half second, the nearest of
+			// two enemies, or one that blinked out of the fog or over the zone's edge for a check, sent the unit after one, back to its post,
+			// after the other, over and over, and an order to dig its way to its post was started again each time and never got anywhere.)
+			const long long hold = static_cast<long long>(3.0F * UpdatesPerSecond());
+			if (defender.ChasingID != 0) {
+				auto current = byID.find(defender.ChasingID);
+				Actor* chased = current == byID.end() ? nullptr : current->second;
+				if (chased && IsCombatant(chased) && chaseable(chased, reach * 1.2F)) {
+					if (chased == enemy || inSight(chased)) {
+						defender.ChaseSeen = now;
+					}
+					if (now - defender.ChaseSeen <= hold) {
+						const float chasedDistance = g_SceneMan.ShortestDistance(unit->GetPos(), chased->GetPos(), wraps).GetSqrMagnitude();
+						if (!enemy || enemy == chased || now - defender.ChaseSince < hold || nearest > chasedDistance * 0.36F) {
+							enemy = chased;
+						}
+					}
+				}
+			}
+			if (enemy) {
+				defender.NoEnemySince = -1;
+			} else if (defender.NoEnemySince < 0) {
+				defender.NoEnemySince = now;
+			}
+			// (Back to its post only after 2 s with nothing to go after, not on the first check that found none.)
+			const bool settledNoEnemy = !enemy && now - defender.NoEnemySince >= static_cast<long long>(2.0F * UpdatesPerSecond());
 			if (enemy) {
 				if (defender.ChasingID != static_cast<long>(enemy->GetUniqueID())) {
 					defender.ChasingID = static_cast<long>(enemy->GetUniqueID());
+					defender.ChaseSince = now;
+					defender.ChaseSeen = now;
 					SendUnit(unit, enemy->GetPos(), enemy, true, "defending: after an enemy", false, true);
 				}
+			} else if (defender.ChasingID != 0 && !settledNoEnemy) {
+				// (Still after it a moment longer: see above.)
 			} else if (defender.ChasingID != 0 || !HeadingForPost(unit, defender) || FlyAgainFor(unit, defender.Post)) {
 				// (A post up in the air the unit came down from, its tank run out: flown to again once the tank has filled.)
 				defender.ChasingID = 0;
