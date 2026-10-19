@@ -859,6 +859,8 @@ namespace SandboxDetail {
 		int TimeLimit = 300; //!< Assault: seconds the attackers have; each objective taken adds BonusSeconds.
 		int BonusSeconds = 60;
 		bool BlockLastRespawns = false; //!< Assault: no more respawns for the defenders while the last objective is in play and being fought over or taken.
+		int AttackerSpawn = 1; //!< Assault: where the attackers come in once objectives are taken: 0 their own spawn zones all game; 1 the last objective
+		                       //!< taken (their only spawn zone); 2 one behind: the first taken, then always the one before the last taken.
 		int Tickets = 60; //!< Last team standing: units each team gets in all, its first ones counted.
 		int KillsToWin = 5; //!< VIP hunt: enemy VIPs a team has to bring down to win.
 		int VipRespawnSeconds = 20; //!< VIP hunt: seconds before a fallen VIP's team has a new one.
