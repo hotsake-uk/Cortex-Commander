@@ -145,6 +145,20 @@ namespace RTE {
 		/// @return The height of the player screens.
 		int GetPlayerScreenHeight() const { return GetPlayerFrameBufferHeight(-1); }
 
+		/// Gets the width of the screen the simulation's ranges go by: how far units see and hear, how far a bullet flies and so on. The player screens',
+		/// except in an online match, where it's the same on every machine (c_DefaultResX), whatever each one's window, zoom and screens.
+		/// @return The width the simulation's ranges go by.
+		int GetSimScreenWidth() const;
+
+		/// Gets which player screen is shown in a place on the window: the place's own, except in an online match, where the one place shows this machine's player's.
+		/// @param screenIndex The place on the window, numbered as the split screens are.
+		/// @return The player screen shown there.
+		int ShownScreen(int screenIndex) const;
+
+		/// Gets the height of the screen the simulation's ranges go by (see GetSimScreenWidth).
+		/// @return The height the simulation's ranges go by.
+		int GetSimScreenHeight() const;
+
 		/// Gets the resolution multiplier.
 		float GetResolutionMultiplier() const;
 

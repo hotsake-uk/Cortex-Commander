@@ -824,7 +824,8 @@ namespace {
 	float Audibility(const Actor& actor, float& pan) {
 		const Activity* activity = g_ActivityMan.GetActivity();
 		float best = 0.0F;
-		for (int screen = 0; screen < g_FrameMan.GetScreenCount(); ++screen) {
+		for (int screenIndex = 0; screenIndex < g_FrameMan.GetScreenCount(); ++screenIndex) {
+			const int screen = g_FrameMan.ShownScreen(screenIndex);
 			const int player = activity->PlayerOfScreen(screen);
 			if (player < 0) {
 				continue;

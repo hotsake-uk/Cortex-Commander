@@ -211,7 +211,8 @@ void CameraMan::SetCameraZoom(float zoom, int screen) {
 }
 
 void CameraMan::ResetAllScreenShake() {
-	for (int screenId = 0; screenId < g_FrameMan.GetScreenCount(); ++screenId) {
+	for (int screenIndex = 0; screenIndex < g_FrameMan.GetScreenCount(); ++screenIndex) {
+		const int screenId = g_FrameMan.ShownScreen(screenIndex);
 		Screen& screen = m_Screens[screenId];
 		screen.ScreenShakeMagnitude = 0;
 		screen.ScreenShakeTime = 0;
@@ -221,7 +222,8 @@ void CameraMan::ResetAllScreenShake() {
 }
 
 void CameraMan::AddScreenShake(float magnitude, const Vector& position) {
-	for (int screenId = 0; screenId < g_FrameMan.GetScreenCount(); ++screenId) {
+	for (int screenIndex = 0; screenIndex < g_FrameMan.GetScreenCount(); ++screenIndex) {
+		const int screenId = g_FrameMan.ShownScreen(screenIndex);
 		Screen& screen = m_Screens[screenId];
 
 		Vector frameSize = GetFrameSize(screenId);

@@ -2920,7 +2920,7 @@ Vector Actor::HearFootsteps() const {
 	}
 	// (An alarm event's range is so much of a screen's width; see AlarmEvent. The loudest footsteps, a run on metal, are 0.675.)
 	// (Times the Hearing range setting.)
-	const float scale = m_Perceptiveness * static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.51F * g_SettingsMan.AICombatHearing();
+	const float scale = m_Perceptiveness * static_cast<float>(g_FrameMan.GetSimScreenWidth()) * 0.51F * g_SettingsMan.AICombatHearing();
 	const float farthest = 0.7F * scale;
 	const Vector ears = GetEyePos();
 	const bool wraps = g_SceneMan.SceneWrapsX() || g_SceneMan.SceneWrapsY();
@@ -3392,7 +3392,7 @@ void RTE::Actor::CastSeeRays() {
 	if (m_Status != Actor::INACTIVE) {
 		const int lookIterations = 6; // How many see rays to cast per frame
 		for (int i = 0; i < lookIterations; ++i) {
-			Look(45 * m_Perceptiveness, g_FrameMan.GetPlayerScreenWidth() * 0.51 * m_Perceptiveness);
+			Look(45 * m_Perceptiveness, g_FrameMan.GetSimScreenWidth() * 0.51 * m_Perceptiveness);
 		}
 	}
 }

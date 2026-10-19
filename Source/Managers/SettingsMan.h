@@ -53,6 +53,32 @@ namespace RTE {
 		/// Call once a frame; it looks at most once a second.
 		void SaveSettingsIfChanged() const;
 
+		/// Gets the settings as the host of an online match sends them to the player who joins: the settings file's text (see AdoptOnlineMatchSettings).
+		/// @return The settings file's text for the settings as they are now.
+		std::string GetOnlineMatchSettingsText() const;
+
+		/// Takes on the host's settings for an online match, apart from the ones that only change how the game looks, sounds or is controlled
+		/// on this machine (IsLocalOnlySetting) and the ones only read at start-up (IsStartUpSetting, which have to be the same already): the
+		/// rest change what happens in the match, which has to be the same on every machine. The host takes its own on again the same way,
+		/// as the settings file's text has the numbers to only so many places, and both have to have exactly the same.
+		/// @param hostSettingsText The host's settings, as GetOnlineMatchSettingsText gave them.
+		/// @param keepSettingsFile Whether to leave the settings file as it was: nothing is written to it from now on, so the player who joined keeps their own.
+		/// @return Whether they were read.
+		bool AdoptOnlineMatchSettings(const std::string& hostSettingsText, bool keepSettingsFile);
+
+		/// Gets whether a setting is only read as the game starts up (the data and the Lua states are loaded with it), so an online match's
+		/// players have to start with the same rather than the one who joined taking on the host's.
+		/// @param key The setting's name, as in the settings file.
+		/// @return Whether it's only read at start-up.
+		static bool IsStartUpSetting(const std::string& key);
+
+		/// Gets whether a setting only changes how the game looks, sounds or is controlled on this machine, so the players of an online match
+		/// can each keep their own. Anything that might change what happens in the match is not, lighting and weather among them, as the AI
+		/// sees less at night and in the weather.
+		/// @param key The setting's name, as in the settings file.
+		/// @return Whether each player keeps their own.
+		static bool IsLocalOnlySetting(const std::string& key);
+
 		/// What a preset holds: every setting, or only one of the settings panel's two groups. Each setting the panel saves is in one of the groups or
 		/// in Session (what is only for the moment or about the tool windows: game speed, the AI paused, debug views, the panels' layout), which only a full preset holds.
 		enum class PresetGroup {
@@ -1684,6 +1710,7 @@ namespace RTE {
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
 
 		std::string m_SettingsPath; //!< String containing the Path to the Settings.ini file.
+		bool m_KeepSettingsFile = false; //!< Whether the settings file is left as it is, for an online match's player who took on the host's settings.
 		mutable std::string m_LastWrittenSettings; //!< The settings file's text as this game last wrote it, to tell when a setting has changed since.
 		std::array<std::string, 3> m_StartupPresets; //!< The presets loaded every time the game starts, over Settings.ini: the full one, then the gameplay and visual ones. Nothing for none.
 

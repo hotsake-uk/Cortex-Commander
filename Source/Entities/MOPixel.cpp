@@ -23,7 +23,7 @@ MOPixel::~MOPixel() {
 void MOPixel::Clear() {
 	m_Atom = 0;
 	m_Color.Reset();
-	m_LethalRange = std::max(g_FrameMan.GetPlayerScreenWidth(), g_FrameMan.GetPlayerScreenHeight());
+	m_LethalRange = std::max(g_FrameMan.GetSimScreenWidth(), g_FrameMan.GetSimScreenHeight());
 	m_MinLethalRange = 1;
 	m_MaxLethalRange = 1;
 	m_LethalSharpness = 1;

@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <functional>
 #include <string>
 
 namespace RTE {
@@ -28,6 +29,13 @@ namespace RTE {
 
 		/// Gets how many players the match has.
 		static int GetPlayerCount() { return 2; }
+
+		/// Sets the match up with the other player, before it starts: waits for them, and then the host tells the one who joined what to play,
+		/// with which seed and rules (the host's settings, but for the ones that only change how the game looks, sounds or is controlled), and the
+		/// one who joined checks that their game and data are the same. Returns at once outside an online match.
+		/// @param pollEvents Keeps the window answering while it waits.
+		/// @return Whether the match is set up; if not, the console says why.
+		static bool SetUpMatch(const std::function<void()>& pollEvents);
 
 		/// Takes in whatever has arrived from the other player. Once a frame, from the game loop.
 		static void Update();

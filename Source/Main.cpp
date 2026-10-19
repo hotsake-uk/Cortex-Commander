@@ -975,7 +975,10 @@ int main(int argc, char** argv) {
 
 		s_StartupTiming.Mark("loading warnings log");
 
-		if (!g_ActivityMan.Initialize()) {
+		// An online match waits here for the other player, and the one who joined takes on the host's match, seed and rules, before anything starts.
+		if (!Lockstep::SetUpMatch(PollSDLEvents)) {
+			System::SetQuit();
+		} else if (!g_ActivityMan.Initialize()) {
 			s_StartupTiming.Mark("ActivityMan");
 			RunMenuLoop();
 		}

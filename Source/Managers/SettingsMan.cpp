@@ -6,6 +6,7 @@
 #include "SDL3/SDL_keyboard.h"
 #include "Weather.h"
 #include <algorithm>
+#include <unordered_set>
 #include <array>
 #include <initializer_list>
 #include <cctype>
@@ -453,6 +454,9 @@ namespace {
 } // namespace
 
 void SettingsMan::UpdateSettingsFile() const {
+	if (m_KeepSettingsFile) {
+		return;
+	}
 	std::string text = SettingsText();
 	std::ofstream file(m_SettingsPath, std::ios::out | std::ios::trunc);
 	file << text;
@@ -497,13 +501,82 @@ void SettingsMan::SaveSettingsIfChanged() const {
 	}
 }
 
+std::string SettingsMan::GetOnlineMatchSettingsText() const {
+	return SettingsText();
+}
+
+bool SettingsMan::IsLocalOnlySetting(const std::string& key) {
+	// The screen, the window, the sound and the controls; the looks laid over the picture once it's drawn; the HUD and the menus' looks;
+	// and the tools and debug views. (Not the lighting itself, the weather, the water and so on: those the AI's sight or the world go by.)
+	static const std::array<std::string_view, 33> c_LocalPrefixes = {
+	    "Resolution", "Window", "Fullscreen", "EnableVSync", "UseMultiDisplays", "TwoPlayerSplitscreenVertSplit", "ControlLinkPort", "Retro", "Synthwave",
+	    "Hackerman", "Comic", "GameBoy", "Variant", "AsciiMode", "Bloom", "Grade", "DepthOfField", "TiltShift", "UILight", "AIAwareness", "Battle",
+	    "Sandbox", "MapBrowser", "Draw", "Player", "Mute", "UnitOutline", "UnitSpeechVoice", "UnitSpeechTone", "Console", "ScreenShake", "Volume", "Startup"};
+	static const std::unordered_set<std::string_view> c_LocalKeys = {
+	    "PostScanlines", "CRTStyle", "ScreenStyle", "ScreenStyleStrength", "ScreenVariant", "UpscaleSharpness", "IntegerScaling", "MatchWindowSize",
+	    "ShoulderStart", "HotSpotSeconds", "PostExposure", "AutoExposure", "AutoExposureLow", "AutoExposureHigh", "AutoExposureGameTime", "PostVignette",
+	    "FilmGrain", "EventLooks", "EventLookStrength", "EventBlastFlash", "EventHurtLook", "EventFireWarmth", "ChromaticAberration", "ModShaders",
+	    "ModShaderStrength", "PostSaturation", "BackgroundBlur", "FocusEffectsInPhotoModeOnly", "ShowFPSAndVersion", "ShowNotices", "ModernHUD", "UITheme",
+	    "UINearbyLights", "ShowUnitTags", "ShowCPUAimReticles", "ShowAlarmExclamation", "SmoothHUDText", "FrameCap", "UnitSpeechBubbles", "FlashOnBrainDamage",
+	    "BlipOnRevealUnseen", "ArmyOverview", "UnitTeamColorParts", "CommanderBarKey", "MasterVolume", "MusicVolume", "SoundVolume", "SoundMix",
+	    "SoundPanningEffectStrength", "ListenerZOffset", "MinimumDistanceForPanning", "MuteAudioOnFocusLoss", "MaxScreenShakeTime",
+	    "DefaultShakePerUnitOfGibEnergy", "DefaultShakePerUnitOfRecoilEnergy", "DefaultShakeFromRecoilMaximum", "LaunchIntoActivity", "DefaultActivityType",
+	    "DefaultActivityName", "DefaultSceneName", "LastMap", "SkipIntro", "ShowToolTips", "DisableLoadingScreenProgressReport",
+	    "LoadingScreenProgressReportPrecision", "AdvancedPerformanceStats", "MenuTransitionDurationMultiplier", "PrintDebugInfo", "MeasureModuleLoadTime",
+	    "AllowSavingToBase", "ShowMetaScenes", "VisibleAssemblyGroup", "DisableMod", "MouseSensitivity", "ForceDisableMultimouse", "EnableLuaDebugging",
+	    "ShowAIPaths", "NavDebugOverlay", "DebugTeam", "UnitInspector", "CombatOverlay", "ShowRecentSolves", "ShowSquadLinks", "ShowOrderLabels",
+	    "ShowTerrainUpdates", "DebugChannels", "TraceAllUnits", "ShowLightSources", "LightsBySource", "ShowSunDirection", "WorldSimOverlay", "DockPanels",
+	    "PanelsOverlay", "PanelWidthPercent", "RightPanelWidthPercent", "ToolScale", "PixelToolFont", "DefaultBackground", "CameraZoom", "LightingDebugView",
+	    "ShowPerformanceStats", "ShowActorDebugDrawing", "DrawCameraBounds", "DrawSpriteBounds", "ImGuiDemoWindow", "FreeCam", "FreeCamZoom", "CaseSensitiveFilePaths"};
+	if (c_LocalKeys.contains(key)) {
+		return true;
+	}
+	return std::any_of(c_LocalPrefixes.begin(), c_LocalPrefixes.end(), [&key](std::string_view prefix) { return key.starts_with(prefix); });
+}
+
+bool SettingsMan::IsStartUpSetting(const std::string& key) {
+	return key == "DeltaTime" || key == "DisableLuaJIT" || key == "DisableMedievalUnits" || key == "RecommendedMOIDCount" || key == "NumberOfLuaStatesOverride";
+}
+
+bool SettingsMan::AdoptOnlineMatchSettings(const std::string& hostSettingsText, bool keepSettingsFile) {
+	// Only the host's lines for the settings that change what happens, with all that belongs under each (the lines indented further below it).
+	std::istringstream lines(hostSettingsText);
+	std::string kept;
+	bool keeping = true;
+	for (std::string line; std::getline(lines, line);) {
+		if (!line.empty() && line.back() == '\r') {
+			line.pop_back();
+		}
+		const size_t indent = line.find_first_not_of('\t');
+		if (indent == 1) {
+			const size_t end = line.find_first_of(" \t=", 1);
+			const std::string key = line.substr(1, end == std::string::npos ? std::string::npos : end - 1);
+			keeping = !IsLocalOnlySetting(key) && !IsStartUpSetting(key);
+		} else if (indent == 0) {
+			keeping = true;
+		}
+		if (keeping) {
+			kept += line + "\n";
+		}
+	}
+	// The host's global scripts, not this machine's as well (each line adds one).
+	m_EnabledGlobalScripts.clear();
+	Reader reader(std::make_unique<std::istringstream>(kept), "the host's settings", false, nullptr, true, true);
+	if (!reader.ReaderOK() || CreateSerializable(reader, true, false, false) < 0) {
+		return false;
+	}
+	m_KeepSettingsFile = m_KeepSettingsFile || keepSettingsFile;
+	return true;
+}
+
 bool SettingsMan::GetForceImmediatePathingRequestCompletion() const {
 	return m_ForceImmediatePathingRequestCompletion || Lockstep::IsActive();
 }
 
 int SettingsMan::GetNumberOfLuaStatesOverride() const {
 	constexpr int luaStatesWhenCheckingDeterminism = 4;
-	if (m_NumberOfLuaStatesOverride == -1 && DeterminismChecker::IsActive()) {
+	// (Online too: the states are made at start-up, before the host's settings come, and every machine needs the same.)
+	if (Lockstep::IsActive() || (m_NumberOfLuaStatesOverride == -1 && DeterminismChecker::IsActive())) {
 		return luaStatesWhenCheckingDeterminism;
 	}
 	return m_NumberOfLuaStatesOverride;

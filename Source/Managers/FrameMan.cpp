@@ -3,6 +3,7 @@
 #include "Actor.h"
 #include "MovableMan.h"
 #include "TextOverlay.h"
+#include "Lockstep.h"
 #include "EffectsParticles.h"
 #include "RopeSim.h"
 #include "SceneLighting.h"
@@ -130,6 +131,14 @@ int FrameMan::Initialize() {
 	_png_compression_level = 1;
 
 	return 0;
+}
+
+int FrameMan::GetSimScreenWidth() const {
+	return Lockstep::IsActive() ? c_DefaultResX : GetPlayerScreenWidth();
+}
+
+int FrameMan::GetSimScreenHeight() const {
+	return Lockstep::IsActive() ? c_DefaultResY : GetPlayerScreenHeight();
 }
 
 int FrameMan::GetUnzoomedPlayerScreenWidth() const {
@@ -313,12 +322,27 @@ void FrameMan::Update() {
 
 	// Update redundantly in sim update to ensure our values are exactly precise for the purposes of script GetOffset()
 	int screenCount = (m_HSplit ? 2 : 1) * (m_VSplit ? 2 : 1);
-	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
-		g_CameraMan.Update(playerScreen);
+	for (int screenIndex = 0; screenIndex < screenCount; ++screenIndex) {
+		g_CameraMan.Update(ShownScreen(screenIndex));
 	}
 }
 
+int FrameMan::ShownScreen(int screenIndex) const {
+	// In an online match each machine shows its own player's screen, the whole window, though the activity numbers the players' screens as in split screen.
+	if (const Activity* activity = g_ActivityMan.GetActivity(); Lockstep::IsActive() && activity) {
+		if (int localScreen = activity->ScreenOfPlayer(Lockstep::GetLocalPlayer()); localScreen >= 0) {
+			return localScreen;
+		}
+	}
+	return screenIndex;
+}
+
 void FrameMan::ResetSplitScreens(bool hSplit, bool vSplit) {
+	// (Online, each machine shows only its own player's screen: see ShownScreen.)
+	if (Lockstep::IsActive()) {
+		hSplit = false;
+		vSplit = false;
+	}
 	// Override screen splitting according to settings if needed
 	if ((hSplit || vSplit) && !(hSplit && vSplit) && m_TwoPlayerVSplit) {
 		hSplit = false;
@@ -921,7 +945,8 @@ void FrameMan::Draw() {
 		EffectsParticles::BeginFrame();
 	}
 
-	for (int playerScreen = 0; playerScreen < screenCount; ++playerScreen) {
+	for (int screenIndex = 0; screenIndex < screenCount; ++screenIndex) {
+		const int playerScreen = ShownScreen(screenIndex);
 		g_CameraMan.Update(playerScreen);
 		g_CameraMan.SetCameraZoom(1.0f, playerScreen);
 		g_SceneMan.Update(playerScreen);

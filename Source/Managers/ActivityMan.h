@@ -139,6 +139,11 @@ namespace RTE {
 			m_SceneNameToLaunch = sceneName;
 		}
 
+		/// Gets the type, preset name and Scene of the Activity -activity launches into (empty without one).
+		const std::string& GetActivityTypeToLaunch() const { return m_ActivityTypeToLaunch; }
+		const std::string& GetActivityNameToLaunch() const { return m_ActivityNameToLaunch; }
+		const std::string& GetSceneNameToLaunch() const { return m_SceneNameToLaunch; }
+
 		void SetEditorToLaunch(const std::string_view& editorName) {
 			if (!editorName.empty()) {
 				m_EditorToLaunch = editorName;
