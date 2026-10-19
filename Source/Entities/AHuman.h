@@ -925,6 +925,7 @@ namespace RTE {
 		bool m_JetPrevFree = false; //!< Whether last frame the jet was lit with nothing touching the body.
 		double m_JetLastLitSimMS = -1.0; //!< When the jet was last lit (sim ms), for passing the ladders' rungs while flying (see LearnFlight).
 		Timer m_FightAimTimer; //!< Since the unit last fired or aimed sharp: an AI unit's aim holds its facing (walking backwards) only in a fight.
+		Timer m_AimFlipTimer; //!< Since the aim last turned the body round, for the wider no-turn margin about straight down and up just after.
 		const Attachable* m_HeadRimFor = nullptr; //!< The head given its soft rim (see Update), so a new head gets one too.
 		/// Measures the body for the movement code (Actor::GetMoveHeight and GetMoveBodyWidth; SettingsMan::MeasuredBodySize): from the top
 		/// of its torso's, head's and helmet's terrain atoms down to its feet, and across them. Done again when the body changes (a head
