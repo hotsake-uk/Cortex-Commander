@@ -3178,7 +3178,9 @@ int AHuman::MoveAlongRoute() {
 			// or clearly worse one is: see Actor::PreControllerUpdate.)
 			const bool outOfSight = mover.noSightTimer.IsPastSimMS(noSightMS);
 			MoverTrace(outOfSight ? "next point out of sight; new route" : "route refreshed");
-			RefreshRoute(true, !outOfSight);
+			// (Nor when following someone: the refresh is for where they've got to, and a route about as dear to a new place is no reason to
+			// keep the one to the old.)
+			RefreshRoute(true, !outOfSight && !g_MovableMan.ValidMO(m_pMOMoveTarget));
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
 		} else if (airborne && !IsLeaping() && !mover.repathOnLanding && (m_MovePathKinds.empty() || m_MovePathKinds.front() != PathStepKind::Fall) && mover.routeCheckTimer.IsPastSimMS(static_cast<double>(tuning.AirCheckSeconds) * 1000.0)) {
