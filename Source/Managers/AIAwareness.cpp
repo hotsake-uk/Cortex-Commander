@@ -138,10 +138,11 @@ namespace {
 		}
 	}
 
-	/// The window-pixel size the marks and meter are drawn at.
-	float Unit() {
-		GameViewRect view = g_WindowMan.GetGameViewRect();
-		return 16.0F * std::clamp(view.h / 720.0F, 0.75F, 2.5F) * std::clamp(AIAwareness::MarkScale, 0.5F, 2.0F);
+	/// How many window pixels one pixel of the marks and meter takes: one of the game's own pixels, so they sit with the rest of its pixel-art HUD, times
+	/// the size setting, rounded to a whole number so no pixel is ever blurred.
+	int PixelSize() {
+		const float gamePixel = 1.0F / std::max(DebugDraw::ScenePixelsPerWindowPixel(), 0.01F);
+		return std::max(1, static_cast<int>(std::lround(gamePixel * std::clamp(AIAwareness::MarkScale, 0.5F, 2.0F))));
 	}
 
 	/// Text centred on a point, with a dark outline so it reads over anything.
@@ -162,10 +163,106 @@ namespace {
 		return (color & ~IM_COL32_A_MASK) | (static_cast<ImU32>(a) << IM_COL32_A_SHIFT);
 	}
 
-	float EaseOutBack(float t) {
-		t = std::clamp(t, 0.0F, 1.0F) - 1.0F;
-		return 1.0F + t * t * (2.7F * t + 1.7F);
+	/// A colour taken toward another, 0 to 1 of the way.
+	ImU32 Mix(ImU32 from, ImU32 to, float amount) {
+		ImVec4 a = ImGui::ColorConvertU32ToFloat4(from);
+		ImVec4 b = ImGui::ColorConvertU32ToFloat4(to);
+		const float t = std::clamp(amount, 0.0F, 1.0F);
+		return ImGui::ColorConvertFloat4ToU32(ImVec4(a.x + (b.x - a.x) * t, a.y + (b.y - a.y) * t, a.z + (b.z - a.z) * t, a.w + (b.w - a.w) * t));
 	}
+
+#pragma region Pixel art
+	constexpr ImU32 c_Outline = IM_COL32(20, 12, 16, 255); //!< The dark edge round everything, as round the game's own HUD art.
+
+	/// Where pixel art is drawn: its top left corner on a whole window pixel, how big its pixels are and how faded it is.
+	struct PixelCanvas {
+		ImDrawList* List;
+		ImVec2 Corner;
+		int P;
+		float Alpha;
+
+		/// A canvas w by h art pixels whose bottom middle is at a point.
+		PixelCanvas(ImDrawList* list, ImVec2 bottomMiddle, int w, int h, int p, float alpha) :
+		    List(list), Corner(std::floor(bottomMiddle.x - static_cast<float>(w * p) * 0.5F), std::floor(bottomMiddle.y - static_cast<float>(h * p))), P(p), Alpha(alpha) {}
+
+		void Box(int x, int y, int w, int h, ImU32 color) const {
+			if (w <= 0 || h <= 0) {
+				return;
+			}
+			const float p = static_cast<float>(P);
+			List->AddRectFilled(ImVec2(Corner.x + x * p, Corner.y + y * p), ImVec2(Corner.x + (x + w) * p, Corner.y + (y + h) * p), WithAlpha(color, Alpha));
+		}
+
+		void Dot(int x, int y, ImU32 color) const { Box(x, y, 1, 1, color); }
+
+		/// A sprite from rows of letters: '#' the colour, '+' it lighter, '-' it darker, 's' it faint, 'i' and 'p' the iris and pupil, 'o' the dark
+		/// edge, 'w' white; anything else is see-through.
+		void Sprite(int x, int y, std::initializer_list<const char*> rows, ImU32 color, ImU32 iris = 0) const {
+			int row = 0;
+			for (const char* line: rows) {
+				for (int column = 0; line[column]; ++column) {
+					ImU32 pixel = 0;
+					switch (line[column]) {
+						case '#': pixel = color; break;
+						case '+': pixel = Mix(color, IM_COL32(255, 255, 255, 255), 0.45F); break;
+						case '-': pixel = Mix(color, IM_COL32(0, 0, 0, 255), 0.35F); break;
+						case 's': pixel = WithAlpha(Mix(color, IM_COL32(0, 0, 0, 255), 0.55F), 0.75F); break;
+						case 'i': pixel = iris; break;
+						case 'p': pixel = c_Outline; break;
+						case 'o': pixel = c_Outline; break;
+						case 'w': pixel = IM_COL32(255, 255, 255, 255); break;
+						default: break;
+					}
+					if (pixel != 0) {
+						Dot(x + column, y + row, pixel);
+					}
+				}
+				++row;
+			}
+		}
+	};
+
+	/// The pixels one in from the edge of a w by h frame, clockwise from the middle of its top, for a frame that fills as something goes on.
+	std::vector<std::pair<int, int>> RingPixels(int w, int h) {
+		std::vector<std::pair<int, int>> ring;
+		for (int x = w / 2; x <= w - 2; ++x) {
+			ring.emplace_back(x, 1);
+		}
+		for (int y = 2; y <= h - 2; ++y) {
+			ring.emplace_back(w - 2, y);
+		}
+		for (int x = w - 3; x >= 1; --x) {
+			ring.emplace_back(x, h - 2);
+		}
+		for (int y = h - 3; y >= 1; --y) {
+			ring.emplace_back(1, y);
+		}
+		for (int x = 2; x < w / 2; ++x) {
+			ring.emplace_back(x, 1);
+		}
+		return ring;
+	}
+
+	/// A w by h frame with clipped corners and the dark edge, its ring of track pixels one in, and its middle filled.
+	void Frame(const PixelCanvas& canvas, int w, int h, ImU32 inside, ImU32 track) {
+		canvas.Box(1, 0, w - 2, 1, c_Outline);
+		canvas.Box(1, h - 1, w - 2, 1, c_Outline);
+		canvas.Box(0, 1, 1, h - 2, c_Outline);
+		canvas.Box(w - 1, 1, 1, h - 2, c_Outline);
+		canvas.Box(1, 1, w - 2, h - 2, track);
+		canvas.Box(2, 2, w - 4, h - 4, inside);
+	}
+
+	/// Lights the ring of a w by h frame: the first `count` of its pixels clockwise from `from`.
+	void LightRing(const PixelCanvas& canvas, int w, int h, int from, int count, ImU32 color) {
+		const std::vector<std::pair<int, int>> ring = RingPixels(w, h);
+		const int size = static_cast<int>(ring.size());
+		for (int i = 0; i < std::min(count, size); ++i) {
+			const auto& [x, y] = ring[(from + i) % size];
+			canvas.Dot(x, y, color);
+		}
+	}
+#pragma endregion
 
 #pragma region Cones
 	void DrawCone(ImDrawList* drawList, const Actor* actor, const Cone& cone, int state, float level) {
@@ -223,51 +320,62 @@ namespace {
 #pragma endregion
 
 #pragma region Marks
+	constexpr int c_BadgeSize = 12; //!< The marks are badges 12 game pixels square.
+
 	void DrawMark(ImDrawList* drawList, const Actor* actor, int state, float level, float alpha, long long engagedAge) {
-		const float u = Unit();
+		const int p = PixelSize();
 		// Just over what its own HUD drew above its head (health, team), or over its head.
 		const float stack = actor->GetAboveHUDPos().m_Y - actor->GetPos().m_Y - 6.0F;
 		ImVec2 at = DebugDraw::ToScreen(actor->GetPos() + Vector(0.0F, std::min(stack, -actor->GetHeight() * 0.5F) - 4.0F));
 		const float time = static_cast<float>(ImGui::GetTime());
-		float radius = 0.62F * u;
-		at.y -= radius;
 		const ImU32 color = StateColor(state, 255);
+		const ImU32 track = IM_COL32(58, 52, 60, 255);
+		const int n = c_BadgeSize;
+		const int ringSize = static_cast<int>(RingPixels(n, n).size());
+		auto question = [](const PixelCanvas& canvas, ImU32 glyph) {
+			canvas.Sprite(3, 2, {".####.", "##..##", "....##", "...##.", "..##..", "......", "..##..", "..##.."}, glyph);
+		};
 		if (state == ActorAwareness::Noticing) {
-			// A "?" in a ring that fills as it notices; nearly there, it throbs.
-			const float throb = level > 0.7F ? 0.08F * std::sin(time * 14.0F) : 0.0F;
-			radius *= 1.0F + throb;
-			drawList->AddCircleFilled(at, radius, IM_COL32(12, 10, 4, static_cast<int>(170 * alpha)), 24);
-			drawList->AddCircle(at, radius, IM_COL32(255, 255, 255, static_cast<int>(45 * alpha)), 24, 0.16F * u);
-			if (level > 0.0F) {
-				drawList->PathArcTo(at, radius, -c_PI * 0.5F, -c_PI * 0.5F + 2.0F * c_PI * std::clamp(level, 0.0F, 1.0F), 24);
-				drawList->PathStroke(WithAlpha(color, alpha), 0, 0.2F * u);
-			}
-			OutlinedText(drawList, ImVec2(at.x + 0.5F, at.y), 1.05F * u, WithAlpha(color, alpha * (0.65F + 0.35F * level)), "?");
+			// A "?" in a frame that lights pixel by pixel, clockwise, as it notices; nearly there, it hops.
+			const int hop = level > 0.7F && static_cast<int>(time * 8.0F) % 2 == 0 ? 1 : 0;
+			PixelCanvas canvas(drawList, ImVec2(at.x, at.y - static_cast<float>(hop * p)), n, n, p, alpha);
+			Frame(canvas, n, n, IM_COL32(16, 13, 8, 220), track);
+			LightRing(canvas, n, n, 0, static_cast<int>(std::ceil(std::clamp(level, 0.0F, 1.0F) * static_cast<float>(ringSize))), color);
+			question(canvas, WithAlpha(color, 0.65F + 0.35F * level));
 		} else if (state == ActorAwareness::Searching) {
-			// A "?" in a ring with a gap going round: looking about. It bobs a little.
-			at.y += std::sin(time * 4.0F) * 0.12F * u;
-			drawList->AddCircleFilled(at, radius, IM_COL32(14, 8, 2, static_cast<int>(170 * alpha)), 24);
-			const float start = time * 3.0F;
-			drawList->PathArcTo(at, radius, start, start + c_PI * 1.55F, 24);
-			drawList->PathStroke(WithAlpha(color, alpha), 0, 0.18F * u);
-			OutlinedText(drawList, ImVec2(at.x + 0.5F, at.y), 1.05F * u, WithAlpha(color, alpha), "?");
+			// A "?" with a few frame pixels chasing round it: looking about. It bobs a pixel.
+			const int bob = static_cast<int>(time * 2.0F) % 2;
+			PixelCanvas canvas(drawList, ImVec2(at.x, at.y - static_cast<float>(bob * p)), n, n, p, alpha);
+			Frame(canvas, n, n, IM_COL32(18, 11, 4, 220), track);
+			const int head = static_cast<int>(time * 22.0F) % ringSize;
+			LightRing(canvas, n, n, head, 4, Mix(color, IM_COL32(0, 0, 0, 255), 0.4F));
+			LightRing(canvas, n, n, head + 4, 3, color);
+			question(canvas, color);
 		} else if (state == ActorAwareness::Engaged) {
-			// A red "!" that pops up when it spots someone, with a ring going out, then settles smaller while it fights.
+			// A red "!" badge that pops up in steps when it spots someone, with pixels bursting out, then sits there while it fights.
 			const float seconds = static_cast<float>(std::max<long long>(engagedAge, 0)) / 1000.0F;
-			float size = 1.0F;
-			if (seconds < 0.45F) {
-				size = 0.4F + 0.75F * EaseOutBack(seconds / 0.45F);
-				const float wave = seconds / 0.45F;
-				drawList->AddCircle(at, radius * (1.0F + 1.6F * wave), WithAlpha(color, alpha * (1.0F - wave)), 32, 0.14F * u);
-			} else if (seconds < 2.5F) {
-				size = 1.15F;
-			} else {
-				size = 1.15F - 0.35F * std::min(1.0F, (seconds - 2.5F) / 0.4F);
+			if (seconds < 0.06F) {
+				PixelCanvas canvas(drawList, at, 4, 4, p, alpha);
+				canvas.Box(0, 0, 4, 4, c_Outline);
+				canvas.Box(1, 1, 2, 2, color);
+				return;
 			}
-			radius *= size;
-			drawList->AddCircleFilled(at, radius, WithAlpha(color, alpha * 0.92F), 24);
-			drawList->AddCircle(at, radius, IM_COL32(60, 0, 0, static_cast<int>(200 * alpha)), 24, 0.09F * u);
-			OutlinedText(drawList, ImVec2(at.x + 0.5F, at.y), 1.1F * u * size, IM_COL32(255, 255, 255, static_cast<int>(255 * alpha)), "!");
+			const int rise = seconds < 0.14F ? 3 : (seconds < 0.24F ? 1 : 0);
+			PixelCanvas canvas(drawList, ImVec2(at.x, at.y - static_cast<float>(rise * p)), n, n, p, alpha);
+			if (seconds < 0.45F) {
+				// Eight pixels thrown out from its middle, a step further each few frames, fading.
+				const int out = n / 2 + 1 + static_cast<int>(seconds / 0.45F * 6.0F);
+				const PixelCanvas burst(drawList, ImVec2(at.x, at.y - static_cast<float>(rise * p)), n, n, p, alpha * (1.0F - seconds / 0.45F));
+				const int c = n / 2;
+				for (auto [dx, dy]: {std::pair(0, -1), std::pair(1, -1), std::pair(1, 0), std::pair(1, 1), std::pair(0, 1), std::pair(-1, 1), std::pair(-1, 0), std::pair(-1, -1)}) {
+					const int reach = dx != 0 && dy != 0 ? out * 3 / 4 : out;
+					burst.Box(c + dx * reach - (dx < 0 ? 1 : 0), c + dy * reach - (dy < 0 ? 1 : 0), 1, 1, color);
+				}
+			}
+			Frame(canvas, n, n, color, Mix(color, IM_COL32(0, 0, 0, 255), 0.4F));
+			// A lit top edge, as the game's own buttons have.
+			canvas.Box(2, 1, n - 4, 1, Mix(color, IM_COL32(255, 255, 255, 255), 0.35F));
+			canvas.Sprite(5, 2, {"..", "ww", "ww", "ww", "ww", "..", "ww", "ww"}, color);
 		}
 	}
 #pragma endregion
@@ -279,31 +387,14 @@ namespace {
 		bool GivesAway;
 	};
 
-	/// The eye: as open as you are visible, coloured by whether you are hidden, plain, being noticed or spotted.
-	void DrawEye(ImDrawList* drawList, ImVec2 at, float u, float openness, ImU32 color, ImU32 iris, bool slashed, float alpha) {
-		const float halfWidth = 0.85F * u;
-		const float lid = 0.55F * u * std::clamp(openness, 0.08F, 1.0F);
-		const ImVec2 left(at.x - halfWidth, at.y);
-		const ImVec2 right(at.x + halfWidth, at.y);
-		auto almond = [&]() {
-			drawList->PathLineTo(left);
-			drawList->PathBezierCubicCurveTo(ImVec2(at.x - halfWidth * 0.45F, at.y - lid * 1.3F), ImVec2(at.x + halfWidth * 0.45F, at.y - lid * 1.3F), right, 16);
-			drawList->PathBezierCubicCurveTo(ImVec2(at.x + halfWidth * 0.45F, at.y + lid * 1.3F), ImVec2(at.x - halfWidth * 0.45F, at.y + lid * 1.3F), left, 16);
-		};
-		// A dark backing behind, so it shows on snow and sky.
-		drawList->AddCircleFilled(at, halfWidth * 1.25F, IM_COL32(0, 0, 0, static_cast<int>(110 * alpha)), 28);
-		almond();
-		drawList->PathFillConvex(WithAlpha(color, alpha * 0.22F));
-		// The iris, cut to the lids' height.
-		const float irisRadius = std::min(0.32F * u, lid * 0.9F);
-		if (irisRadius > 1.0F) {
-			drawList->AddCircleFilled(at, irisRadius, WithAlpha(iris, alpha), 20);
-			drawList->AddCircleFilled(at, irisRadius * 0.45F, IM_COL32(10, 10, 14, static_cast<int>(230 * alpha)), 16);
-		}
-		almond();
-		drawList->PathStroke(WithAlpha(color, alpha), ImDrawFlags_Closed, std::max(1.5F, 0.11F * u));
-		if (slashed) {
-			drawList->AddLine(ImVec2(at.x - halfWidth * 0.9F, at.y + halfWidth * 0.6F), ImVec2(at.x + halfWidth * 0.9F, at.y - halfWidth * 0.6F), WithAlpha(color, alpha), std::max(1.5F, 0.12F * u));
+	/// The eye: as open as you are visible, in whole frames, coloured by whether you are hidden, plain, being noticed or spotted. 11 by 7 art pixels.
+	void DrawEye(const PixelCanvas& canvas, int x, int y, float openness, ImU32 color, ImU32 iris) {
+		if (openness >= 0.7F) {
+			canvas.Sprite(x, y, {"...#####...", ".##sssss##.", "#sssiiisss#", "#ssiipiiss#", "#sssiiisss#", ".##sssss##.", "...#####..."}, color, iris);
+		} else if (openness >= 0.4F) {
+			canvas.Sprite(x, y, {"...........", "...#####...", ".##ssiss##.", "#ssiipiiss#", ".##ssiss##.", "...#####...", "..........."}, color, iris);
+		} else {
+			canvas.Sprite(x, y, {"...........", "...........", "..#######..", "##ssipiss##", "..#######..", "...........", "..........."}, color, iris);
 		}
 	}
 
@@ -382,14 +473,17 @@ namespace {
 			}
 		}
 
-		const float u = Unit();
+		const int p = PixelSize();
 		const float time = static_cast<float>(ImGui::GetTime());
 		// Beside the head, on the side away from where it faces (where its gun is).
 		const ImVec2 head = DebugDraw::ToScreen(controlled->GetEyePos());
 		const float side = controlled->IsHFlipped() ? 1.0F : -1.0F;
 		const float scale = DebugDraw::ScenePixelsPerWindowPixel();
-		const float out = std::max(1.9F * u, (controlled->GetRadius() * 0.55F) / scale + 1.2F * u);
-		const ImVec2 at(head.x + side * out, head.y - 0.6F * u);
+		const float out = (controlled->GetRadius() * 0.55F) / scale + static_cast<float>(10 * p);
+		// A small panel, 15 by 11 art pixels, its middle there: the eye in it, the bar and the reasons under it.
+		constexpr int panelWidth = 15;
+		constexpr int panelHeight = 11;
+		const ImVec2 at(head.x + side * out, head.y + static_cast<float>(panelHeight * p) * 0.5F - static_cast<float>(p));
 
 		ImU32 color;
 		ImU32 iris;
@@ -409,32 +503,40 @@ namespace {
 			color = IM_COL32(255, 196, 92, 255);
 			iris = IM_COL32(255, 170, 60, 255);
 		}
-		const float alpha = 0.95F;
+		const PixelCanvas panel(drawList, at, panelWidth, panelHeight, p, 0.95F);
+		// Being fought, its middle throbs red in two steps.
+		ImU32 inside = IM_COL32(14, 14, 20, 210);
 		if (spotted) {
-			// A glow throbbing behind the eye while you are being fought.
-			const float throb = 0.5F + 0.5F * std::sin(time * 9.0F);
-			drawList->AddCircleFilled(at, 1.35F * u, IM_COL32(255, 60, 40, static_cast<int>(70 + 60 * throb)), 28);
+			inside = static_cast<int>(time * 6.0F) % 2 == 0 ? IM_COL32(110, 20, 14, 230) : IM_COL32(60, 10, 8, 230);
 		}
-		DrawEye(drawList, at, u, hidden.Cloaked ? 0.5F : 0.15F + 0.85F * visibility, color, iris, hidden.Cloaked, alpha);
+		Frame(panel, panelWidth, panelHeight, inside, IM_COL32(58, 52, 60, 255));
 		if (noticed > 0.0F && !spotted) {
-			// How far the most watchful enemy has got noticing you, round the eye.
-			drawList->PathArcTo(at, 1.12F * u, -c_PI * 0.5F, -c_PI * 0.5F + 2.0F * c_PI * std::clamp(noticed, 0.0F, 1.0F), 28);
-			drawList->PathStroke(WithAlpha(color, alpha), 0, 0.14F * u);
+			// How far the most watchful enemy has got noticing you, lighting the frame round the eye.
+			const int ringSize = static_cast<int>(RingPixels(panelWidth, panelHeight).size());
+			LightRing(panel, panelWidth, panelHeight, 0, static_cast<int>(std::ceil(std::clamp(noticed, 0.0F, 1.0F) * static_cast<float>(ringSize))), color);
+		} else if (spotted) {
+			LightRing(panel, panelWidth, panelHeight, 0, 999, color);
+		}
+		DrawEye(panel, 2, 2, hidden.Cloaked ? 0.5F : 0.15F + 0.85F * visibility, color, iris);
+		if (hidden.Cloaked) {
+			// Struck through: you can't be seen at all.
+			for (int i = 0; i < 11; ++i) {
+				panel.Dot(2 + i, 8 - i / 2, color);
+			}
 		}
 
-		// How visible, as a bar under it.
-		const float barWidth = 2.0F * u;
-		const float barHeight = std::max(3.0F, 0.2F * u);
-		const ImVec2 barTopLeft(at.x - barWidth * 0.5F, at.y + 0.85F * u);
-		drawList->AddRectFilled(ImVec2(barTopLeft.x - 1.0F, barTopLeft.y - 1.0F), ImVec2(barTopLeft.x + barWidth + 1.0F, barTopLeft.y + barHeight + 1.0F), IM_COL32(0, 0, 0, 150), barHeight);
-		const float filled = barWidth * std::clamp(visibility, 0.0F, 1.0F);
-		if (filled > 1.0F) {
-			drawList->AddRectFilledMultiColor(barTopLeft, ImVec2(barTopLeft.x + filled, barTopLeft.y + barHeight), IM_COL32(120, 160, 210, 230), WithAlpha(iris, 0.95F), WithAlpha(iris, 0.95F), IM_COL32(120, 160, 210, 230));
-		}
+		// How visible, as a bar under it, filled a whole pixel at a time.
+		const PixelCanvas bar(drawList, ImVec2(at.x, at.y + static_cast<float>(5 * p)), panelWidth, 4, p, 0.95F);
+		bar.Box(0, 0, panelWidth, 4, c_Outline);
+		bar.Box(1, 1, panelWidth - 2, 2, IM_COL32(40, 40, 48, 255));
+		const int filled = static_cast<int>(std::lround(static_cast<float>(panelWidth - 2) * std::clamp(visibility, 0.0F, 1.0F)));
+		bar.Box(1, 1, filled, 1, Mix(iris, IM_COL32(255, 255, 255, 255), 0.3F));
+		bar.Box(1, 2, filled, 1, iris);
 
-		// Why, a line each: what gives you away warm, what hides you cool. Three at most.
-		const float textSize = 0.72F * u;
-		float y = barTopLeft.y + barHeight + 0.55F * u;
+		// Why, a line each: what gives you away warm, what hides you cool. Three at most. In the game's own small pixel font where it has been
+		// loaded (DebugMan::PrepareFonts), at the nearest whole size.
+		ImFont* pixelFont = g_DebugMan.GetPixelFont(std::clamp(p, 1, 4));
+		float y = at.y + static_cast<float>(7 * p);
 		int shown = 0;
 		for (const Reason& reason: reasons) {
 			if (shown == 3) {
@@ -444,8 +546,15 @@ namespace {
 			if (reason.Text == std::string("Spotted")) {
 				textColor = IM_COL32(255, 96, 80, 255);
 			}
-			OutlinedText(drawList, ImVec2(at.x, y), textSize, textColor, reason.Text);
-			y += textSize + 2.0F;
+			if (pixelFont) {
+				const ImVec2 extent = pixelFont->CalcTextSizeA(pixelFont->FontSize, FLT_MAX, 0.0F, reason.Text);
+				drawList->AddText(pixelFont, pixelFont->FontSize, ImVec2(std::floor(at.x - extent.x * 0.5F), std::floor(y)), textColor, reason.Text);
+				y += pixelFont->FontSize;
+			} else {
+				const float textSize = static_cast<float>(8 * p);
+				OutlinedText(drawList, ImVec2(at.x, y + textSize * 0.5F), textSize, textColor, reason.Text);
+				y += textSize + 2.0F;
+			}
 			++shown;
 		}
 	}
