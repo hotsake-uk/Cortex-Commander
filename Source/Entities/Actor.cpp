@@ -2057,12 +2057,22 @@ void Actor::OnNewMovePath() {
 		// Remove the first one; it's our position (the path's kinds are one per point after it, so they stay)
 		m_PrevPathTarget = m_MovePath.front();
 		m_MovePath.pop_front();
-		// Also remove the one after that; it may move in opposite direction since it heads to the nearest PathNode center
-		// Unless it is the last one, in which case it shouldn't be removed. (Nor the end of a lift's ride, LM-11: the route starts on its deck,
-		// and without that point the unit walked off the deck into the shaft.)
-		if (m_MovePath.size() > 1 && (m_MovePathKinds.empty() || m_MovePathKinds.front() != PathStepKind::Lift)) {
-			m_PrevPathTarget = m_MovePath.front();
-			popFront();
+		// Also remove the one after that when it is the start node's centre, a step behind or beside the body: walked to, it turned the unit
+		// back. Unless it is the last one, in which case it shouldn't be removed. Only a walk's point within a node of the body, or one behind
+		// it: a route's walks are merged into points up to seven nodes apart (PathFinder::CalculatePath), and the point after the start could
+		// be the foot of a ledge or a take-off well ahead, which, dropped, had the next step (a jump, a ladder) begun from wherever the unit
+		// stood, after every new route. (Nor the end of a lift's ride, LM-11: the route starts on its deck, and without that point the unit
+		// walked off the deck into the shaft.)
+		if (m_MovePath.size() > 1 && (m_MovePathKinds.empty() || m_MovePathKinds.front() == PathStepKind::Walk || m_MovePathKinds.front() == PathStepKind::Crouch || m_MovePathKinds.front() == PathStepKind::Crawl)) {
+			const Vector toSecond = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
+			const Vector toThird = g_SceneMan.ShortestDistance(m_Pos, *std::next(m_MovePath.begin()));
+			const float node = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize());
+			const bool near = toSecond.MagnitudeIsLessThan(node);
+			const bool behind = toSecond.Dot(toThird) < 0.0F;
+			if (near || behind) {
+				m_PrevPathTarget = m_MovePath.front();
+				popFront();
+			}
 		}
 	} else if (m_pMOMoveTarget && g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		m_MoveTarget = m_pMOMoveTarget->GetPos();

@@ -692,7 +692,7 @@ namespace RTE {
 			float NoSightSeconds = 1.0F; //!< How long the route's next point may be out of sight on the ground before a new route is asked for, s.
 			float StuckRemedySeconds = 2.5F; //!< How long without getting nearer the next point before the stuck remedies start, s.
 			float StuckRepathSeconds = 6.0F; //!< How long without getting nearer before the place is avoided and a new route asked for, s.
-			float AirCheckSeconds = 0.5F; //!< How often a unit in the air checks for a better route, s (taken only when better).
+			float AirCheckSeconds = 0.5F; //!< How often a unit in the air off a planned flight, leap or drop checks for a better route, s (taken only when better).
 			float ReachScale = 1.0F; //!< How near a route point counts as reached, as a multiple of the unit's own reach (twice that in the air), 0.5 to 3: higher cuts corners.
 			float NoRouteRetrySeconds = 3.0F; //!< How long a unit told there is no way waits before asking again, s.
 		};
