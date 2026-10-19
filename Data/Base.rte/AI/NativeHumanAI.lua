@@ -473,10 +473,10 @@ function NativeHumanAI:Update(Owner)
 				SharedBehaviors.SquadTrimPath(Owner, Point, LeaderGround);
 				SharedBehaviors.DrawSquadDebug(self, Owner, Leader, Point);
 			else
-				-- make the last waypoint marker stick to the MO we are following
+				-- (The route's end is kept up with the MO we are following by the engine's route-follower, which asks for a new route when it
+				-- moves away from it. Moved to the MO here each tick, the route's last step became a walk, and a jump, ladder or dig up to it
+				-- was walked into the face of the ledge.)
 				self.squadPoint = nil;
-				Owner:RemoveMovePathEnd();
-				Owner:AddToMovePathEnd(Owner.MOMoveTarget.Pos);
 			end
 
 			if Owner.AIMode == Actor.AIMODE_SQUAD then

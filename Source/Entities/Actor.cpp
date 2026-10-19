@@ -1695,13 +1695,7 @@ void Actor::UpdateMovePath() {
 	// from inside the scene: a point over the top edge was being bounded to somewhere the search didn't see the top floor from.)
 	// A target inside the ground stays where it is: it's a place to dig to, and "the ground under it" is itself, so the search was lifting
 	// it a fifth of a height every time the path was asked for again, and the digger never got there.
-	auto onGround = [this](const Vector& place) {
-		Vector inScene(place.m_X, std::max(1.0F, place.m_Y));
-		if (g_SceneMan.GetTerrMatter(static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y)) != MaterialColorKeys::g_MaterialAir) {
-			return inScene;
-		}
-		return g_SceneMan.MovePointToGround(inScene, GetMoveHeight() * 0.2F, 3);
-	};
+	auto onGround = [this](const Vector& place) { return GoalOnGround(place); };
 	// But a sky order's point (Jetpack here, or a move clicked in open air: StandingOrder::SkyGoal) is kept as the goal, where it was clicked,
 	// for as long as the order lasts: only the route asked for goes to the ground under it, and the jet flies the rest (AHuman::UpdateAIMotor).
 	// Put on the ground as any goal was, the waypoint dropped there the moment the order was taken, and the unit counted itself there.
@@ -1770,6 +1764,44 @@ void Actor::UpdateMovePath() {
 	}
 
 	m_UpdateMovePath = false;
+}
+
+Vector Actor::GoalOnGround(const Vector& place) const {
+	const Vector inScene(place.m_X, std::max(1.0F, place.m_Y));
+	const float h = GetMoveHeight();
+	auto terrainAt = [](const Vector& at) { return g_SceneMan.GetTerrMatter(static_cast<int>(at.m_X), static_cast<int>(at.m_Y)); };
+	if (const unsigned char id = terrainAt(inScene); id != MaterialColorKeys::g_MaterialAir) {
+		// (A place a little into the floor, clicked or picked by a script, for a unit that can't dig: the surface over it. Kept in the ground,
+		// the route's last point was put back there, and the unit stood over it, never near enough to arrive, hopped, and marked its own
+		// goal avoided for its whole team every six seconds. A rung or a bush, which bodies pass, is where it is.)
+		const bool digs = IsDiggingTo() || EstimateDigStrength() > c_PathFindingDefaultDigStrength + 1.0F;
+		if (digs || SensesPassTerrain(id, static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y), true)) {
+			return inScene;
+		}
+		for (float up = 3.0F; up <= h * 1.5F && inScene.m_Y - up >= 1.0F; up += 3.0F) {
+			const Vector above(inScene.m_X, inScene.m_Y - up);
+			if (terrainAt(above) == MaterialColorKeys::g_MaterialAir) {
+				return g_SceneMan.MovePointToGround(above, h * 0.2F, 3);
+			}
+		}
+		return inScene;
+	}
+	const Vector ground = g_SceneMan.MovePointToGround(inScene, h * 0.2F, 3);
+	// (Just past a ledge's edge, over a drop: the ledge, when there is one beside within a node. Taken to the floor under the point, a click
+	// a few pixels off the edge of a platform sent the unit down to the bottom of the drop.)
+	if (ground.m_Y - inScene.m_Y > h * 3.0F) {
+		for (float dx: {-8.0F, 8.0F, -16.0F, 16.0F, -24.0F, 24.0F}) {
+			const Vector beside(inScene.m_X + dx, inScene.m_Y);
+			if (terrainAt(beside) != MaterialColorKeys::g_MaterialAir) {
+				continue;
+			}
+			const Vector besideGround = g_SceneMan.MovePointToGround(beside, h * 0.2F, 3);
+			if (besideGround.m_Y - inScene.m_Y <= h * 1.5F) {
+				return besideGround;
+			}
+		}
+	}
+	return ground;
 }
 
 Vector Actor::GetPathStart() const {
@@ -2019,8 +2051,33 @@ PathAgent Actor::GetPathAgent() const {
 		}
 	}
 	if (Scene* scene = g_SceneMan.GetScene(); scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
+		// (Less the team's copies of this unit's own marks, which it has already: counted twice, its own failures cost it double for as
+		// long as the team's copy lasted, and then half as much again.)
+		const size_t ownPoints = agent.Avoid.size();
+		const size_t ownLinks = agent.AvoidLinks.size();
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoid(agent.Avoid, g_TimerMan.GetSimTimeMS());
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).GetTeamAvoidLinks(agent.AvoidLinks, g_TimerMan.GetSimTimeMS());
+		auto same = [](const Vector& a, const Vector& b) { return std::abs(a.m_X - b.m_X) < 1.0F && std::abs(a.m_Y - b.m_Y) < 1.0F; };
+		std::vector<bool> usedPoint(ownPoints, false);
+		std::vector<bool> usedLink(ownLinks, false);
+		for (size_t i = agent.Avoid.size(); i-- > ownPoints;) {
+			for (size_t j = 0; j < ownPoints; ++j) {
+				if (!usedPoint[j] && same(agent.Avoid[i], agent.Avoid[j])) {
+					usedPoint[j] = true;
+					agent.Avoid.erase(agent.Avoid.begin() + static_cast<std::ptrdiff_t>(i));
+					break;
+				}
+			}
+		}
+		for (size_t i = agent.AvoidLinks.size(); i-- > ownLinks;) {
+			for (size_t j = 0; j < ownLinks; ++j) {
+				if (!usedLink[j] && same(agent.AvoidLinks[i].first, agent.AvoidLinks[j].first) && same(agent.AvoidLinks[i].second, agent.AvoidLinks[j].second)) {
+					usedLink[j] = true;
+					agent.AvoidLinks.erase(agent.AvoidLinks.begin() + static_cast<std::ptrdiff_t>(i));
+					break;
+				}
+			}
+		}
 	}
 	ApplyMovementProfile(agent);
 	return agent;
@@ -2057,12 +2114,22 @@ void Actor::OnNewMovePath() {
 		// Remove the first one; it's our position (the path's kinds are one per point after it, so they stay)
 		m_PrevPathTarget = m_MovePath.front();
 		m_MovePath.pop_front();
-		// Also remove the one after that; it may move in opposite direction since it heads to the nearest PathNode center
-		// Unless it is the last one, in which case it shouldn't be removed. (Nor the end of a lift's ride, LM-11: the route starts on its deck,
-		// and without that point the unit walked off the deck into the shaft.)
-		if (m_MovePath.size() > 1 && (m_MovePathKinds.empty() || m_MovePathKinds.front() != PathStepKind::Lift)) {
-			m_PrevPathTarget = m_MovePath.front();
-			popFront();
+		// Also remove the one after that when it is the start node's centre, a step behind or beside the body: walked to, it turned the unit
+		// back. Unless it is the last one, in which case it shouldn't be removed. Only a walk's point within a node of the body, or one behind
+		// it: a route's walks are merged into points up to seven nodes apart (PathFinder::CalculatePath), and the point after the start could
+		// be the foot of a ledge or a take-off well ahead, which, dropped, had the next step (a jump, a ladder) begun from wherever the unit
+		// stood, after every new route. (Nor the end of a lift's ride, LM-11: the route starts on its deck, and without that point the unit
+		// walked off the deck into the shaft.)
+		if (m_MovePath.size() > 1 && (m_MovePathKinds.empty() || m_MovePathKinds.front() == PathStepKind::Walk || m_MovePathKinds.front() == PathStepKind::Crouch || m_MovePathKinds.front() == PathStepKind::Crawl)) {
+			const Vector toSecond = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
+			const Vector toThird = g_SceneMan.ShortestDistance(m_Pos, *std::next(m_MovePath.begin()));
+			const float node = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize());
+			const bool near = toSecond.MagnitudeIsLessThan(node);
+			const bool behind = toSecond.Dot(toThird) < 0.0F;
+			if (near || behind) {
+				m_PrevPathTarget = m_MovePath.front();
+				popFront();
+			}
 		}
 	} else if (m_pMOMoveTarget && g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		m_MoveTarget = m_pMOMoveTarget->GetPos();
@@ -2111,6 +2178,64 @@ void Actor::AvoidPathLink(const Vector& from, const Vector& to, float millisecon
 	if (Scene* scene = g_SceneMan.GetScene(); team && scene && m_Team >= Activity::TeamOne && m_Team < Activity::MaxTeamCount) {
 		scene->GetPathFinder(static_cast<Activity::Teams>(m_Team)).AddTeamAvoidLink(from, to, now + static_cast<double>(milliseconds) * 0.5, now);
 	}
+}
+
+int Actor::NoteFailedStep(const Vector& from, const Vector& to) {
+	const double now = g_TimerMan.GetSimTimeMS();
+	const float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
+	FailedSpot* spot = nullptr;
+	for (FailedSpot& failed: m_FailedSpots) {
+		if (now - failed.last < 90000.0 && g_SceneMan.ShortestDistance(failed.to, to).MagnitudeIsLessThan(near)) {
+			spot = &failed;
+			break;
+		}
+	}
+	if (spot) {
+		++spot->count;
+	} else {
+		// (The last four places: two ways round something that both fail are both remembered, and neither's count starts again each time the
+		// other fails, as it did with one place, so the unit doesn't go back and forth between them as each mark runs out.)
+		if (m_FailedSpots.size() >= 4) {
+			m_FailedSpots.erase(m_FailedSpots.begin());
+		}
+		m_FailedSpots.push_back({to, 1, now});
+		spot = &m_FailedSpots.back();
+	}
+	spot->last = now;
+	const int count = spot->count;
+	const int marks = count <= 1 ? 1 : (count == 2 ? 2 : 4);
+	const float milliseconds = count <= 1 ? 20000.0F : (count == 2 ? 45000.0F : 90000.0F);
+	for (int k = 0; k < marks; ++k) {
+		// (The team pays once, not once a mark: what it learns is that the step fails, not how often this unit tried it.)
+		AvoidPathLink(from, to, milliseconds, k == 0);
+	}
+	if (count >= 5 && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
+		// Five times running inside a minute and a half, with the way there dearer each time: there is no way there this unit can take.
+		if (IsAITraced()) {
+			g_ConsoleMan.PrintString("AITRACE failed at " + std::to_string(static_cast<int>(to.m_X)) + "," + std::to_string(static_cast<int>(to.m_Y)) + " five times running; standing down");
+		}
+		spot->count = 0;
+		FailOrder(ORDERFAIL_NOROUTE);
+		m_Waypoints.clear();
+		m_MovePath.clear();
+		m_MovePathKinds.clear();
+		m_HasMovePathGoal = false;
+		m_MoveTarget = m_Pos;
+	}
+	return count;
+}
+
+float Actor::RemainingRouteCost() const {
+	if (m_PathCostAtAdoption <= 0.0F || m_PathLengthAtAdoption < 1.0F || m_MovePath.empty()) {
+		return -1.0F;
+	}
+	float length = 0.0F;
+	Vector from = m_Pos;
+	for (const Vector& point: m_MovePath) {
+		length += g_SceneMan.ShortestDistance(from, point).GetMagnitude();
+		from = point;
+	}
+	return m_PathCostAtAdoption * std::min(1.0F, length / m_PathLengthAtAdoption);
 }
 
 bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
@@ -2482,8 +2607,8 @@ void Actor::PreControllerUpdate() {
 			// answer, which turns it back, is the one to take. Held to the old route there, a unit that had overshot flew on away from both.)
 			Vector oldHeading = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front());
 			bool oldGoesOn = oldHeading.Dot(m_Vel) > 0.0F;
-			if (oldGoesOn && heading.MagnitudeIsGreaterThan(1.0F) && heading.Dot(m_Vel) < 0.0F && m_PathCostAtAdoption > 0.0F && m_PathSizeAtAdoption > 0) {
-				float left = m_PathCostAtAdoption * static_cast<float>(m_MovePath.size()) / static_cast<float>(m_PathSizeAtAdoption);
+			const float left = RemainingRouteCost();
+			if (oldGoesOn && heading.MagnitudeIsGreaterThan(1.0F) && heading.Dot(m_Vel) < 0.0F && left > 0.0F) {
 				if (m_PathRequest->totalCost > left * 0.8F) {
 					if (IsAITraced()) {
 						g_ConsoleMan.PrintString("AITRACE route check: turns back at speed for " + std::to_string(m_PathRequest->totalCost) + " against " + std::to_string(left) + " left, keeping the route");
@@ -2493,10 +2618,34 @@ void Actor::PreControllerUpdate() {
 			}
 		}
 	}
+	// A routine refresh's answer (AHuman::RefreshRoute) is taken only when it is clearly cheaper than what is left of the route being followed
+	// (by a fifth), or clearly dearer (the route in hand has got worse: blocked, failed at, enemies come; the search, which would have found
+	// it again, says so). About the same, the route in hand is kept: taken every 7.5 s, a route about as good as the last, often the other
+	// way round something, turned units back and forth between the two. (An answer that is no way there is taken, for its own handling.)
+	if (m_PathRequest && m_PathRequest->complete && m_RouteRefresh) {
+		m_RouteRefresh = false;
+		const bool solved = m_PathRequest->status == micropather::MicroPather::SOLVED && m_PathRequest->totalCost <= 100000.0F && !const_cast<std::list<Vector>&>(m_PathRequest->path).empty();
+		const float left = RemainingRouteCost();
+		if (solved && !m_MovePath.empty() && left > 0.0F && m_PathRequest->totalCost >= left * 0.8F && m_PathRequest->totalCost <= left * 1.15F + 2.0F) {
+			if (IsAITraced()) {
+				g_ConsoleMan.PrintString("AITRACE route refresh: " + std::to_string(m_PathRequest->totalCost) + " against " + std::to_string(left) + " left, about the same; keeping the route");
+			}
+			m_PathRequest.reset();
+		}
+	}
 	if (m_PathRequest && m_PathRequest->complete) {
+		m_RouteRefresh = false;
 		m_MovePath = const_cast<std::list<Vector>&>(m_PathRequest->path);
 		m_PathCostAtAdoption = m_PathRequest->totalCost;
 		m_PathSizeAtAdoption = static_cast<int>(m_MovePath.size());
+		m_PathLengthAtAdoption = 0.0F;
+		{
+			Vector from = m_Pos;
+			for (const Vector& point: m_MovePath) {
+				m_PathLengthAtAdoption += g_SceneMan.ShortestDistance(from, point).GetMagnitude();
+				from = point;
+			}
+		}
 		m_MovePathKinds = const_cast<std::list<PathStepKind>&>(m_PathRequest->kinds);
 		m_MovePathSky = m_PathRequest->skyRoute;
 		if (IsAITraced()) {
@@ -2536,10 +2685,14 @@ void Actor::PreControllerUpdate() {
 		// than standing at the face. RC-11.)
 		const bool digTo = IsDiggingTo();
 		const bool overStrength = !cutAtDoor && m_PathRequest->totalCost > 100000.0F && (digTo || EstimateDigStrength() <= c_PathFindingDefaultDigStrength + 1.0F);
-		bool impossible = m_PathRequest->status == micropather::MicroPather::SOLVED && overStrength && m_MovePath.size() <= 3;
+		// (No solution at all is no way there too: the search hands back a straight line from here to the goal, which was followed into the
+		// wall, hopped at and re-pathed for ever, never counted. Not when following someone, who moves, nor a sky order, whose jet flies it.)
+		const bool noSolution = m_PathRequest->status == micropather::MicroPather::NO_SOLUTION && !g_MovableMan.ValidMO(m_pMOMoveTarget) && !m_StandingOrder.SkyGoal;
+		bool impossible = (m_PathRequest->status == micropather::MicroPather::SOLVED && overStrength && m_MovePath.size() <= 3) || noSolution;
 		m_ImpossiblePaths = impossible ? m_ImpossiblePaths + 1 : 0;
 		// For the path display: a route with no way there, or one that only gets there through ground this unit can't dig, is shown in red.
-		m_PathImpossible = m_PathRequest->status != micropather::MicroPather::SOLVED || overStrength;
+		// (Start and end in the same node is there already, not no way.)
+		m_PathImpossible = (m_PathRequest->status != micropather::MicroPather::SOLVED && m_PathRequest->status != micropather::MicroPather::START_END_SAME) || overStrength;
 		// No way there on foot: an idle ship near it may fly it there (ACShip::UpdateAIRides). Where it was sent is kept for that, as the
 		// stand-down below forgets it. (Not a dig-to, whose way is the digging, nor one following someone.)
 		if (m_PathImpossible && !digTo && !m_pMOMoveTarget && g_SettingsMan.AIRidesShips() && g_SettingsMan.AIShipRideNoRoute()) {

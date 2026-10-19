@@ -1106,6 +1106,14 @@ namespace RTE {
 		/// A search from anywhere else (its centre, half a body over the ground) can answer differently from the one its AI will make.
 		Vector GetPathStart() const;
 
+		/// Where a place this is sent to is taken to be on the ground (see UpdateMovePath): the floor under it, a fifth of a height up. A
+		/// place in the ground stays where it is for a dig-to and for a unit that can dig (it's a place to dig to), and for anyone else is the
+		/// surface over it, up to a height and a half up. A place in the air more than three heights over the floor under it, just past a
+		/// ledge's edge, is the ledge's.
+		/// @param place The place.
+		/// @return The place on the ground.
+		Vector GoalOnGround(const Vector& place) const;
+
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
 		Vector GetMovePathEnd() const {
@@ -1905,6 +1913,19 @@ namespace RTE {
 		void HoldStillWeightless(AEJetpack* jetpack);
 		/// A flight failed: from that take-off for that landing is dearer for a while, for this unit and (for half as long, unless team is false) its team.
 		void AvoidPathLink(const Vector& from, const Vector& to, float milliseconds, bool team = true);
+
+		/// A step of the route failed (a flight, a leap, a climb, or long stuck on the way to a place): that step is made dearer, more and for
+		/// longer each time it fails again inside a minute and a half (one mark of PathTuning::FailedSpotCost for 20 s, then two for 45 s, then
+		/// four for 90 s). Kept for the unit's last few failed places, apart from the route-follower's state, which holds and resets wipe.
+		/// After the fifth failure running at the same place the order is stood down (ORDERFAIL_NOROUTE): no way there it can take.
+		/// @param from Where the step began (the route's take-off for a flight).
+		/// @param to Where it was going (the landing, or the route's point).
+		/// @return How many times running it has failed there, 1 for the first.
+		int NoteFailedStep(const Vector& from, const Vector& to);
+
+		/// What is left of the route being followed is reckoned to cost: its cost when taken, in the share of its length still to go.
+		/// @return The cost, or a negative number when it isn't known.
+		float RemainingRouteCost() const;
 		/// Whether this unit's AI decisions are written to the console log (LogConsole.txt, saved when the game closes): every unit when
 		/// tracing all units is ticked (or CCCP_AI_LOG is "all"), else the units being inspected (IsDebugInspected: pinned, selected in the sandbox, or given the AITrace value as the gyms' runners are).
 		/// Which lines go is up to the debug channels (SettingsMan::DebugChannel), ticked in the settings or switched on by CCCP_AI_LOG.
@@ -2221,6 +2242,13 @@ namespace RTE {
 		bool m_MovePathSky = false; //!< Whether the route being followed is a sky route (PathAgent::SkyRoute): one flight up into open sky and down onto the goal, flown as a full-risk order's is (AHuman::MoveAlongRoute).
 		float m_PathCostAtAdoption = 0.0F; //!< The cost of the route being followed when it was taken, and how many points it had then: for weighing a route check's answer against what is left of it.
 		int m_PathSizeAtAdoption = 0;
+		float m_PathLengthAtAdoption = 0.0F; //!< The route's length when taken, px, from where the unit was (see RemainingRouteCost).
+		struct FailedSpot {
+			Vector to; //!< Where the failed step was going.
+			int count = 0; //!< How many times running it has failed there.
+			double last = 0.0; //!< When it last did, sim ms.
+		};
+		std::vector<FailedSpot> m_FailedSpots; //!< The last few places steps failed going to (see NoteFailedStep), newest last.
 		bool m_Mantling = false;
 		Vector m_MantleLip; //!< The ledge's lip the hands reach for while mantling.
 		float m_MantleProgress = 0.0F; //!< How far through the mantle, 0 to 1.
@@ -2282,6 +2310,7 @@ namespace RTE {
 		Timer m_AutomoverHoldTimer; //!< Since a gravity lift last marked this unit as one it steers.
 		bool m_AutomoverRiding = false; //!< Whether the route-follower handed the unit to a gravity lift on its last call (see RideAutomover).
 		bool m_RouteCheck = false; //!< The path request in flight is a route check (see RequestRouteCheck): its answer is only taken if reachable.
+		bool m_RouteRefresh = false; //!< The path request in flight is a routine refresh (AHuman::RefreshRoute): its answer is only taken when it is clearly better or worse than what is left of the route, not about the same.
 		bool m_WaitingAtDoor = false; //!< At the end of a route cut short at a door: the route is asked for again every couple of seconds, until the door is open or gone.
 		// The minimum range to consider having reached a move target is considered
 		float m_MoveProximityLimit;

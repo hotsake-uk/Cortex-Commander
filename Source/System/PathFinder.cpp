@@ -1873,10 +1873,14 @@ void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* 
 	// A flight failed lately (PathAgent::AvoidLinks): from near that take-off to near that landing costs more, so the next route takes off
 	// somewhere else for it (a step back, the other side of the shaft) or lands somewhere else; walking past either spot costs nothing.
 	// (Marking the landing's place, as it was, made every route by it dearer, walks and all, though the landing was rarely what failed.)
+	// (From anywhere along the floor within three nodes of the take-off, a node and a half up or down: held to a node and a half every way,
+	// the next route took off for the same landing from two nodes along, for two nodes' walk more, and failed the same way.)
 	if (s_AvoidLinks) {
 		const float near = static_cast<float>(m_NodeDimension) * 1.5F;
+		const float along = static_cast<float>(m_NodeDimension) * 3.0F;
 		for (const std::pair<Vector, Vector>& failed: *s_AvoidLinks) {
-			if (!g_SceneMan.ShortestDistance(node->Pos, failed.first).MagnitudeIsLessThan(near)) {
+			const Vector fromTakeOff = g_SceneMan.ShortestDistance(failed.first, node->Pos);
+			if (std::abs(fromTakeOff.m_X) > along || std::abs(fromTakeOff.m_Y) > near) {
 				continue;
 			}
 			for (micropather::StateCost& adjacent: *adjacentList) {
@@ -2779,7 +2783,9 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 			// fuel per pixel, from its push and tank), the burst that lights it and a reserve for the top; the crossing lit about half the time.
 			float climbFuel = rise > 4.0F ? (rise + 12.0F) * s_JetClimbMSPerPx + (across >= 10.0F ? 450.0F : 300.0F) : 0.0F;
 			float fuel = 200.0F + climbFuel + across / (5.0F * ppm) * 0.5F * 1000.0F * 1.2F;
-			if (fuel > s_JetTimeMS * 0.95F) {
+			// (At most 85 hundredths of the tank, as the route-follower waits for at most (AHuman::MoveAlongRoute's take-off): planned up to 95,
+			// every flight between was taken off on short of its fuel, once the wait ran out, and came down under the landing.)
+			if (fuel > s_JetTimeMS * 0.85F) {
 				continue;
 			}
 			// Open air: up at this column to the cruising height, across at it (at two heights), and down onto the landing.
@@ -2873,13 +2879,16 @@ float PathFinder::AvoidCost(const PathNode& node) const {
 	if (!s_Avoid) {
 		return 0.0F;
 	}
+	// About what a detour of twenty-odd nodes costs for each time it failed there lately: taken only when there's no other reasonable way.
+	// (25 as tuned.) Up to four: one place failed at again and again is dearer each time, as a failed step is (AvoidLinks), where it used to
+	// cost the same however often it failed.
+	int marks = 0;
 	for (const Vector& place: *s_Avoid) {
-		if (g_SceneMan.ShortestDistance(node.Pos, place).MagnitudeIsLessThan(static_cast<float>(m_NodeDimension) * 1.5F)) {
-			// About what a detour of twenty-odd nodes costs: taken only when there's no other reasonable way. (25 as tuned.)
-			return s_Tune.FailedSpotCost;
+		if (g_SceneMan.ShortestDistance(node.Pos, place).MagnitudeIsLessThan(static_cast<float>(m_NodeDimension) * 1.5F) && ++marks >= 4) {
+			break;
 		}
 	}
-	return 0.0F;
+	return s_Tune.FailedSpotCost * static_cast<float>(marks);
 }
 
 float PathFinder::LineCost(const PathNode& node) const {
