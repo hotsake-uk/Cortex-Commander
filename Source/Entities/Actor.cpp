@@ -1695,13 +1695,7 @@ void Actor::UpdateMovePath() {
 	// from inside the scene: a point over the top edge was being bounded to somewhere the search didn't see the top floor from.)
 	// A target inside the ground stays where it is: it's a place to dig to, and "the ground under it" is itself, so the search was lifting
 	// it a fifth of a height every time the path was asked for again, and the digger never got there.
-	auto onGround = [this](const Vector& place) {
-		Vector inScene(place.m_X, std::max(1.0F, place.m_Y));
-		if (g_SceneMan.GetTerrMatter(static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y)) != MaterialColorKeys::g_MaterialAir) {
-			return inScene;
-		}
-		return g_SceneMan.MovePointToGround(inScene, GetMoveHeight() * 0.2F, 3);
-	};
+	auto onGround = [this](const Vector& place) { return GoalOnGround(place); };
 	// But a sky order's point (Jetpack here, or a move clicked in open air: StandingOrder::SkyGoal) is kept as the goal, where it was clicked,
 	// for as long as the order lasts: only the route asked for goes to the ground under it, and the jet flies the rest (AHuman::UpdateAIMotor).
 	// Put on the ground as any goal was, the waypoint dropped there the moment the order was taken, and the unit counted itself there.
@@ -1770,6 +1764,44 @@ void Actor::UpdateMovePath() {
 	}
 
 	m_UpdateMovePath = false;
+}
+
+Vector Actor::GoalOnGround(const Vector& place) const {
+	const Vector inScene(place.m_X, std::max(1.0F, place.m_Y));
+	const float h = GetMoveHeight();
+	auto terrainAt = [](const Vector& at) { return g_SceneMan.GetTerrMatter(static_cast<int>(at.m_X), static_cast<int>(at.m_Y)); };
+	if (const unsigned char id = terrainAt(inScene); id != MaterialColorKeys::g_MaterialAir) {
+		// (A place a little into the floor, clicked or picked by a script, for a unit that can't dig: the surface over it. Kept in the ground,
+		// the route's last point was put back there, and the unit stood over it, never near enough to arrive, hopped, and marked its own
+		// goal avoided for its whole team every six seconds. A rung or a bush, which bodies pass, is where it is.)
+		const bool digs = IsDiggingTo() || EstimateDigStrength() > c_PathFindingDefaultDigStrength + 1.0F;
+		if (digs || SensesPassTerrain(id, static_cast<int>(inScene.m_X), static_cast<int>(inScene.m_Y), true)) {
+			return inScene;
+		}
+		for (float up = 3.0F; up <= h * 1.5F && inScene.m_Y - up >= 1.0F; up += 3.0F) {
+			const Vector above(inScene.m_X, inScene.m_Y - up);
+			if (terrainAt(above) == MaterialColorKeys::g_MaterialAir) {
+				return g_SceneMan.MovePointToGround(above, h * 0.2F, 3);
+			}
+		}
+		return inScene;
+	}
+	const Vector ground = g_SceneMan.MovePointToGround(inScene, h * 0.2F, 3);
+	// (Just past a ledge's edge, over a drop: the ledge, when there is one beside within a node. Taken to the floor under the point, a click
+	// a few pixels off the edge of a platform sent the unit down to the bottom of the drop.)
+	if (ground.m_Y - inScene.m_Y > h * 3.0F) {
+		for (float dx: {-8.0F, 8.0F, -16.0F, 16.0F, -24.0F, 24.0F}) {
+			const Vector beside(inScene.m_X + dx, inScene.m_Y);
+			if (terrainAt(beside) != MaterialColorKeys::g_MaterialAir) {
+				continue;
+			}
+			const Vector besideGround = g_SceneMan.MovePointToGround(beside, h * 0.2F, 3);
+			if (besideGround.m_Y - inScene.m_Y <= h * 1.5F) {
+				return besideGround;
+			}
+		}
+	}
+	return ground;
 }
 
 Vector Actor::GetPathStart() const {

@@ -1106,6 +1106,14 @@ namespace RTE {
 		/// A search from anywhere else (its centre, half a body over the ground) can answer differently from the one its AI will make.
 		Vector GetPathStart() const;
 
+		/// Where a place this is sent to is taken to be on the ground (see UpdateMovePath): the floor under it, a fifth of a height up. A
+		/// place in the ground stays where it is for a dig-to and for a unit that can dig (it's a place to dig to), and for anyone else is the
+		/// surface over it, up to a height and a half up. A place in the air more than three heights over the floor under it, just past a
+		/// ledge's edge, is the ledge's.
+		/// @param place The place.
+		/// @return The place on the ground.
+		Vector GoalOnGround(const Vector& place) const;
+
 		/// Gets the last position in this Actor's move path, or otherwise the current move target.
 		/// @return The last position in this Actor's move path, or otherwise the current move target.
 		Vector GetMovePathEnd() const {

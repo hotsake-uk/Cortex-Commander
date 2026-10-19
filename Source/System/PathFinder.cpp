@@ -2783,7 +2783,9 @@ void PathFinder::CollectFlightLinks(const PathNode& node, std::vector<FlightLink
 			// fuel per pixel, from its push and tank), the burst that lights it and a reserve for the top; the crossing lit about half the time.
 			float climbFuel = rise > 4.0F ? (rise + 12.0F) * s_JetClimbMSPerPx + (across >= 10.0F ? 450.0F : 300.0F) : 0.0F;
 			float fuel = 200.0F + climbFuel + across / (5.0F * ppm) * 0.5F * 1000.0F * 1.2F;
-			if (fuel > s_JetTimeMS * 0.95F) {
+			// (At most 85 hundredths of the tank, as the route-follower waits for at most (AHuman::MoveAlongRoute's take-off): planned up to 95,
+			// every flight between was taken off on short of its fuel, once the wait ran out, and came down under the landing.)
+			if (fuel > s_JetTimeMS * 0.85F) {
 				continue;
 			}
 			// Open air: up at this column to the cruising height, across at it (at two heights), and down onto the landing.
