@@ -298,6 +298,78 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		s_DigKnownReach = c_DigKnownReach;
 		s_DigKnownFrom = start;
 	}
+	// A dig-to (a commander's order): no search at all, the straight line from the unit to the point, a node at a time, dug through the ground,
+	// walked or dropped through the air on it and jetted up it. Only where the line meets what the digger can't cut (harder ground than it
+	// cuts, as far as it can know it, or a door) is the rest searched for, from the last point before it. (Searched from the start, a dig-to
+	// went round by the corridors of a whole bunker to reach a point straight under the unit.)
+	if (agent.DigGoal && agent.DigLine && agent.DigStrength > c_PathFindingDefaultDigStrength + 1.0F) {
+		g_SceneMan.ForceBounds(start);
+		g_SceneMan.ForceBounds(end);
+		const Vector way = g_SceneMan.ShortestDistance(start, end, g_SceneMan.SceneWrapsX());
+		const float nodeSize = static_cast<float>(m_NodeDimension);
+		const int steps = std::max(1, static_cast<int>(std::ceil(way.GetMagnitude() / nodeSize)));
+		pathResult.clear();
+		if (kinds) {
+			kinds->clear();
+		}
+		s_LastSkyRoute = false;
+		s_LastCutAtDoor = false;
+		s_LastCutMaterial = 0;
+		pathResult.push_back(start);
+		totalCostResult = 0.0F;
+		Vector from = start;
+		for (int step = 1; step <= steps; ++step) {
+			Vector to = start + way * (static_cast<float>(step) / static_cast<float>(steps));
+			g_SceneMan.WrapPosition(to);
+			const Material* material = StrongestMaterialAlongLine(from, to);
+			const Vector stepWay = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
+			PathStepKind kind;
+			float cost = stepWay.GetMagnitude() / nodeSize;
+			if (material && !Open(*material)) {
+				const bool door = material->GetIndex() == MaterialColorKeys::g_MaterialDoor;
+				if (door || (material->GetIntegrity() > agent.DigStrength && !GroundUnknown(from))) {
+					// What it can't dig: the rest searched for from here (the search goes round, or is cut short at it as any route is).
+					PathAgent rest = agent;
+					rest.DigLine = false;
+					std::list<Vector> restPath;
+					std::list<PathStepKind> restKinds;
+					float restCost = 0.0F;
+					int restResult = CalculatePath(from, end, restPath, restCost, rest, &restKinds);
+					if ((restResult == MicroPather::SOLVED || restResult == MicroPather::START_END_SAME) && !restPath.empty()) {
+						restPath.pop_front();
+						pathResult.splice(pathResult.end(), restPath);
+						if (kinds) {
+							kinds->splice(kinds->end(), restKinds);
+						}
+						totalCostResult += restCost;
+					} else {
+						// No way on from here: cut at it, as a search cuts a route at the first step it can't pass.
+						s_LastCutAtDoor = door;
+						s_LastCutMaterial = material->GetIndex();
+						s_LastCutAt = from + stepWay * 0.5F;
+						totalCostResult += 1000000.0F;
+					}
+					return pathResult.size() > 1 ? MicroPather::SOLVED : MicroPather::START_END_SAME;
+				}
+				kind = PathStepKind::Dig;
+				cost *= 2.5F;
+			} else if (stepWay.m_Y > nodeSize * 0.5F) {
+				kind = PathStepKind::Fall;
+			} else if (stepWay.m_Y < -nodeSize * 0.5F) {
+				kind = PathStepKind::Jump;
+				cost *= 2.0F;
+			} else {
+				kind = PathStepKind::Walk;
+			}
+			pathResult.push_back(to);
+			if (kinds) {
+				kinds->push_back(kind);
+			}
+			totalCostResult += cost;
+			from = to;
+		}
+		return MicroPather::SOLVED;
+	}
 	s_LastSkyRoute = false;
 	s_LeapsTaken.clear();
 	s_LiftStepsTaken.clear();

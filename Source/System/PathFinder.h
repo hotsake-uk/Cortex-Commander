@@ -129,6 +129,7 @@ namespace RTE {
 		int ThreatTeam = -1; //!< The searcher's team, whose own units are no threat to it.
 		float ThreatWeight = 1.0F; //!< How much it shies from routes past enemies: 1 as designed, 0 not at all, 2 twice as much (SettingsMan::AIThreatAvoidance).
 		bool DigGoal = false; //!< Whether the goal is a place to dig to (RC-11): a goal inside the ground is the node it is in, not the open node next to it, so the route ends in the ground.
+		bool DigLine = true; //!< With DigGoal: the route is the straight line to the goal, dug through, as far as it can go; the search only from where the line meets what it can't pass (see CalculatePath).
 		float DigCostScale = 1.0F; //!< What a node dug through costs it, as a share of the usual price (DigNodeCost): under 1 tunnels where going round would be shorter for a move.
 		static constexpr float c_DigToCostScale = 0.08F; //!< DigCostScale on a dig-to order (RC-11): a node dug costs about half a walked one more, so a dig-to tunnels straight on rather than walking round. (At 0.25 a node dug cost three or four walked, and a dig-to walked round the first mound in its way before it dug.)
 		static constexpr float c_DigToLineWeight = 0.5F; //!< LineWeight on a dig-to order at least: what each node off the straight line to its point costs, in walked nodes, so it digs as directly as it can.
