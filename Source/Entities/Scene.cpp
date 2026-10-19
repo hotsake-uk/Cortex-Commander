@@ -8,6 +8,7 @@
 #include "FrameMan.h"
 #include "ConsoleMan.h"
 
+#include <algorithm>
 #include <chrono>
 #include <numeric>
 #include <unordered_set>
@@ -2856,14 +2857,15 @@ void Scene::UpdateTeamGridNodes(int team, const std::vector<int>& nodeIds) {
 	} else if (doorBoxes.empty()) {
 		otherNodes = nodeIds;
 	} else {
-		std::vector<bool> nearDoor(teamPathFinder.GetNodeCount(), false);
+		// The nodes by the doors, sorted to look up: a flag for every node on the map, made for each team on every call, cost more than the work on big maps.
+		std::vector<int> nearDoor;
 		for (const Box& box: doorBoxes) {
-			for (int nodeId: teamPathFinder.GetNodeIdsInBox(box, true)) {
-				nearDoor[nodeId] = true;
-			}
+			std::vector<int> boxNodes = teamPathFinder.GetNodeIdsInBox(box, true);
+			nearDoor.insert(nearDoor.end(), boxNodes.begin(), boxNodes.end());
 		}
+		std::sort(nearDoor.begin(), nearDoor.end());
 		for (int nodeId: nodeIds) {
-			(nearDoor[nodeId] ? doorNodes : otherNodes).push_back(nodeId);
+			(std::binary_search(nearDoor.begin(), nearDoor.end(), nodeId) ? doorNodes : otherNodes).push_back(nodeId);
 		}
 	}
 	if (!teamPathFinder.CopyNodeSamples(noTeamPathFinder, otherNodes)) {

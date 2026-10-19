@@ -1150,6 +1150,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AICombatBurst", { reader >> m_AICombat.Burst; ClampAICombat(); });
 	MatchProperty("AICombatHearing", { reader >> m_AICombat.Hearing; ClampAICombat(); });
 	MatchProperty("AICombatInvestigateNoises", { reader >> m_AICombat.InvestigateNoises; });
+	MatchProperty("FixBigMaps", { reader >> m_SlowdownFixes.BigMaps; });
 	MatchProperty("FixLiquidTellsOnlyMoves", { reader >> m_SlowdownFixes.LiquidTellsOnlyMoves; });
 	MatchProperty("WreckSettleSeconds", { reader >> m_SlowdownFixes.WreckSettleSeconds; m_SlowdownFixes.WreckSettleSeconds = std::clamp(m_SlowdownFixes.WreckSettleSeconds, 0, 600); });
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
@@ -1932,6 +1933,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AICombatBurst", m_AICombat.Burst);
 	writer.NewPropertyWithValue("AICombatHearing", m_AICombat.Hearing);
 	writer.NewPropertyWithValue("AICombatInvestigateNoises", m_AICombat.InvestigateNoises);
+	writer.NewPropertyWithValue("FixBigMaps", m_SlowdownFixes.BigMaps);
 	writer.NewPropertyWithValue("FixLiquidTellsOnlyMoves", m_SlowdownFixes.LiquidTellsOnlyMoves);
 	writer.NewPropertyWithValue("WreckSettleSeconds", m_SlowdownFixes.WreckSettleSeconds);
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);

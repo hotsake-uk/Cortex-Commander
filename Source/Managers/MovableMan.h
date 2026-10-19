@@ -627,6 +627,20 @@ namespace RTE {
 		/// @return Pointers to the MOs that are within the specified radius of the given centre position.
 		const std::vector<MovableObject*>* GetMOsInRadius(const Vector& centre, float radius) const { return GetMOsInRadius(centre, radius, Activity::NoTeam); }
 
+		/// Gets the actors whose position is within a distance of a point (across the seam of a wrapping scene), in the order of the actor list: for
+		/// scripts that look over the units near them, which with the big-map speedups (SettingsMan::SlowdownFixTuning::BigMaps) then go over only
+		/// those instead of every unit on the map. With the speedups off, every actor, as MovableMan.Actors.
+		/// @param centre The point.
+		/// @param radius How far from it.
+		/// @return The actors, for Lua to go over.
+		const std::vector<Actor*>* GetActorsInRadius(const Vector& centre, float radius) const;
+
+		/// Gets the items whose position is within a distance of a point, as GetActorsInRadius does for actors: every item with the speedups off, as MovableMan.Items.
+		/// @param centre The point.
+		/// @param radius How far from it.
+		/// @return The items, for Lua to go over.
+		const std::vector<MovableObject*>* GetItemsInRadius(const Vector& centre, float radius) const;
+
 		/// Gets pointers to the MOs that are at a particular position in the Scene.
 		/// @param pixelX The X coordinate of the Scene pixel to test.
 		/// @param pixelY The Y coordinate of the Scene pixel to test.

@@ -192,6 +192,31 @@ namespace RTE {
 		int m_SkylineDirtyFirstColumn = 0; //!< The columns whose skyline may have moved since RecomputeSkyline last ran: a cell at or above a column's skyline row crossed half full.
 		int m_SkylineDirtyEndColumn = 0;
 		int m_NextRefreshRow = 0; //!< Row the round-robin terrain refresh continues from.
+		bool m_WorldBigMaps = false; //!< The world grid was built with the big-map speedups on (SettingsMan::SlowdownFixTuning::BigMaps), which give mid-sized maps the coarser cells.
+
+		/// Big-map speedups: the scene in square regions, so the passes over the whole light grid (sky light, wetness, mist, soot fading) are done only round
+		/// each screen, where something needs them, and a slice of the rest each frame (the sweep), instead of over the whole map. A region that drifts with
+		/// time keeps the clock it was last brought up to, and catches up on everything it missed in one step the next time it is picked.
+		struct RegionRect {
+			glm::ivec4 Pixels; //!< Scene pixels: min x, min y, end x, end y.
+			glm::dvec3 Owed; //!< What it catches up on: seconds (x) for wetness and mist, whole 1/255 steps for soot fading (x soot, y drying, z washing off).
+		};
+		static constexpr int c_RegionSize = 256; //!< Scene pixels a side of a region.
+		int m_RegionColumns = 0;
+		int m_RegionRows = 0;
+		bool m_RegionsOn = false; //!< This frame is worked region by region: the speedups on, the screens known, and what's picked well short of the whole map.
+		bool m_RegionsFinishing = false; //!< This frame goes by regions only to bring them all up to date, before the whole map is worked on at once again.
+		int m_RegionSweep = 0; //!< The region the sweep goes on from.
+		std::vector<unsigned char> m_RegionsPicked; //!< Per region this frame: 1 round a screen or in the sweep.
+		std::vector<unsigned short> m_SkyLightUnsettled; //!< Per region: frames more the sky light is spread there because the terrain changed near it.
+		std::vector<glm::dvec3> m_WetClocks; //!< Per region: the wetness clock (x) it was last brought up to.
+		std::vector<glm::dvec3> m_FogClocks; //!< Per region: the mist clock (x) it was last brought up to.
+		std::vector<glm::dvec3> m_DecalClocks; //!< Per region: the soot fading steps it has taken.
+		double m_WetClock = 0.0; //!< Game seconds of wetness stepped so far.
+		double m_FogClock = 0.0; //!< Game seconds of mist stepped so far.
+		glm::dvec3 m_DecalClock{0.0}; //!< 1/255 steps of soot fading owed so far, all told.
+		std::array<glm::ivec4, c_MaxScreens> m_ScreenViews{}; //!< What each player screen showed when last lit, in scene pixels: x, y, width, height.
+		std::array<int, c_MaxScreens> m_ScreenViewFrames{-100, -100, -100, -100}; //!< The frame (m_FrameCounter) each was last lit in.
 		int m_FrameCounter = 0;
 		int m_LastLightCount = 0;
 		long long m_LastSimUpdateCount = -1; //!< For advancing the time of day in sim time.
@@ -401,9 +426,28 @@ namespace RTE {
 
 		/// Sets the point light shader's terrain distance field uniforms and binds the field to unit 4. The shader must be enabled.
 		void SetShadowFieldUniforms() const;
-		void PropagateSkyLight(int iterations);
+		/// Spreads the sky light through the grid.
+		/// @param iterations How many steps, a cell each.
+		/// @param regions Only these, when not null (big-map speedups); the steps are then made even, so the result ends in the same buffer.
+		void PropagateSkyLight(int iterations, const std::vector<RegionRect>* regions = nullptr);
 		void StampScorchMarks();
 		void StampStains();
+
+		/// Picks the regions for this frame round the screens and in the sweep (m_RegionsPicked), and works out whether this frame goes by regions at all (m_RegionsOn).
+		void PickRegions();
+		/// The regions to work on for one pass, joined into rectangles, each with what it's owed.
+		/// @param extra Regions this pass also needs this frame (1 to add), or null.
+		/// @param withPicked Whether the picked regions (m_RegionsPicked) are taken too, or only the extra ones.
+		/// @param clocks The pass's per region clocks, brought up to now as they are taken; null for a pass that doesn't go by time.
+		/// @param now Where the pass's clock is now.
+		/// @param wholeSteps Owed only in whole steps, and a region owed less than one isn't taken.
+		std::vector<RegionRect> TakeRegions(const std::vector<unsigned char>* extra, bool withPicked, std::vector<glm::dvec3>* clocks, const glm::dvec3& now, bool wholeSteps);
+		/// Marks the regions overlapping a box of scene pixels (wrapped or clipped as the scene is) in a per region list.
+		void MarkRegions(std::vector<unsigned char>& marks, int minX, int minY, int endX, int endY) const;
+		/// Sets the scissor to a rectangle of scene pixels in a target of this cell size.
+		void ScissorRegion(const glm::ivec4& pixels, int cellSize, const GLTarget& target) const;
+		/// Copies rectangles of scene pixels, a margin of cells all round (and across the seam of a wrapping scene), from one target to another of the same size.
+		void CopyRegions(const GLTarget& from, const GLTarget& to, const std::vector<RegionRect>& regions, int cellSize, int margin) const;
 
 		/// Works out again which cells of the scorch and stain maps hold ground (m_DecalGround) over a box of the scene, and wipes the soot and stains
 		/// off every cell in it whose ground came or went. A mark then goes with the surface it was on: when the ground under it is dug or blown away,
@@ -418,6 +462,10 @@ namespace RTE {
 		/// Fades soot and stains away over time and washes them off in the rain, and dries wet stains (LightingSettings::DecalsFade).
 		/// @param seconds Game seconds since the last call.
 		void FadeDecals(float seconds);
+		/// Big-map speedups: fades the soot and stains in some regions up to the fading owed so far (m_DecalClock), each by what it missed.
+		/// @param extra Regions to bring up to date (1), or null.
+		/// @param withPicked Whether this frame's picked regions are too.
+		void FadeDecalRegions(const std::vector<unsigned char>* extra, bool withPicked);
 
 		/// Steps the fog volume (LightingSettings::FogVolume) on by the game time since the last step: wind, spreading, clearing and its sources.
 		void UpdateFog();

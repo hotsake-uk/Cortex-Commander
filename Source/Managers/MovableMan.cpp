@@ -244,6 +244,28 @@ const std::vector<MovableObject*>* MovableMan::GetMOsInRadius(const Vector& cent
 	return vectorForLua;
 }
 
+const std::vector<Actor*>* MovableMan::GetActorsInRadius(const Vector& centre, float radius) const {
+	std::vector<Actor*>* vectorForLua = new std::vector<Actor*>();
+	const bool all = !g_SettingsMan.SlowdownFixes().BigMaps;
+	for (Actor* actor: m_Actors) {
+		if (all || !g_SceneMan.ShortestDistance(centre, actor->GetPos(), true).MagnitudeIsGreaterThan(radius)) {
+			vectorForLua->push_back(actor);
+		}
+	}
+	return vectorForLua;
+}
+
+const std::vector<MovableObject*>* MovableMan::GetItemsInRadius(const Vector& centre, float radius) const {
+	std::vector<MovableObject*>* vectorForLua = new std::vector<MovableObject*>();
+	const bool all = !g_SettingsMan.SlowdownFixes().BigMaps;
+	for (MovableObject* item: m_Items) {
+		if (all || !g_SceneMan.ShortestDistance(centre, item->GetPos(), true).MagnitudeIsGreaterThan(radius)) {
+			vectorForLua->push_back(item);
+		}
+	}
+	return vectorForLua;
+}
+
 const std::vector<MovableObject*>* MovableMan::GetMOsAtPosition(int pixelX, int pixelY, int ignoreTeam, bool getsHitByMOsOnly) const {
 	std::vector<MovableObject*>* vectorForLua = new std::vector<MovableObject*>();
 	*vectorForLua = std::move(g_SceneMan.GetMOIDGrid().GetMOsAtPosition(pixelX, pixelY, ignoreTeam, getsHitByMOsOnly));
@@ -1824,7 +1846,9 @@ void MovableMan::Update() {
 
 			g_PerformanceMan.StartPerformanceMeasurement(PerformanceMan::ParticlesUpdate);
 			// The most gib chunks loose at once (the gib chunk setting, 0 for no limit): the chunks still loose are gathered as they update.
-			const int maxLooseChunks = g_SettingsMan.GibChunks().MaxLoose;
+			// With the big-map speedups, No limit there is 400: chunks lying across gaps or on bodies otherwise stay live for good, more of them the bigger the map and the battle.
+			constexpr int c_BigMapsMaxLooseChunks = 400;
+			const int maxLooseChunks = g_SettingsMan.GibChunks().MaxLoose > 0 ? g_SettingsMan.GibChunks().MaxLoose : (g_SettingsMan.SlowdownFixes().BigMaps ? c_BigMapsMaxLooseChunks : 0);
 			std::vector<MovableObject*> looseChunks;
 			// The most loose bits (pixels and small sprite particles that never expire: blood, flecks, chips) at once, 0 for no limit, gathered the same way.
 			const SettingsMan::SlowdownFixTuning& slowdownFixes = g_SettingsMan.SlowdownFixes();

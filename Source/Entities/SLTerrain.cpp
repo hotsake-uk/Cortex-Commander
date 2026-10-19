@@ -15,6 +15,7 @@
 #include "Atom.h"
 #include "DataModule.h"
 #include "PresetMan.h"
+#include "SettingsMan.h"
 #include "Draw.h"
 #include "BigTexture.h"
 #include "Texture.h"
@@ -750,6 +751,8 @@ bool SLTerrain::IsBoxBuried(const Box& checkBox) const {
 void SLTerrain::CleanAir() {
 	std::vector<int> rows(m_MainBitmap->h); // we loop through h first, because we want each thread to have sequential memory that they're touching
 	std::iota(std::begin(rows), std::end(rows), 0);
+	// With the big-map speedups only the pixels whose material changed are marked for the lighting, not the whole map (which had it re-read the whole map's terrain the frame after).
+	const bool markChanges = g_SettingsMan.SlowdownFixes().BigMaps;
 
 	std::for_each(std::execution::par_unseq, std::begin(rows), std::end(rows),
 	              [&](int yPos) {
@@ -758,13 +761,18 @@ void SLTerrain::CleanAir() {
 			              if (matPixel == MaterialColorKeys::g_MaterialCavity) {
 				              _putpixel(m_MainBitmap, xPos, yPos, MaterialColorKeys::g_MaterialAir);
 				              matPixel = MaterialColorKeys::g_MaterialAir;
+				              if (markChanges) {
+					              NoteMaterialChange(xPos, yPos);
+				              }
 			              }
 			              if (matPixel == MaterialColorKeys::g_MaterialAir) {
 				              _putpixel(m_FGColorLayer->GetBitmap(), xPos, yPos, ColorKeys::g_MaskColor);
 			              }
 		              }
 	              });
-	NoteMaterialChangeBox(0, 0, m_MainBitmap->w - 1, m_MainBitmap->h - 1);
+	if (!markChanges) {
+		NoteMaterialChangeBox(0, 0, m_MainBitmap->w - 1, m_MainBitmap->h - 1);
+	}
 }
 
 void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {

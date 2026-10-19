@@ -254,7 +254,7 @@ end
 -- The middle of the animal's herd round it (the same herd, the same side, within 20 m), and how many are in it.
 local function HerdMiddle(Owner, herd)
 	local sumX, sumY, count = 0, 0, 0;
-	for Act in MovableMan.Actors do
+	for Act in SharedBehaviors.ActorsNear(Owner.Pos, 400) do
 		if Act.ID ~= Owner.ID and Act.Team == Owner.Team and Act.Status < Actor.DYING then
 			local kind = Kinds[Act.PresetName];
 			if kind and kind.herd == herd then

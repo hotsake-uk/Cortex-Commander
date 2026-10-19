@@ -261,7 +261,7 @@ function CreatureBehaviors.HuntTarget(AI, Owner, Abort)
 			FleeCheck:Reset();
 			local packRange = math.max(Value(Owner, "CreaturePackRange", 400), 100);
 			local kin = 0;
-			for Act in MovableMan.Actors do
+			for Act in SharedBehaviors.ActorsNear(Owner.Pos, packRange) do
 				if Act.Team == Owner.Team and Act.PresetName == Owner.PresetName and Act.Status < Actor.DYING
 					and not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(packRange) then
 					kin = kin + 1;
@@ -482,7 +482,7 @@ function CreatureBehaviors.PackUpdate(AI, Owner)
 		return;
 	end
 	AI.PackTimer:Reset();
-	for Act in MovableMan.Actors do
+	for Act in SharedBehaviors.ActorsNear(Owner.Pos, packRange) do
 		if Act.ID ~= Owner.ID and Act.Team == Owner.Team and Act.Status < Actor.DYING and SharedBehaviors.PeerValueExists(Act, "CreatureHuntID")
 			and Act:IsInGroup("Actors - Creatures") and not SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsGreaterThan(packRange) then
 			local Prey = AsActor(MovableMan:FindObjectByUniqueID(SharedBehaviors.PeerValue(Act, "CreatureHuntID")));
