@@ -2625,6 +2625,33 @@ namespace SandboxDetail {
 			return PostAt(ZoneMiddle(objective), radius, radius + 300.0F, 0);
 		}
 
+		/// The objective the attackers spawn in, by Attacker spawn, or -1 for their own spawn zones (none taken yet, or Own zones chosen).
+		int AssaultSpawnObjective() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const int taken = std::min(s_Objective, static_cast<int>(settings.Zones.size()));
+			if (!s_ModeRun.Running || settings.Mode != BattleMode::Assault || taken <= 0) {
+				return -1;
+			}
+			const int at = settings.AttackerSpawn == 1 ? taken - 1 : (settings.AttackerSpawn == 2 ? std::max(taken - 2, 0) : -1);
+			return at >= 0 && settings.Zones[at].size() >= 3 ? at : -1;
+		}
+
+		/// The attackers' spawn zones made the objective they spawn in (AssaultSpawnObjective), for this game only: the next starts from the
+		/// zones as planned (s_ModeSetup). True if they changed, and the teams want setting up again (SetUpTeams).
+		bool ApplyAssaultSpawn() {
+			BattleModeSettings& settings = s_ModeRun.Settings;
+			const int at = AssaultSpawnObjective();
+			if (at < 0) {
+				return false;
+			}
+			std::vector<std::vector<Vector>>& zones = settings.SpawnZones[AttackerOf(settings)];
+			if (zones.size() == 1 && zones.front() == settings.Zones[at]) {
+				return false;
+			}
+			zones = {settings.Zones[at]};
+			return true;
+		}
+
 		bool AssaultReady(const BattleModeSettings& setup, std::string& why) {
 			if (!setup.Plays[AttackerOf(setup)]) {
 				why = std::string("Tick ") + c_SideNames[AttackerOf(setup)] + ", the attackers, or pick others to attack.";
@@ -2644,6 +2671,10 @@ namespace SandboxDetail {
 		void AssaultSettingsChanged() {
 			if (s_Objective >= static_cast<int>(s_ModeRun.Settings.Zones.size())) {
 				s_Objective = 0;
+			}
+			// (The settings sent over the game's put back the attackers' own spawn zones.)
+			if (ApplyAssaultSpawn()) {
+				SetUpTeams();
 			}
 		}
 
@@ -2700,6 +2731,10 @@ namespace SandboxDetail {
 			if (s_ModeRun.Over || settings.Zones.empty() || now % 6 != 0) {
 				return;
 			}
+			// (Again here as well as when an objective is taken, so a loaded game's attackers spawn where they did.)
+			if (ApplyAssaultSpawn()) {
+				SetUpTeams();
+			}
 			const int attacker = AttackerOf(settings);
 			std::array<int, c_Sides> in = CountIn(settings.Zones[s_Objective], Fighters());
 			int defenders = 0;
@@ -2739,7 +2774,12 @@ namespace SandboxDetail {
 				for (int side = 0; side < c_Sides; ++side) {
 					RecentreDefenders(side, post.DefendPos, false, static_cast<float>(post.DefendRadius));
 				}
-				Say("Objective " + std::to_string(s_Objective) + " taken" + (s_Deadline > 0 && settings.BonusSeconds > 0 ? ": +" + std::to_string(settings.BonusSeconds) + " s" : std::string()) + ". On to the next!");
+				std::string spawn;
+				if (ApplyAssaultSpawn()) {
+					SetUpTeams();
+					spawn = " " + SideName(attacker) + " now spawn at objective " + std::to_string(AssaultSpawnObjective() + 1) + ".";
+				}
+				Say("Objective " + std::to_string(s_Objective) + " taken" + (s_Deadline > 0 && settings.BonusSeconds > 0 ? ": +" + std::to_string(settings.BonusSeconds) + " s" : std::string()) + ". On to the next!" + spawn);
 			}
 			if (s_Deadline > 0 && now >= s_Deadline) {
 				const int defender = OnlyDefender(settings);
@@ -2758,6 +2798,10 @@ namespace SandboxDetail {
 			changed |= ImGui::SliderInt("Added per objective", &setup.BonusSeconds, 0, 300, "%d s");
 			ImGui::EndDisabled();
 			ImGui::SetItemTooltip("Seconds added to the attackers' time for each objective they take.");
+			changed |= ImGui::Combo("Attacker spawn", &setup.AttackerSpawn, "Own zones\0Last taken\0One behind\0");
+			ImGui::SetItemTooltip("Where the attackers come in as they take objectives. Own zones: their spawn zones all game. Last taken: each objective "
+			                      "they take becomes their only spawn zone. One behind: the first they take becomes their spawn zone, then it stays one "
+			                      "behind (taking objective 3 spawns them at 2). Their ships drop over it too, and their spawn zones can't be moved while one is in use.");
 			changed |= ImGui::Checkbox("Block respawns on last objective", &setup.BlockLastRespawns);
 			ImGui::SetItemTooltip("While the last objective is in play and the attackers are taking it or fighting over it, the defenders get no more respawns: "
 			                      "only the units they have left can hold it. Their respawns come back if the attackers are pushed off and its taking slips back to nothing.");
@@ -6817,6 +6861,10 @@ namespace SandboxDetail {
 			if (side < 0 || side >= c_Sides || !s_ModeSetup.Plays[side]) {
 				return false;
 			}
+			// (Assault attackers spawning at an objective taken: their own zones aren't in use, so not to be moved.)
+			if (EditGameOn() && side == AttackerOf(s_ModeRun.Settings) && AssaultSpawnObjective() >= 0) {
+				return false;
+			}
 			return !EditGameOn() || (s_ModeRun.Settings.MovingSpawns && s_ModeSetup.PlayerCommands[side] && TeamIn(s_ModeRun.Settings, side));
 		}
 
@@ -7517,7 +7565,7 @@ namespace SandboxDetail {
 			SendBattleMode();
 		}
 		ImGui::EndDisabled();
-		ImGui::SetItemTooltip("%s", gameOn ? "Chosen before the battle starts: stop it to change this." : "During the battle you can move and reshape the spawn zones of the team you command (with the Command tool, the battle panel open), but only behind the spawn line: in an assault, short of the objective in play (the defenders, beyond it); in other modes, away from the objectives and the enemy's spawn zones. Chosen before the battle starts.");
+		ImGui::SetItemTooltip("%s", gameOn ? "Chosen before the battle starts: stop it to change this." : "During the battle you can move and reshape the spawn zones of the team you command (with the Command tool, the battle panel open), but only behind the spawn line: in an assault, short of the objective in play (the defenders, beyond it); in other modes, away from the objectives and the enemy's spawn zones. (Not an assault's attackers while they spawn at an objective taken.) Chosen before the battle starts.");
 		if (CurrentTool().Kind == Tool::Command && !gameOn) {
 			ImGui::TextDisabled("Click a zone or point on the map to select it, then drag it, or its corners.");
 		} else if (CurrentTool().Kind == Tool::Command && s_ModeSetup.MovingSpawns) {
