@@ -639,6 +639,9 @@ namespace RTE {
 		float LampBrightness = 1.0F; //!< Multiplier for the lamps of bunker pieces and other scenery.
 		float LampReach = 1.0F; //!< Multiplier for how far scenery lamps reach.
 		glm::vec3 LampTint = {1.0F, 1.0F, 1.0F}; //!< A color scenery lamps are multiplied by.
+		bool LampsOffByDay = true; //!< Scenery lamps that daylight reaches (by a doorway, a window, a hole in the roof) are switched off between LampsOffFrom and LampsOffUntil. Deep lamps no daylight gets to, and warning lights that flicker or pulse, stay on. A switched off lamp can still be shot out.
+		float LampsOffFrom = 9.0F; //!< Hours, 0 to 24: when daylit scenery lamps go off, each a little early or late.
+		float LampsOffUntil = 20.0F; //!< Hours, 0 to 24: when they come back on.
 		bool LampCache = false; //!< Steady scenery lamps are lit once into a map of the world and only relit where the ground around them changes, instead of every frame: lamp-filled bases cost about the same as one lamp, and lamps no longer count against MaxScreenLights. Units cast no shadows from them, and their shadows are as coarse as the map. Off: every lamp is drawn every frame, as before.
 		int LampCacheDetail = 1; //!< How fine that map is: 0 coarse (8 px a texel), 1 (4 px), 2 fine (2 px). Large scenes get coarser so the map stays under about 64 MB.
 

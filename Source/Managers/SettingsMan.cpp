@@ -1037,6 +1037,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LampBrightness", { g_PostProcessMan.GetLightingSettings().LampBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LampReach", { g_PostProcessMan.GetLightingSettings().LampReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LampTint", { g_PostProcessMan.GetLightingSettings().LampTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().LampTint); });
+	MatchProperty("LampsOffByDay", { g_PostProcessMan.GetLightingSettings().LampsOffByDay = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LampsOffFrom", { g_PostProcessMan.GetLightingSettings().LampsOffFrom = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 24.0F); });
+	MatchProperty("LampsOffUntil", { g_PostProcessMan.GetLightingSettings().LampsOffUntil = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 24.0F); });
 	MatchProperty("LampCache", { g_PostProcessMan.GetLightingSettings().LampCache = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LampCacheDetail", { g_PostProcessMan.GetLightingSettings().LampCacheDetail = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
 	MatchProperty("HeadlampBrightness", { g_PostProcessMan.GetLightingSettings().HeadlampBrightness = std::stof(reader.ReadPropValue()); });
@@ -1787,6 +1790,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("LampBrightness", lighting.LampBrightness);
 	writer.NewPropertyWithValue("LampReach", lighting.LampReach);
 	writer.NewPropertyWithValue("LampTint", WriteVec3(lighting.LampTint));
+	writer.NewPropertyWithValue("LampsOffByDay", lighting.LampsOffByDay);
+	writer.NewPropertyWithValue("LampsOffFrom", lighting.LampsOffFrom);
+	writer.NewPropertyWithValue("LampsOffUntil", lighting.LampsOffUntil);
 	writer.NewPropertyWithValue("LampCache", lighting.LampCache);
 	writer.NewPropertyWithValue("LampCacheDetail", lighting.LampCacheDetail);
 	writer.NewPropertyWithValue("HeadlampBrightness", lighting.HeadlampBrightness);
