@@ -283,7 +283,9 @@ namespace {
 		} else if (state == ActorAwareness::Engaged) {
 			strength = 0.9F;
 		}
-		const float nearAlpha = 105.0F * opacity * strength;
+		// (At the default strength about a fifth opaque at the eyes, a third while fighting: at 105/255 times the strength it was so faint it
+		// could hardly be seen at all.)
+		const float nearAlpha = 190.0F * opacity * strength;
 		const ImU32 color = StateColor(state, 255);
 		const ImVec2 white = drawList->_Data->TexUvWhitePixel;
 
@@ -301,21 +303,22 @@ namespace {
 		for (int i = 0; i < triangles; ++i) {
 			const ImDrawIdx base = static_cast<ImDrawIdx>(drawList->_VtxCurrentIdx);
 			drawList->PrimWriteVtx(eye, white, WithAlpha(color, nearAlpha / 255.0F));
-			drawList->PrimWriteVtx(points[i], white, WithAlpha(color, nearAlpha * (1.0F - 0.92F * along[i]) / 255.0F));
-			drawList->PrimWriteVtx(points[i + 1], white, WithAlpha(color, nearAlpha * (1.0F - 0.92F * along[i + 1]) / 255.0F));
+			drawList->PrimWriteVtx(points[i], white, WithAlpha(color, nearAlpha * (1.0F - 0.75F * along[i]) / 255.0F));
+			drawList->PrimWriteVtx(points[i + 1], white, WithAlpha(color, nearAlpha * (1.0F - 0.75F * along[i + 1]) / 255.0F));
 			drawList->PrimWriteIdx(base);
 			drawList->PrimWriteIdx(static_cast<ImDrawIdx>(base + 1));
 			drawList->PrimWriteIdx(static_cast<ImDrawIdx>(base + 2));
 		}
-		// The rim where its sight ends: a soft line along the far edge and over the walls that stop it.
-		const float rimAlpha = std::min(1.0F, opacity * strength * 1.1F);
+		// The rim where its sight ends: a line a game pixel thick along the far edge and over the walls that stop it.
+		const float rimAlpha = std::min(1.0F, opacity * strength * 2.4F);
+		const float rimWidth = std::max(1.5F, 1.0F / std::max(scale, 0.01F));
 		for (int i = 0; i < triangles; ++i) {
-			const float fade = 1.0F - 0.6F * std::max(along[i], along[i + 1]);
-			drawList->AddLine(points[i], points[i + 1], WithAlpha(color, rimAlpha * fade * 0.8F), 1.5F);
+			const float fade = 1.0F - 0.4F * std::max(along[i], along[i + 1]);
+			drawList->AddLine(points[i], points[i + 1], WithAlpha(color, rimAlpha * fade), rimWidth);
 		}
-		// The two sides of the field, faint.
-		drawList->AddLine(eye, points[0], WithAlpha(color, rimAlpha * 0.35F), 1.0F);
-		drawList->AddLine(eye, points[cone.Rays - 1], WithAlpha(color, rimAlpha * 0.35F), 1.0F);
+		// The two sides of the field, fainter.
+		drawList->AddLine(eye, points[0], WithAlpha(color, rimAlpha * 0.5F), rimWidth * 0.75F);
+		drawList->AddLine(eye, points[cone.Rays - 1], WithAlpha(color, rimAlpha * 0.5F), rimWidth * 0.75F);
 	}
 #pragma endregion
 
