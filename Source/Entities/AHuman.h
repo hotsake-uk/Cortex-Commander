@@ -1012,10 +1012,13 @@ namespace RTE {
 				bool direct = false; //!< Flown straight through open air to a landing further along the route, as the Fly command flies (see MoveAlongRoute): no rise or fall-back checks on the way.
 				bool diveRolled = false; //!< Whether it has been decided yet if this flight is dived (see MoveAlongRoute).
 				bool dive = false; //!< Dived: prone in the air on a risky order, the jet driving it on across (SettingsMan::DirectOrderTuning::DiveRisk).
+				bool rescue = false; //!< A climb that failed near its landing, flown on for the landing as the Fly command flies rather than let go of (see MoveAlongRoute).
+				Timer rescueTimer; //!< Since the rescue began: it has a few seconds to get onto the landing.
 			};
 			bool begun = false;
 			long long lastCallTick = -1; //!< The sim update the follower was last called on, to tell a hold by whoever drives it (see MoveAlongRoute).
 			Flight flight;
+			bool repathOnLanding = false; //!< A flight given up on in the air: the failed take-off is marked at once, and the new route asked for once the body is down, not from mid-air.
 			Timer progressTimer; //!< Since the unit last got nearer the route's point.
 			float bestGap = -1.0F;
 			Vector lastProgressPos;

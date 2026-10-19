@@ -2588,7 +2588,7 @@ void DebugMan::SettingsGUI() {
 			Tip("How long without getting nearer before the unit gives up on the spot, marks it to avoid and asks for a new route. Never sooner than the remedies start. 6 s is the default.");
 			resetItem("Stuck: new route after", tuning.StuckRepathSeconds, normal.StuckRepathSeconds);
 			Slider("Mid-air route check", &tuning.AirCheckSeconds, 0.1F, 3.0F, "every %.2f s");
-			Tip("How often a unit in the air checks for a better route; it switches only when the new one is better. 0.5 s is the default.");
+			Tip("How often a unit falling or knocked into the air checks for a better route; it switches only when the new one is better. Planned jet flights and leaps don't check: they finish first. 0.5 s is the default.");
 			resetItem("Mid-air route check", tuning.AirCheckSeconds, normal.AirCheckSeconds);
 			Slider("Waypoint reach distance", &tuning.ReachScale, 0.5F, 3.0F, "%.2fx");
 			Tip("How near a point on the route counts as reached, as a multiple of the unit's own reach (twice it in the air). Higher cuts corners and runs smoother but can clip ledges; lower follows the route tightly. 1x is the default.");

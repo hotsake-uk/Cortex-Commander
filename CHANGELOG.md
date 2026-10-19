@@ -395,6 +395,8 @@ maindev
 
 <details><summary><b>Fixed</b></summary>
 
+- **AI units no longer fall back down a climb they've almost made**: a jet climb that stalls by its landing (a shoulder caught on the lip, a slow lean over the top, a step across that won't take) is now flown on for the landing for a few seconds, as the Fly command flies, instead of being given up with the jet cut. A tank running dry while stepping onto the ledge now refuels on the way down and climbs back, instead of ending the flight in mid-air. A climb given up in the air is now marked as failed and re-routed once the unit is down, so the same climb isn't tried again straight away.
+- **AI units no longer change route partway through a move**: route refreshes now wait until a leap, mantle, ladder climb or flight is over, and planned jet flights no longer take a new route from mid-air (the mid-air route check now only applies to falls the route didn't plan). A new route no longer throws away its second point when that point is ahead, such as the foot of a ledge or a take-off, so units don't start the next jump from the wrong place.
 - Survival, Massacre, Keepie Uppie and One-Man Army (Diggers Only) scaled only the random part of the time between enemy drops by the spawn interval scale; now the whole of it, as at the start of the game.
 - Survival and Harvester read the random part of the time between enemy drops back from the wrong saved value when a saved game was loaded.
 - Wave Defense's enemy bomb chance and first bombing time had a random part that never worked (it could add 0.9 to the bomb chance instead of a tenth either way).
