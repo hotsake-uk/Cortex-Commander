@@ -838,6 +838,12 @@ void DebugMan::SettingsGUI() {
 		Slider("Lamp brightness", &settings.LampBrightness, 0.0F, 4.0F);
 		Slider("Lamp reach", &settings.LampReach, 0.25F, 3.0F);
 		Tint("Lamp tint", &settings.LampTint.x);
+		Check("Lamps off in daylight", &settings.LampsOffByDay);
+		Tip("Lamps in buildings and bunkers that daylight reaches, by a doorway, a window or a hole in the roof, switch off for the day and back on in the evening, each at a slightly different minute. Deep lamps no daylight gets to stay on, and so do warning lights that flicker or pulse. A lamp that's off can still be shot out. Light sources (Debug) shows which lamps are which.");
+		if (settings.LampsOffByDay) {
+			Slider("Lamps go off at (hour)", &settings.LampsOffFrom, 0.0F, 24.0F, "%.1f");
+			Slider("Lamps come on at (hour)", &settings.LampsOffUntil, 0.0F, 24.0F, "%.1f");
+		}
 		Check("Light steady lamps once (faster)", &settings.LampCache);
 		Tip("Scenery lamps that don't flicker are lit once into a map of the world, and only relit where the ground around them changes, so bases full of lamps cost about as much as one. Units cast no shadows from those lamps, and the lamps' shadows are softer. Off: every lamp is drawn every frame. On in the Low preset.");
 		if (settings.LampCache) {
@@ -2720,7 +2726,7 @@ void DebugMan::SettingsGUI() {
 	// How the picture is lit, drawn over the game.
 	auto renderDebug = [&]() {
 		Toggle("Light sources", g_SettingsMan.ShowLightSources(), [](bool on) { g_SettingsMan.SetShowLightSources(on); });
-		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey), and counts by kind with the summed reach squared, about what the light pass costs.");
+		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey) and a ring round each for daylight (yellow: daylight reaches it, so it's off by day; blue: a deep lamp that stays on; none: a warning light, or not looked yet), and counts by kind with the summed reach squared, about what the light pass costs.");
 		Toggle("Lights by source", g_SettingsMan.ShowLightsBySource(), [](bool on) { g_SettingsMan.SetShowLightsBySource(on); });
 		Tip("A readout in the bottom left: the lights registered for the frame about to be drawn, counted by what registered them (objects, hot spots, headlamps, tracers, scenery lamps, fire, sandbox effects, scripts), cone lights apart, and how many sim updates ran since the last drawn frame.");
 		Toggle("Sun direction and shadow strength", g_SettingsMan.ShowSunDirection(), [](bool on) { g_SettingsMan.SetShowSunDirection(on); });

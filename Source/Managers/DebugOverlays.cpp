@@ -431,6 +431,10 @@ void DebugOverlays::DrawLightSources() {
 			}
 			ImU32 state = lamp.m_Anchored > 0 ? IM_COL32(90, 230, 90, 255) : lamp.m_Anchored == 0 ? IM_COL32(240, 70, 60, 255) : IM_COL32(160, 160, 160, 255);
 			drawList->AddRect(ImVec2(at.x - 3.0F, at.y - 3.0F), ImVec2(at.x + 3.0F, at.y + 3.0F), state);
+			// Whether daylight reaches it, so it's switched off by day (yellow), or it's a deep lamp that stays on (blue).
+			if (lamp.m_SkyOpen >= 0.0F) {
+				drawList->AddCircle(at, 7.0F, lamp.IsDaylit() ? IM_COL32(255, 215, 70, 255) : IM_COL32(80, 150, 255, 255), 16, 2.0F);
+			}
 			if (lamp.m_Anchored > 0) {
 				ImVec2 anchor = DebugDraw::ToScreen(lamp.m_Pos + lamp.m_AnchorOffset);
 				drawList->AddLine(at, anchor, state, 2.0F);
