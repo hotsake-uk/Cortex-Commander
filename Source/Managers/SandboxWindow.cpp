@@ -1112,6 +1112,44 @@ namespace SandboxDetail {
 		return perRow;
 	}
 
+	/// The Effects tab's "Make a light": a light of any colour and size, the nuclear glow's light (without its embers and shimmer) to start
+	/// from. Picked, it is put down as it is set when clicked, so lights of different colours can be put side by side.
+	void MadeLightUI() {
+		ImGui::SeparatorText("Make a light");
+		if (ToolUI::RadioButton("Make a light", c_Tools[s_ToolIndex].Kind == Tool::Effect && s_EffectChoice == c_MadeLightChoice)) {
+			s_EffectChoice = c_MadeLightChoice;
+			TookTool(ToolIndex(Tool::Effect));
+		}
+		ImGui::SetItemTooltip("Just a light, set up below, put down where you click. Each keeps how it was set when put down.");
+		ImGui::SameLine();
+		if (ToolUI::SmallButton("Reset to default")) {
+			s_MadeLight = MadeLight();
+		}
+		ImGui::SetItemTooltip("Back to the nuclear glow's light, in white.");
+		MadeLight& light = s_MadeLight;
+		ImGui::PushID("madeLight");
+		ImGui::ColorEdit3("Colour", light.Colour, ImGuiColorEditFlags_NoInputs);
+		ImGui::SliderFloat("Size", &light.Reach, 4.0F, 1200.0F, "Reach (px) %.0f", ImGuiSliderFlags_Logarithmic);
+		ImGui::SliderFloat("Brightness", &light.Brightness, 0.0F, 8.0F, "%.2f");
+		ImGui::SliderFloat("Pulse", &light.PulseSpeed, 0.0F, 8.0F, "%.2f a second");
+		ImGui::SetItemTooltip("How many times a second it swells and fades. 0: steady.");
+		ImGui::BeginDisabled(light.PulseSpeed <= 0.0F);
+		ImGui::SliderFloat("Pulse strength", &light.PulseSwing, 0.0F, std::max(light.Brightness, 0.01F), "+/- %.2f");
+		ImGui::SetItemTooltip("How much brighter and dimmer than its brightness it gets as it pulses.");
+		ImGui::EndDisabled();
+		ImGui::SliderFloat("Flicker", &light.Flicker, 0.0F, 1.0F, "%.2f");
+		ImGui::Checkbox("Bright core", &light.Core);
+		ImGui::SetItemTooltip("A smaller, brighter light in the middle of it, as the nuclear glow has.");
+		if (light.Core) {
+			ImGui::Indent();
+			ImGui::ColorEdit3("Core colour", light.CoreColour, ImGuiColorEditFlags_NoInputs);
+			ImGui::SliderFloat("Core size", &light.CoreReach, 4.0F, 600.0F, "Reach (px) %.0f", ImGuiSliderFlags_Logarithmic);
+			ImGui::SliderFloat("Core brightness", &light.CoreBrightness, 0.0F, 8.0F, "%.2f");
+			ImGui::Unindent();
+		}
+		ImGui::PopID();
+	}
+
 	/// The tools to pick from, as a row of tiles: each its picture with its name under it, the one in hand lit up.
 	/// The Effects tab's maker: the effects you have made, and the controls of the one picked, layer by layer. Changes are kept in Userdata/SandboxEffects.txt as soon as no control is being dragged.
 	void CustomEffectsUI() {
@@ -5959,9 +5997,15 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(field * 1.4F);
 			LoadCustomEffects();
 			const int builtInEffects = static_cast<int>(EffectKind::Count);
-			s_EffectChoice = std::clamp(s_EffectChoice, 0, builtInEffects + static_cast<int>(s_CustomEffects.size()) - 1);
-			const char* shownEffect = s_EffectChoice < builtInEffects ? c_Effects[s_EffectChoice].Name : s_CustomEffects[static_cast<size_t>(s_EffectChoice - builtInEffects)].Name.c_str();
+			if (s_EffectChoice != c_MadeLightChoice) {
+				s_EffectChoice = std::clamp(s_EffectChoice, 0, builtInEffects + static_cast<int>(s_CustomEffects.size()) - 1);
+			}
+			const char* shownEffect = s_EffectChoice == c_MadeLightChoice ? c_MadeLightName : (s_EffectChoice < builtInEffects ? c_Effects[s_EffectChoice].Name : s_CustomEffects[static_cast<size_t>(s_EffectChoice - builtInEffects)].Name.c_str());
 			if (ImGui::BeginCombo("##effect", shownEffect, ImGuiComboFlags_HeightLarge)) {
+				if (ImGui::Selectable(c_MadeLightName, s_EffectChoice == c_MadeLightChoice)) {
+					s_EffectChoice = c_MadeLightChoice;
+				}
+				ImGui::SetItemTooltip("The light set up under \"Make a light\" in the Effects tab.");
 				for (int i = 0; i < builtInEffects; ++i) {
 					if (ImGui::Selectable(c_Effects[i].Name, i == s_EffectChoice)) {
 						s_EffectChoice = i;
