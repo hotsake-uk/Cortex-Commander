@@ -1045,6 +1045,8 @@ namespace RTE {
 			Timer liftCallTimer; //!< Since the deck was last called.
 			Timer liftOffTimer; //!< While riding, since the unit was last on the deck.
 			Timer proneHoldTimer;
+			bool crawlHeld = false; //!< Lying down for the stuck remedy under a ceiling: kept down while the ceiling is there (and a moment after).
+			Timer crawlHoldTimer;
 			bool crouching = false; //!< The walk is ducking under something low (see MoveAlongRoute's walk): kept up 400 ms after the room returns.
 			Timer crouchHoldTimer;
 			Timer hopTimer;

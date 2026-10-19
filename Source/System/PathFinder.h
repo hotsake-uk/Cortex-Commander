@@ -130,7 +130,8 @@ namespace RTE {
 		float ThreatWeight = 1.0F; //!< How much it shies from routes past enemies: 1 as designed, 0 not at all, 2 twice as much (SettingsMan::AIThreatAvoidance).
 		bool DigGoal = false; //!< Whether the goal is a place to dig to (RC-11): a goal inside the ground is the node it is in, not the open node next to it, so the route ends in the ground.
 		float DigCostScale = 1.0F; //!< What a node dug through costs it, as a share of the usual price (DigNodeCost): under 1 tunnels where going round would be shorter for a move.
-		static constexpr float c_DigToCostScale = 0.25F; //!< DigCostScale on a dig-to order (RC-11): a node dug costs about one or two walked, so a dig-to tunnels through a hill rather than walking four times as far round it.
+		static constexpr float c_DigToCostScale = 0.08F; //!< DigCostScale on a dig-to order (RC-11): a node dug costs about half a walked one more, so a dig-to tunnels straight on rather than walking round. (At 0.25 a node dug cost three or four walked, and a dig-to walked round the first mound in its way before it dug.)
+		static constexpr float c_DigToLineWeight = 0.5F; //!< LineWeight on a dig-to order at least: what each node off the straight line to its point costs, in walked nodes, so it digs as directly as it can.
 		float FlightCostScale = 1.0F; //!< What a jet flight's time, take-off and fuel cost it, as a share of the usual: under 1 on a direct order (Actor::StandingOrder::Direct), which jumps where others walk.
 		bool StraightFlight = false; //!< On a full-risk order (Actor::StandingOrder::Direct at SettingsMan::DirectOrderTuning::StraightFlightRisk): the route is one jet flight from start to goal, straight or up and over, when the air is open and StraightFlightReach of a tank flies it.
 		float StraightFlightReach = 0.95F; //!< How much of a full tank that flight may need (SettingsMan::DirectOrderTuning::FlightReach): over 1 is the risk of coming down short, accepted.
@@ -216,6 +217,7 @@ namespace RTE {
 
 		float Surface = -1.0F; //!< The ground surface in this node's column within its cell, or -1 for none (the node is in the air, or buried).
 		int FreeHeight = 0; //!< Air above the surface (or above the centre, for a node in the air) in the node's column, up to c_ClearanceReach.
+		int WalkHeight = 0; //!< The least air over the body's width (FreeHeight is the most): what a body walking through has over its head.
 		int ClearLeft = 0; //!< Air to the left of the centre (a little over the surface, for a node on the ground), up to a node's width.
 		int ClearRight = 0; //!< Air to the right, likewise.
 		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
@@ -690,6 +692,13 @@ namespace RTE {
 		/// @param material The Material to get the transition cost for.
 		/// @return The transition cost for the Material.
 		float GetMaterialTransitionCost(const Material& material) const;
+
+		/// Whether the ground at a place is out of what a dig-to planned on nearby ground knows (DigSafetyTuning::NearbyOnly): further than
+		/// c_DigKnownReach from the start of the search. Always false on any other search.
+		bool GroundUnknown(const Vector& at) const;
+
+		static constexpr float c_DigKnownReach = 200.0F; //!< How far from a digger a dig-to planned on nearby ground knows the ground, in pixels.
+		static constexpr float c_DigUnknownIntegrity = 50.0F; //!< What ground out of that reach is taken for: ordinary soil (or the hardest the digger cuts, if less).
 
 		/// What a walk's step pays for the material along it: nothing for what a walking body goes through as it comes (Open: grass,
 		/// foliage, ash), except a liquid, which LiquidCost prices; otherwise the transition cost (GetMaterialTransitionCost).
