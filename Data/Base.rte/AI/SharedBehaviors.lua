@@ -506,7 +506,7 @@ end
 -- The nearest enemy unit to a place, within reach, or nil: what a take-cover order takes cover from.
 function SharedBehaviors.NearestEnemy(Owner, reach)
 	local Nearest, best = nil, reach;
-	for Act in MovableMan.Actors do
+	for Act in SharedBehaviors.ActorsNear(Owner.Pos, reach) do
 		if Act.Team ~= Owner.Team and Act.Team >= 0 and Act.Health > 0 and (IsAHuman(Act) or IsACrab(Act)) then
 			local d = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, SceneMan.SceneWrapsX).Magnitude;
 			if d < best then
@@ -800,6 +800,30 @@ local function HasMember(Cache, Object, getter)
 	end
 	return has;
 end
+-- The units, or the items, within reach of a place, for the looks round that only want those: with the big-map speedups only those, instead of
+-- every one on the map (MovableMan:GetActorsInRadius, GetItemsInRadius); every one for a build without them (an older exe). In the lists' order,
+-- as MovableMan.Actors and MovableMan.Items, for a for loop. (The caller still checks its own distance: what comes is everything within reach, or more.)
+local HasNearLists = nil;
+local function NearListsHere()
+	if HasNearLists == nil then
+		local ok, value = pcall(function() return MovableMan.GetActorsInRadius and MovableMan.GetItemsInRadius; end);
+		HasNearLists = ok and value ~= nil;
+	end
+	return HasNearLists;
+end
+function SharedBehaviors.ActorsNear(Pos, reach)
+	if NearListsHere() then
+		return MovableMan:GetActorsInRadius(Pos, reach);
+	end
+	return MovableMan.Actors;
+end
+function SharedBehaviors.ItemsNear(Pos, reach)
+	if NearListsHere() then
+		return MovableMan:GetItemsInRadius(Pos, reach);
+	end
+	return MovableMan.Items;
+end
+
 -- How long ago the unit was shot at, hit or missed close by (Actor.ShotAtAgeMS); for a build without it (an older exe), never.
 local HasShotAtAge = MemberCache();
 local function GetShotAtAge(Owner) return Owner.ShotAtAgeMS; end
@@ -1133,7 +1157,7 @@ function SharedBehaviors.CrowdingUpdate(AI, Owner)
 	local spacing = halfWidth * 2 + 4;
 	local reach = spacing * 5 + halfWidth;
 	local Near = {};
-	for Mate in MovableMan.Actors do
+	for Mate in SharedBehaviors.ActorsNear(OwnPos, math.sqrt(reach * reach + height * height)) do
 		local mateClass = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < Actor.DYING and Mate.ClassName;
 		if (mateClass == "AHuman" or mateClass == "ACrab" or mateClass == "AMech") and not Mate.Vel:MagnitudeIsGreaterThan(2) then
 			local Dist = SceneMan:ShortestDistance(OwnPos, Mate.Pos, false);
@@ -1245,7 +1269,7 @@ function SharedBehaviors.SquadTactics(AI, Owner)
 		-- (The unit's own values read once for the whole look, not again for every actor in the scene: each read is a call into the engine,
 		-- and nothing in the loop changes them.)
 		local team, ownID, OwnPos, halfHeight, dying = Owner.Team, Owner.UniqueID, Owner.Pos, Owner.MoveHeight * 0.5, Actor.DYING;
-		for Mate in MovableMan.Actors do
+		for Mate in SharedBehaviors.ActorsNear(OwnPos, 400) do
 			-- (Fighting men and crabs only: a craft or a door standing next to a unit made it step away under fire.)
 			local className = Mate.Team == team and Mate.UniqueID ~= ownID and Mate.Status < dying and not Mate:IsPlayerControlled() and Mate.ClassName;
 			if className == "AHuman" or className == "ACrab" or className == "AMech" then
@@ -2676,7 +2700,7 @@ function SharedBehaviors.FleeUpdate(AI, Owner)
 		From = AI.AlarmPos;
 	else
 		local best = 130;
-		for Act in MovableMan.Actors do
+		for Act in SharedBehaviors.ActorsNear(Owner.Pos, 160) do
 			if Act.ID ~= Owner.ID and Act.Status < Actor.DYING then
 				local dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false).Magnitude;
 				if dist < best then
@@ -3253,7 +3277,7 @@ function SharedBehaviors.BarrelNear(AI, Owner, Target)
 	AI.BarrelFor = Target.UniqueID;
 	AI.Barrel = nil;
 	local best = 80; -- A barrel's fire reaches about this far.
-	for Item in MovableMan.Items do
+	for Item in SharedBehaviors.ItemsNear(Target.Pos, best) do
 		if Item.ID == Item.RootID and Item:NumberValueExists("Flammable") and string.find(Item.PresetName, "Barrel") then
 			local toTarget = SceneMan:ShortestDistance(Item.Pos, Target.Pos, false).Magnitude;
 			if toTarget < best and SceneMan:ShortestDistance(Owner.Pos, Item.Pos, false):MagnitudeIsGreaterThan(160) and SharedBehaviors.CanSee(Owner.EyePos, Item.Pos)
@@ -3722,7 +3746,7 @@ end
 -- player takes it). @return The medic, or nil.
 function SharedBehaviors.FindMedic(Owner, range)
 	local Best, bestDist = nil, range;
-	for Act in MovableMan.Actors do
+	for Act in SharedBehaviors.ActorsNear(Owner.Pos, range) do
 		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and not Act:IsPlayerControlled() and SharedBehaviors.IsMedic(Act) then
 			local dist = SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false).Magnitude;
 			if dist < bestDist then
@@ -3754,7 +3778,8 @@ function SharedBehaviors.FindPatient(Owner)
 		end
 		return seenTo[Act.UniqueID];
 	end
-	for Act in MovableMan.Actors do
+	-- (1200 is the furthest it looks, for a friend falling back.)
+	for Act in SharedBehaviors.ActorsNear(Owner.Pos, 1200) do
 		if Act.Team == Owner.Team and Act.ID ~= Owner.ID and Act.Status < Actor.DYING and Act.Health > 0 and Act.MaxHealth > 0
 			and (IsAHuman(Act) or IsACrab(Act)) then
 			local share = Act.Health / Act.MaxHealth;

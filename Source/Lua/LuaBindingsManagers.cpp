@@ -169,6 +169,8 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, MovableMan) {
 	    .def("GetMOsInBox", (const std::vector<MovableObject*>* (MovableMan::*)(const Box& box, int ignoreTeam) const) & MovableMan::GetMOsInBox, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("GetMOsInBox", (const std::vector<MovableObject*>* (MovableMan::*)(const Box& box, int ignoreTeam, bool getsHitByMOsOnly) const) & MovableMan::GetMOsInBox, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("GetMOsInRadius", (const std::vector<MovableObject*>* (MovableMan::*)(const Vector& centre, float radius) const) & MovableMan::GetMOsInRadius, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .def("GetActorsInRadius", &MovableMan::GetActorsInRadius, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
+	    .def("GetItemsInRadius", &MovableMan::GetItemsInRadius, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("GetMOsInRadius", (const std::vector<MovableObject*>* (MovableMan::*)(const Vector& centre, float radius, int ignoreTeam) const) & MovableMan::GetMOsInRadius, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("GetMOsInRadius", (const std::vector<MovableObject*>* (MovableMan::*)(const Vector& centre, float radius, int ignoreTeam, bool getsHitByMOsOnly) const) & MovableMan::GetMOsInRadius, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)
 	    .def("GetMOsAtPosition", (const std::vector<MovableObject*>* (MovableMan::*)(int pixelX, int pixelY) const) & MovableMan::GetMOsAtPosition, luabind::adopt(luabind::return_value) + luabind::return_stl_iterator)

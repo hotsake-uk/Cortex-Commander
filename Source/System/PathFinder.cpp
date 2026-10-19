@@ -537,7 +537,15 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		s_LastSolveMS = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - solveStart).count();
 		// A route that only exists through ground the searcher can't dig is usually down to the start node: a unit pressed into a bunker wall or
 		// a ledge stands in a cell whose every edge samples concrete. The neighbouring cells are tried as starts before that answer is given.
-		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F) {
+		// With the big-map speedups, only when the start really is boxed in, every way out of it that dear: with a way out cheaper than that, a search
+		// from a neighbour comes in no cheaper than this one less that step (this one went that way), and each of the eight tries goes over most of the map.
+		bool boxedIn = true;
+		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && g_SettingsMan.SlowdownFixes().BigMaps) {
+			std::vector<micropather::StateCost> exits;
+			AdjacentCost(static_cast<void*>(startNode), &exits);
+			boxedIn = std::none_of(exits.begin(), exits.end(), [](const micropather::StateCost& exit) { return exit.cost <= 100000.0F; });
+		}
+		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F && boxedIn) {
 			const PathNode* alternatives[] = {startNode->Up, startNode->Down, startNode->Left, startNode->Right, startNode->LeftUp, startNode->UpRight, startNode->DownLeft, startNode->RightDown};
 			for (const PathNode* alternative: alternatives) {
 				if (!alternative || !alternative->m_Navigable || TerrNav(static_cast<int>(alternative->Pos.m_X), static_cast<int>(alternative->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir) {
