@@ -2703,6 +2703,11 @@ bool AHuman::WatchForPin(bool holding) {
 		m_PinWideAnchor = m_Pos;
 		m_PinWideTimer.Reset();
 	}
+	// (Not the wider circle on a climb going up a tall shaft in stages: falling to refuel and climbing on keeps it in the same circle for a
+	// while, and the watch ended a climb that was getting there.)
+	if (mover.flight.active && (mover.flight.stages > 0 || mover.flight.refuelling)) {
+		m_PinWideTimer.Reset();
+	}
 	if (m_PinTimer.IsPastSimMS(8000) || m_PinWideTimer.IsPastSimMS(20000)) {
 		Unpin();
 		return mover.unpinDir != 0;
@@ -3022,8 +3027,9 @@ int AHuman::MoveAlongRoute() {
 	// only ever judged against the last waypoint queued, so a unit at the end of its first leg stood there, hopped at 2.5 s and at 6 s
 	// marked its own goal avoided for its whole team before the stuck handling's re-path loaded the next leg.)
 	if (m_MovePath.size() <= 1 && !mover.flight.active && !m_Waypoints.empty() && m_HasMovePathGoal && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
-		Vector legGround = Solid(m_MovePathGoal.m_X, m_MovePathGoal.m_Y, PassesRungs()) ? m_MovePathGoal : g_SceneMan.MovePointToGround(m_MovePathGoal, static_cast<int>(h * 0.2F), 4);
-		if (Towards(m_Pos, legGround).MagnitudeIsLessThan(std::min(h * 0.4F, m_MoveProximityLimit * 1.5F)) && !airborne) {
+		Vector legGround = GoalOnGround(m_MovePathGoal);
+		const Vector toLeg = Towards(m_Pos, legGround);
+		if (std::abs(toLeg.m_X) < std::min(h * 0.4F, m_MoveProximityLimit * 1.5F) && std::abs(toLeg.m_Y) < h * 0.4F && !airborne) {
 			MoverTrace("leg done; on to the next waypoint");
 			m_MovePath.clear();
 			m_MovePathKinds.clear();
@@ -3035,7 +3041,8 @@ int AHuman::MoveAlongRoute() {
 	}
 	if (m_MovePath.size() <= 1 && !mover.flight.active && m_Waypoints.empty() && !g_MovableMan.ValidMO(m_pMOMoveTarget)) {
 		Vector goal = GetLastAIWaypoint();
-		Vector goalGround = Solid(goal.m_X, goal.m_Y, PassesRungs()) ? goal : g_SceneMan.MovePointToGround(goal, static_cast<int>(h * 0.2F), 4);
+		// (On the ground as the route's goal was (Actor::GoalOnGround): a place in the floor for a unit that can't dig is the surface over it.)
+		Vector goalGround = GoalOnGround(goal);
 		Vector toGoal = Towards(m_Pos, goalGround);
 		// (Within reach is the waypoint's own limit and a little: a unit standing 42 px from a point it called reached was, to everything
 		// waiting on it, 42 px short.)
@@ -3054,10 +3061,24 @@ int AHuman::MoveAlongRoute() {
 			MoverTrace("jetpack here: no clear line up from under it; staying on the ground");
 			m_StandingOrder.SkyGoal = false;
 		}
-		if (toGoal.MagnitudeIsLessThan(reach) && !airborne && m_Vel.MagnitudeIsLessThan(2.0F)) {
+		// Across within reach and within a little under half a height up or down (the body's middle over the floor's point), on the ground,
+		// and either slowed or there a quarter of a second: as a player stops. (Held to the straight-line reach and under 2 m/s, a unit that
+		// came in at a run slid past, was turned about to walk back, and only arrived on the second or third pass; and one on a slope or a
+		// step, its middle a little higher or lower than the point, never did.)
+		const bool inReach = std::abs(toGoal.m_X) < reach && std::abs(toGoal.m_Y) < std::max(reach, h * 0.4F) && !airborne;
+		if (!inReach) {
+			mover.inReachTimer.Reset();
+		}
+		if (inReach && (m_Vel.MagnitudeIsLessThan(2.0F) || mover.inReachTimer.IsPastSimMS(250))) {
 			MoverTrace("arrived");
 			mover.arrivedTick = tick;
-		return RouteMover::Arrived;
+			return RouteMover::Arrived;
+		}
+		// (Within reach and still moving: the keys let go, so the legs brake rather than steer back past it.)
+		if (inReach) {
+			ctrl.SetState(MOVE_LEFT, false);
+			ctrl.SetState(MOVE_RIGHT, false);
+			return RouteMover::Moving;
 		}
 	}
 
@@ -3173,7 +3194,11 @@ int AHuman::MoveAlongRoute() {
 		// (Taken part way through, a new route could begin at the node behind or below the body, and turned it back off a ledge it had all
 		// but climbed. A move that fails is the stuck handling's, the leap's and the ladder's own, which ask for a route as they end it.)
 		const bool midMove = airborne || IsLeaping() || IsMantling() || m_Ladder.active || mover.repathOnLanding;
-		if ((mover.noSightTimer.IsPastSimMS(noSightMS) || mover.repathTimer.IsPastSimMS(static_cast<double>(tuning.RefreshSeconds) * 1000.0)) && !IsWaitingOnNewMovePath() && !midMove) {
+		// (And when following someone who has moved a node and a half from the route's end, at most every second: the route's end was moved
+		// to them by the script each tick, as a walk, so a jump, a ladder or a dig up to them was walked into the face of the ledge.)
+		const bool targetMoved = g_MovableMan.ValidMO(m_pMOMoveTarget) && mover.repathTimer.IsPastSimMS(1000) &&
+		                         Towards(m_MovePath.back(), GoalOnGround(m_pMOMoveTarget->GetPos())).MagnitudeIsGreaterThan(static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F);
+		if ((mover.noSightTimer.IsPastSimMS(noSightMS) || targetMoved || mover.repathTimer.IsPastSimMS(static_cast<double>(tuning.RefreshSeconds) * 1000.0)) && !IsWaitingOnNewMovePath() && !midMove) {
 			// (Out of sight, the route in hand may be broken, and the answer is taken whatever it costs; on the timer, only a clearly better
 			// or clearly worse one is: see Actor::PreControllerUpdate.)
 			const bool outOfSight = mover.noSightTimer.IsPastSimMS(noSightMS);
@@ -3343,6 +3368,20 @@ int AHuman::MoveAlongRoute() {
 				if (m_Ladder.pos.m_Y < m_Ladder.bestY - 2.0F) {
 					m_Ladder.bestY = m_Ladder.pos.m_Y;
 					m_Ladder.stallTimer.Reset();
+				} else if (std::abs(to.m_X) > 8.0F && to.m_Y > -h * 1.2F && m_Ladder.stallTimer.IsPastSimMS(400) && mover.ladderTopTimer.IsPastSimMS(3000)) {
+					// At the top rung with the route's point on the floor beside and not a body up (over the top): off the ladder towards it
+					// with a push up and the mantle asked for, so the hands catch the lip and pull the body up onto it, as a player goes over
+					// the top. (Held on the rung pressing up, the climb stalled there and let go after its give-up time, and the unit fell
+					// back down the ladder it had all but climbed.)
+					mover.ladderTopTimer.Reset();
+					const float side = to.m_X < 0.0F ? -1.0F : 1.0F;
+					MoverTrace("top of the ladder; over onto the floor beside");
+					LetGoOfLadder(Vector(side * 1.5F, -2.0F));
+					ctrl.SetState(side < 0.0F ? MOVE_LEFT : MOVE_RIGHT, true);
+					WantMantle();
+					mover.bestGap = -1.0F;
+					mover.progressTimer.Reset();
+					return RouteMover::Moving;
 				} else if (m_Ladder.stallTimer.IsPastSimMS(static_cast<double>(g_SettingsMan.AILadderGiveUpSeconds()) * 1000.0)) {
 					// (Its team pays for the place too only once units of it have been stuck on this ladder within a minute as often as the
 					// Movement settings say, twice as the game comes: once may be the unit's own bad luck, a body in the way or a climb begun badly.)
@@ -3594,7 +3633,10 @@ int AHuman::MoveAlongRoute() {
 			// 40 s and the unit scraped a wall).
 			// (Or while stepping across at the top, or flown on for the landing by a rescue: there the landing is about level, and the flight
 			// was ended with the tank dry and the body in the air over the shaft, which it fell down. The step begins again from the mouth.)
-			if ((to.m_Y < -h * 0.3F || flight.via || flight.step || flight.rescue) && flight.stages < 6) {
+			// (Up to six stages, or more for a climb taller than six storeys, about a storey a stage: held to six, a tall shaft's climb ended
+			// with the tank dry well short of the top.)
+			const int maxStages = std::max(6, static_cast<int>(std::ceil((flight.startY - flight.floorY) / std::max(h * 2.0F, 48.0F))) + 2);
+			if ((to.m_Y < -h * 0.3F || flight.via || flight.step || flight.rescue) && flight.stages < maxStages) {
 				flight.refuelling = true;
 				++flight.stages;
 				if (flight.step) {

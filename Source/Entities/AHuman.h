@@ -1116,6 +1116,8 @@ namespace RTE {
 			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
 			Timer remedyTimer; //!< Since it began.
 			Vector remedySpot; //!< Where the unit was stuck when it began.
+			Timer ladderTopTimer; //!< Since the follower last went off a ladder's top for the floor beside (see MoveAlongRoute's ladder): once in a while, not every tick.
+			Timer inReachTimer; //!< Since the unit came within reach of its last waypoint (see MoveAlongRoute's arrival).
 			float remedyGap = -1.0F; //!< How far from the route's point it was then (bestGap): a remedy has worked only if that got shorter.
 			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
 			bool swimming = false; //!< In liquid with the body under (LM-4), since the follower last looked: for the re-route on falling in.
