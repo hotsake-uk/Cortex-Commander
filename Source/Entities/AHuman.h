@@ -1004,7 +1004,10 @@ namespace RTE {
 				float bestY = 0.0F;
 				Timer riseTimer; //!< Since the climb last gained height.
 				Timer totalTimer; //!< Since the flight began (the other timer starts again at each refuel).
-				Vector takeOff; //!< Where the flight began: a failed flight is remembered as this take-off for that landing (see Actor::AvoidPathLink).
+				Vector takeOff; //!< Where the flight began.
+				Vector routeTakeOff; //!< The route's own take-off for it (see FindLanding), where the body may not quite have been: a failed flight is remembered as this take-off for that landing (see Actor::NoteFailedStep), as the search knows it.
+				bool hasRouteTakeOff = false; //!< Whether routeTakeOff is known (a flight begun in the air has none: takeOff is used).
+				Vector FailedFrom() const { return hasRouteTakeOff ? routeTakeOff : takeOff; }
 				bool step = false; //!< Out of a shaft with the landing to one side: holding the height and stepping across onto it.
 				float holdY = 0.0F; //!< The height held while stepping across (raised a pixel at a time until the feet clear the lip).
 				Timer stepTimer;
@@ -1045,9 +1048,6 @@ namespace RTE {
 			bool crouching = false; //!< The walk is ducking under something low (see MoveAlongRoute's walk): kept up 400 ms after the room returns.
 			Timer crouchHoldTimer;
 			Timer hopTimer;
-			Vector stuckSpot; //!< Where the step it was last long stuck on led (its landing, or the route's next point).
-			int stuckLevel = 0; //!< How many times running it has been long stuck on a step to much that same place.
-			Timer stuckSpotTimer; //!< Since it was first stuck there.
 			Timer steadyTimer; //!< Since the unit was last not standing still and upright, for the settle before a long flight.
 			bool straightTried = false; //!< A full-risk order's straight flight at its goal (see MoveAlongRoute) was begun, for straightGoal.
 			Vector straightGoal; //!< The goal it was begun for: not tried again for a few seconds (straightTimer), so a flight that failed isn't begun again and again.
@@ -1116,6 +1116,7 @@ namespace RTE {
 			int remedy = -1; //!< The stuck remedy being tried just now (StuckRemedy), or -1 (see MoveAlongRoute's walk).
 			Timer remedyTimer; //!< Since it began.
 			Vector remedySpot; //!< Where the unit was stuck when it began.
+			float remedyGap = -1.0F; //!< How far from the route's point it was then (bestGap): a remedy has worked only if that got shorter.
 			unsigned int remedyTried = 0; //!< The remedies tried this time stuck, one bit each.
 			bool swimming = false; //!< In liquid with the body under (LM-4), since the follower last looked: for the re-route on falling in.
 			long blocker = 0; //!< The unit of our side in the way just now (LM-2), by unique ID, or 0.
@@ -1430,7 +1431,9 @@ namespace RTE {
 		/// Drops the route but keeps the place it was for, and asks for a new one to it. (ClearMovePath forgets the goal too, and set the
 		/// target to the unit's own place: every refresh told the unit it had arrived.)
 		/// @param keepRoute Whether the route in hand is followed until the new one replaces it (a routine refresh), rather than dropped now.
-		void RefreshRoute(bool keepRoute = false);
+		/// @param weigh With keepRoute, whether the answer is weighed against what is left of the route in hand (a refresh on the timer), so a
+		/// route about as good doesn't replace it; otherwise (the next point out of sight) it does.
+		void RefreshRoute(bool keepRoute = false, bool weigh = false);
 		void MoverTrace(const std::string& text) const;
 		/// The navigation debug overlay's view of the route-follower (level 2): the route ahead, the point in hand, and a flight's take-off,
 		/// shaft point and landing.
