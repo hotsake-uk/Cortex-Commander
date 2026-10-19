@@ -998,6 +998,7 @@ namespace SandboxDetail {
 		float Intensity = 1.0F; //!< How bright, how thick or how strong.
 		float Flicker = 0.0F; //!< 0 to 1: how much a light flickers.
 		float Pulse = 0.0F; //!< Times a second a light swells and fades.
+		float PulseDepth = 1.0F; //!< How far a pulse fades it, 0 to 1 (1: out to nothing). Not saved: only the Effects tab's made lights set it.
 		int Option = 0;
 		bool OwnColour = false; //!< Particles: use Colour rather than the kind's own.
 		float Colour[3] = {1.0F, 0.72F, 0.35F}; //!< 0 to 1.
@@ -2154,6 +2155,28 @@ namespace SandboxDetail {
 	/// The effects the player made, kept in Userdata/SandboxEffects.txt the moment they change. Picked in the Effects tab as s_EffectChoice
 	/// from EffectKind::Count on (the first is EffectKind::Count).
 	inline std::vector<CustomEffect> s_CustomEffects;
+
+	/// The Effects tab's "Make a light": a round light (and a smaller bright core on it) set up there and put down where clicked, nothing else
+	/// with it. Starts as the nuclear glow's light, but white. Kept until the game is closed.
+	struct MadeLight {
+		float Colour[3] = {1.0F, 1.0F, 1.0F};
+		float Reach = 320.0F;
+		float Brightness = 2.2F;
+		float PulseSpeed = 0.27F; //!< Throbs a second (the nuclear glow's 1.7 radians a second).
+		float PulseSwing = 0.7F; //!< How much brighter and dimmer than Brightness it throbs.
+		float Flicker = 0.0F;
+		bool Core = true;
+		float CoreColour[3] = {1.0F, 1.0F, 1.0F};
+		float CoreReach = 70.0F;
+		float CoreBrightness = 3.0F;
+	};
+
+	inline MadeLight s_MadeLight;
+	constexpr int c_MadeLightChoice = -1; //!< s_EffectChoice while "Make a light" is picked.
+	constexpr const char* c_MadeLightName = "Made light";
+
+	/// A made light as the layers it runs as (one light, and the core if it has one).
+	std::vector<EffectLayer> MadeLightLayers(const MadeLight& light);
 	inline bool s_CustomEffectsLoaded = false;
 	inline bool s_CustomEffectsDirty = false;
 	constexpr const char* c_CustomEffectsFile = "Userdata/SandboxEffects.txt";
@@ -3300,6 +3323,7 @@ namespace SandboxDetail {
 	void TogglePin(Tool kind, const std::string& presetName);
 	void SavePinsFile();
 	void CustomEffectsUI();
+	void MadeLightUI();
 	int FindFavourite(Tool kind, const std::string& presetName);
 	void SaveFavouritesFile();
 	void LoadFavouritesFile();

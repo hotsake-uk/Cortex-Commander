@@ -1637,6 +1637,31 @@ namespace SandboxDetail {
 		return effect;
 	}
 
+	std::vector<EffectLayer> MadeLightLayers(const MadeLight& light) {
+		std::vector<EffectLayer> layers;
+		EffectLayer glow;
+		glow.Kind = LayerKind::Light;
+		glow.Size = light.Reach;
+		glow.Flicker = light.Flicker;
+		std::copy(light.Colour, light.Colour + 3, glow.Colour);
+		// Throbbing between Brightness - PulseSwing and Brightness + PulseSwing, as the nuclear glow does.
+		const float swing = light.PulseSpeed > 0.0F ? std::clamp(light.PulseSwing, 0.0F, light.Brightness) : 0.0F;
+		glow.Intensity = light.Brightness + swing;
+		glow.Pulse = swing > 0.0F ? light.PulseSpeed : 0.0F;
+		glow.PulseDepth = glow.Intensity > 0.0F ? 2.0F * swing / glow.Intensity : 0.0F;
+		layers.push_back(glow);
+		if (light.Core) {
+			EffectLayer core;
+			core.Kind = LayerKind::Light;
+			core.Size = light.CoreReach;
+			core.Intensity = light.CoreBrightness;
+			core.Flicker = light.Flicker;
+			std::copy(light.CoreColour, light.CoreColour + 3, core.Colour);
+			layers.push_back(core);
+		}
+		return layers;
+	}
+
 	void RunEffectLayers(PlacedEffect& effect, const Vector& at, float phase) {
 		effect.Due.resize(effect.Layers.size(), 0.0F);
 		++effect.Wait;
@@ -1647,7 +1672,7 @@ namespace SandboxDetail {
 			const Vector direction(std::sin(angle), -std::cos(angle));
 			float brightness = layer.Intensity * (1.0F - layer.Flicker * Random01());
 			if (layer.Pulse > 0.0F) {
-				brightness *= 0.5F + 0.5F * std::sin(phase * layer.Pulse * 6.2832F);
+				brightness *= 1.0F - layer.PulseDepth * (0.5F - 0.5F * std::sin(phase * layer.Pulse * 6.2832F));
 			}
 			const glm::vec3 colour(layer.Colour[0] * 255.0F, layer.Colour[1] * 255.0F, layer.Colour[2] * 255.0F);
 			const unsigned int rgb = layer.OwnColour ? ((static_cast<unsigned int>(std::clamp(layer.Colour[0], 0.0F, 1.0F) * 255.0F) << 16) | (static_cast<unsigned int>(std::clamp(layer.Colour[1], 0.0F, 1.0F) * 255.0F) << 8) | static_cast<unsigned int>(std::clamp(layer.Colour[2], 0.0F, 1.0F) * 255.0F)) : 0U;
@@ -4236,7 +4261,13 @@ namespace SandboxDetail {
 		stroke.Position = position;
 		stroke.Radius = s_Radius;
 		stroke.Choice = ChoiceFor(kind);
-		if (kind == Tool::Effect && stroke.Choice >= static_cast<int>(EffectKind::Count)) {
+		const bool madeLight = kind == Tool::Effect && stroke.Choice == c_MadeLightChoice;
+		if (madeLight) {
+			// "Make a light": put down as it is set now, as a made effect of its layers.
+			stroke.Choice = static_cast<int>(EffectKind::Count);
+			stroke.Layers = MadeLightLayers(s_MadeLight);
+			stroke.Material = c_MadeLightName;
+		} else if (kind == Tool::Effect && stroke.Choice >= static_cast<int>(EffectKind::Count)) {
 			// An effect made in the Effects tab: its layers are taken now, so editing it later doesn't change what was put down.
 			LoadCustomEffects();
 			size_t made = static_cast<size_t>(stroke.Choice - static_cast<int>(EffectKind::Count));
@@ -4328,7 +4359,9 @@ namespace SandboxDetail {
 		stroke.HasView = true;
 		stroke.ViewMiddleX = g_CameraMan.GetOffset(0).m_X + static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
 		// Noted for the Recent row over its list, with what it was used with (not random units, nor your loadouts and squads: they aren't in the list).
-		if (kind == Tool::Effect) {
+		if (madeLight) {
+			// (Not one of the Recent row's: it is only ever what the sliders are set to now.)
+		} else if (kind == Tool::Effect) {
 			NoteRecent(kind, stroke.Choice < static_cast<int>(EffectKind::Count) ? std::string(c_Effects[std::max(stroke.Choice, 0)].Name) : stroke.Material);
 		} else if (RecentList(kind) == kind) {
 			const Preset* preset = ChosenPreset(kind, stroke.Choice);

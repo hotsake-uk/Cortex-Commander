@@ -2624,6 +2624,7 @@ void Sandbox::DrawGUI() {
 				s_CurrentTab = "Effects";
 				ImGui::TextWrapped("Pick one, then click in the world to put it down. They keep running until removed.");
 				RecentRow(Tool::Effect);
+				MadeLightUI();
 				// A search over every effect, these and the ones you made.
 				char* filter = FilterFor(Tool::Effect, false);
 				ImGui::SetNextItemWidth(-1.0F);
