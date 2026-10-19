@@ -86,6 +86,9 @@ namespace RTE {
 		/// Gets whether the tool windows are being drawn in the game's pixel font, which should only ever be drawn at whole sizes.
 		bool UsingPixelFont() const { return m_PixelFont && m_PixelFontInUse; }
 
+		/// Gets the game's small pixel font baked at a whole size, 1 to 4, for drawing over the game; nullptr until PrepareFonts has made it.
+		::ImFont* GetPixelFont(int size) const { return size >= 1 && size <= 4 ? m_PixelFonts[size - 1] : nullptr; }
+
 		/// Gets whether any tool window that uses the mouse is open.
 		bool AnyToolWindowOpen() const;
 
