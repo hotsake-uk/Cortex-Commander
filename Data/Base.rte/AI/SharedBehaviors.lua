@@ -184,6 +184,9 @@ function SharedBehaviors.FaceAlarm(AI, Owner, Abort)
 		AI.AlarmPos = nil;
 		local Watch = Timer();
 		local holdMS = SharedBehaviors.OrderKind(Owner) == "move" and 200 or 800;
+		-- (The move behaviour holds the unit only for this moment: see SharedBehaviors.AlarmHolds.)
+		AI.AlarmWatch = Watch;
+		AI.AlarmHoldMS = holdMS;
 		local base = AlarmDist.AbsRadAngle;
 		while not Watch:IsPastSimMS(ALERT_MS) and not AI.Target do
 			AI.deviceState = AHuman.AIMING;
@@ -1356,7 +1359,7 @@ function SharedBehaviors.GoToRoute(AI, Owner, Abort)
 		local holding = false;
 		if AI.Target and AI.BehaviorName ~= "AttackTarget" and AI.BehaviorName ~= "ChargeTarget" and not AI.PickupHD and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
-		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or AI.BehaviorName == "FaceAlarm") and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
+		elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and (AI.BehaviorName == "ShootArea" or (AI.BehaviorName == "FaceAlarm" and SharedBehaviors.AlarmHolds(AI))) and not SharedBehaviors.FightsOnTheMove(AI, Owner) then
 			holding = true;
 		elseif AI.Target and not AI.closingIn and AI.BehaviorName ~= "AttackTarget" and AI.BehaviorName ~= "ChargeTarget" and Owner.ClassName == "AHuman"
 		and (Owner.DiggingRoute or Owner.MovePathStepKind == 4) then
@@ -2819,6 +2822,10 @@ function SharedBehaviors.FightsOnTheMove(AI, Owner)
 	if kind == "move" then
 		return true;
 	end
+	-- (A target off its way, which it won't go after, doesn't stop a unit sent somewhere either: it fires at it on the move.)
+	if kind ~= "defend" and AI.Target and not SharedBehaviors.ChaseNear(AI, Owner, AI.Target) then
+		return true;
+	end
 	return AI.closingIn == true and kind ~= "defend";
 end
 
@@ -2835,6 +2842,117 @@ function SharedBehaviors.MayClose(AI, Owner)
 		return not AI.isPlayerOwned or Owner.AIMode ~= Actor.AIMODE_SENTRY;
 	end
 	return false;
+end
+
+-- Whether a look at an alarm still holds a unit on its way somewhere: only for the moment it stops to turn (FaceAlarm), not the three
+-- seconds it keeps watching. (Held for the whole watch, and the watch begun again by every teammate's sighting once a second, a group on an
+-- attack order stood where it was for as long as anyone could see the enemy, and lost its place on the route each time it walked on.)
+function SharedBehaviors.AlarmHolds(AI)
+	return AI.AlarmWatch ~= nil and not AI.AlarmWatch:IsPastSimMS(AI.AlarmHoldMS or 800);
+end
+
+-- Where the unit was sent, if anywhere: the unit it was sent to (not the one it is chasing), else its last waypoint; while a chase is under
+-- way, where it was going before it (SharedBehaviors.StartChase).
+function SharedBehaviors.OrderGoal(AI, Owner, Target)
+	local keep = AI.ChaseKeep;
+	if keep then
+		if keep.target and MovableMan:ValidMO(keep.target) then
+			return keep.target.Pos;
+		end
+		return keep.waypoints[#keep.waypoints];
+	end
+	if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) and not (Target and Owner.MOMoveTarget.RootID == Target.RootID) then
+		return Owner.MOMoveTarget.Pos;
+	end
+	if Owner:GetWaypointListSize() > 0 then
+		return Owner:GetLastAIWaypoint();
+	end
+	return nil;
+end
+
+-- Whether a place is near enough the unit's way to turn aside to: close by, near the straight line from the unit to where it was sent, or
+-- (on any order but a move) near that place. A unit sent nowhere may go anywhere its order lets it. (Nothing held a chase to the order: a
+-- unit a few steps from the last objective turned round and walked off after an enemy nowhere near it, and lost every waypoint on the way.)
+local NEAR_UNIT = 120;
+local NEAR_LINE_MOVE, NEAR_LINE = 150, 300;
+local NEAR_GOAL = 500;
+function SharedBehaviors.NearTheWay(AI, Owner, Pos, Target)
+	-- (Battle Behavior's Stay on task: off, a unit goes after whatever its order lets it, as before.)
+	if not SettingsMan.AIStayOnTask then
+		return true;
+	end
+	local Goal = SharedBehaviors.OrderGoal(AI, Owner, Target);
+	if not Goal then
+		return true;
+	end
+	local ToPos = SceneMan:ShortestDistance(Owner.Pos, Pos, false);
+	if ToPos:MagnitudeIsLessThan(NEAR_UNIT) then
+		return true;
+	end
+	local move = SharedBehaviors.OrderKind(Owner) == "move";
+	if not move and SceneMan:ShortestDistance(Goal, Pos, false):MagnitudeIsLessThan(NEAR_GOAL) then
+		return true;
+	end
+	local ToGoal = SceneMan:ShortestDistance(Owner.Pos, Goal, false);
+	local length = ToGoal.SqrMagnitude;
+	local along = length > 0 and math.max(0, math.min(1, (ToPos.X * ToGoal.X + ToPos.Y * ToGoal.Y) / length)) or 0;
+	return (ToPos - ToGoal * along):MagnitudeIsLessThan(move and NEAR_LINE_MOVE or NEAR_LINE);
+end
+
+function SharedBehaviors.ChaseNear(AI, Owner, Target)
+	return not Target or not MovableMan:ValidMO(Target) or SharedBehaviors.NearTheWay(AI, Owner, Target.Pos, Target);
+end
+
+-- Whether a unit may leave its way to go after this target: its order lets it close (MayClose), and the target is near its way.
+function SharedBehaviors.MayChase(AI, Owner, Target)
+	return SharedBehaviors.MayClose(AI, Owner) and SharedBehaviors.ChaseNear(AI, Owner, Target);
+end
+
+-- Going after a target by the path: the target first, then every waypoint it had, in order, and put back as they were when the fight is
+-- over (SharedBehaviors.EndChase). (Only the last waypoint was kept, so a unit sent by way of a few points went straight for the last one
+-- after a fight, and the enemy stayed its move target, so it walked on after one it could no longer see.)
+function SharedBehaviors.StartChase(AI, Owner, Target)
+	if not AI.ChaseKeep then
+		local keep = { waypoints = {} };
+		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) and Owner.MOMoveTarget.RootID ~= Target.RootID then
+			keep.target = Owner.MOMoveTarget;
+		end
+		for Wpt in Owner.SceneWaypoints do
+			keep.waypoints[#keep.waypoints + 1] = Vector(Wpt.X, Wpt.Y);
+		end
+		if not keep.target and #keep.waypoints == 0 then
+			-- (Sent nowhere: back here after.)
+			keep.waypoints[1] = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4);
+		end
+		AI.ChaseKeep = keep;
+	end
+	Owner:ClearAIWaypoints();
+	Owner:AddAIMOWaypoint(Target);
+	SharedBehaviors.AddKeptWaypoints(Owner, AI.ChaseKeep);
+	AI:CreateGoToBehavior(Owner);
+end
+
+function SharedBehaviors.AddKeptWaypoints(Owner, keep)
+	if keep.target and MovableMan:ValidMO(keep.target) then
+		Owner:AddAIMOWaypoint(keep.target);
+	end
+	for _, Wpt in ipairs(keep.waypoints) do
+		Owner:AddAISceneWaypoint(Wpt);
+	end
+end
+
+-- The fight is over: the way the unit was going before its chase, and the enemy no longer its move target.
+function SharedBehaviors.EndChase(AI, Owner)
+	local keep = AI.ChaseKeep;
+	if not keep then
+		return;
+	end
+	AI.ChaseKeep = nil;
+	Owner:ClearAIWaypoints();
+	SharedBehaviors.AddKeptWaypoints(Owner, keep);
+	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD or Owner.AIMode == Actor.AIMODE_BRAINHUNT then
+		AI:CreateGoToBehavior(Owner);
+	end
 end
 
 -- The standing body, in pixels, from the height: the feet are a fifth of the height under Pos and the top of the head about a quarter
@@ -3262,7 +3380,14 @@ function SharedBehaviors.RememberOrder(AI, Owner)
 	local keep = { mode = Owner.AIMode, attack = Owner.OrderAttack };
 	-- (A squad follower's leader too: cleared with the waypoints, a follower came back from a fall-back with no one to follow.)
 	if Owner.AIMode == Actor.AIMODE_GOTO or Owner.AIMode == Actor.AIMODE_SQUAD then
-		if Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
+		-- (In a chase: where it was going before it, not the enemy it was chasing; SharedBehaviors.StartChase.)
+		local chase = AI.ChaseKeep;
+		AI.ChaseKeep = nil;
+		if chase and chase.target and MovableMan:ValidMO(chase.target) then
+			keep.target = chase.target;
+		elseif chase and #chase.waypoints > 0 then
+			keep.waypoint = chase.waypoints[#chase.waypoints];
+		elseif Owner.MOMoveTarget and MovableMan:ValidMO(Owner.MOMoveTarget) then
 			keep.target = Owner.MOMoveTarget;
 		elseif Owner:GetWaypointListSize() > 0 then
 			keep.waypoint = Owner:GetLastAIWaypoint();
@@ -3946,7 +4071,9 @@ function SharedBehaviors.RememberUpdate(AI, Owner)
 		return;
 	end
 	AI.RememberTimer:Reset();
-	local Seen = SceneMan:GetRememberedEnemyPos(Owner.Team, Owner.Pos, 10000, 700);
+	-- (Not a unit already watching an alarm, or one on its way somewhere: turned to the team's memory every two seconds as well as to each
+	-- teammate's sighting, a group on the move kept stopping to look at an enemy it had already looked for.)
+	local Seen = (SharedBehaviors.IsAlert(AI) or SharedBehaviors.OrderGoal(AI, Owner)) and Vector() or SceneMan:GetRememberedEnemyPos(Owner.Team, Owner.Pos, 10000, 700);
 	if Seen.Largest > 0 then
 		local ToSeen = SceneMan:ShortestDistance(Owner.Pos, Seen, false);
 		if (Owner.HFlipped and ToSeen.X > 0) or (not Owner.HFlipped and ToSeen.X < 0) then
@@ -3963,6 +4090,10 @@ function SharedBehaviors.RememberUpdate(AI, Owner)
 	local distance = SceneMan:ShortestDistance(Owner.Pos, Last, false).Magnitude;
 	-- (Not a place it just checked: once there it has seen what there is to see.)
 	if distance < 150 or distance > 1500 or (AI.InvestigatedPos and SceneMan:ShortestDistance(AI.InvestigatedPos, Last, false):MagnitudeIsLessThan(150)) then
+		return;
+	end
+	-- (Not off the way to where it was sent: see SharedBehaviors.NearTheWay.)
+	if not SharedBehaviors.NearTheWay(AI, Owner, Last) then
 		return;
 	end
 	AI.Investigate = { Keep = SharedBehaviors.RememberOrder(AI, Owner), Spot = Vector(Last.X, Last.Y), Timer = Timer() };

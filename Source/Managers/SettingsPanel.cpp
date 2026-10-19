@@ -2334,6 +2334,12 @@ void DebugMan::SettingsGUI() {
 		if (Plain()) {
 			ImGui::TextWrapped("How you place an RTS order (move, attack-move, defend, dig to) says how urgent it is. One click: cautious, walking round jumps and waiting for fuel. A double click: a normal order. A double click held and dragged: riskier the further you drag, up to fully direct (the shortest way there whatever it takes) at the full risk distance; the way you drag is the way they face when they get there. The Direct settings say how hard a full drag pushes it, the Cautious ones how careful one click is.");
 		}
+		Heading("Every order");
+		{
+			Check("Stay on task", &direct.StayOnTask);
+			Tip("On (normal): a unit sent somewhere, on any order, goes after only the enemies close to it, near its way there or near the place it was sent. Others it fires at as it goes, and after a fight it carries on by the way it was going. Off: it goes after any enemy its order lets it, however far from where it was sent, as before.");
+		}
+		Heading("Direct (full drag)");
 		{
 			Slider("Full risk drag distance", &direct.RiskDragPixels, 200.0F, 1200.0F, "%.0f px");
 			Tip("How far on screen a double click is dragged for a fully direct order, a suicide mission. Risk rises slowly and then steeply: half the distance is about 35%, four fifths about 70%. 600 px is normal.");

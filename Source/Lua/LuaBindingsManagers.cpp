@@ -499,6 +499,7 @@ LuaBindingRegisterFunctionDefinitionForType(ManagerLuaBindings, SettingsMan) {
 	    .property("AICombatBurst", &SettingsMan::AICombatBurst)
 	    .property("AICombatHearing", &SettingsMan::AICombatHearing)
 	    .property("AICombatInvestigateNoises", &SettingsMan::AICombatInvestigateNoises)
+	    .property("AIStayOnTask", &SettingsMan::AIStayOnTask)
 	    .property("NavDebugOverlay", &SettingsMan::NavDebugOverlay, &SettingsMan::SetNavDebugOverlay)
 	    .def("IsDebugChannelOn", &SettingsMan::IsDebugChannelOn)
 	    .property("UnitInspector", &SettingsMan::UnitInspector, &SettingsMan::SetUnitInspector)
