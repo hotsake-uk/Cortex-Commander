@@ -2279,7 +2279,7 @@ bool AHuman::ShaftColumn(float columnX, float topHeadY, float& middleX, float& w
 	return false;
 }
 
-void AHuman::RefreshRoute(bool keepRoute) {
+void AHuman::RefreshRoute(bool keepRoute, bool weigh) {
 	Vector goal = m_HasMovePathGoal ? m_MovePathGoal : GetLastAIWaypoint();
 	bool hadGoal = m_HasMovePathGoal || !m_MovePath.empty();
 	// (A refresh is a new route, never a route check: kept, a check's flag had the answer weighed against the route it replaces.)
@@ -2292,9 +2292,14 @@ void AHuman::RefreshRoute(bool keepRoute) {
 	// A routine refresh keeps the route it has until the new one comes: cleared, the unit stood still for the frames the search took, every
 	// second while its next point was out of sight, and the route drawn in the debug view blinked out each time.
 	if (keepRoute && !m_MovePath.empty()) {
+		m_RouteRefresh = weigh;
 		UpdateMovePath();
+		if (!m_PathRequest) {
+			m_RouteRefresh = false; // (Nothing was asked: a retry wait is on.)
+		}
 		return;
 	}
+	m_RouteRefresh = false;
 	m_MovePath.clear();
 	m_MovePathKinds.clear();
 	// With no route, the next request loads the next waypoint on the list: the leg being walked goes back on first, or a refresh mid-leg
@@ -2619,7 +2624,7 @@ void AHuman::GetDebugState(std::vector<DebugStateField>& fields) const {
 	auto number = [&fields](const char* name, double value) { fields.push_back({name, std::to_string(static_cast<long long>(std::llround(value))), false}); };
 	fields.push_back({"mover", mover.flight.active ? (mover.flight.refuelling ? "refuel" : (mover.flight.step ? "step" : (mover.flight.via ? "shaft" : "flight"))) : (mover.fuelWaiting ? "fuel wait" : (mover.settling ? "settle" : "walk")), true});
 	number("progressMs", mover.progressTimer.GetElapsedSimTimeMS());
-	number("stuckLevel", mover.stuckLevel);
+	number("stuckLevel", m_FailedSpots.empty() ? 0 : m_FailedSpots.back().count);
 	{
 		const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle", "push"};
 		fields.push_back({"stuckRemedy", mover.remedy >= 0 && mover.remedy < static_cast<int>(StuckRemedy::Count) ? remedyNames[mover.remedy] : "none", true});
@@ -2966,7 +2971,7 @@ int AHuman::MoveAlongRoute() {
 		Vector toLanding = Towards(m_Pos, mover.leapTo);
 		if (std::abs(toLanding.m_X) > std::max(36.0F, h * 0.6F) || toLanding.m_Y < -h * 0.6F) {
 			MoverTrace("leap to " + std::to_string(static_cast<int>(mover.leapTo.m_X)) + "," + std::to_string(static_cast<int>(mover.leapTo.m_Y)) + " came down off it; a route another way");
-			AvoidPathLink(mover.leapFrom, mover.leapTo, 20000.0F);
+			NoteFailedStep(mover.leapFrom, mover.leapTo);
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();
 			RefreshRoute();
@@ -3112,12 +3117,13 @@ int AHuman::MoveAlongRoute() {
 	if (stuck && mover.progressTimer.IsPastSimMS(static_cast<double>(std::max(tuning.StuckRepathSeconds, tuning.StuckRemedySeconds)) * 1000.0)) {
 		// Long stuck: the route asked for afresh from here, and the place avoided.
 		AvoidPathPoint(m_MovePath.empty() ? m_Pos : m_MovePath.front(), 20000.0F);
-		// Stuck again on a step to much the same place (within a node and a half, inside the minute): the one big step there isn't working
-		// for this unit, so that step (from here to there: the flight's take-off and landing when there is one ahead, else the next point) is
-		// made dearer, more each time, until a route of smaller steps to the same place wins: onto the ledge first and then over, rather
-		// than up and over in one. Only that step: the steps of a route by way of somewhere else start or end elsewhere and cost the same,
-		// and the rest of the route stands. (Avoided only lightly, a unit was sent at the same jump time after time, where waypoints placed
-		// by hand broke it into two easy ones.)
+		// The step it is stuck on (from here to there: the flight's take-off and landing when there is one ahead, else the next point) is made
+		// dearer, more and for longer each time it is stuck there again (Actor::NoteFailedStep), until a route of smaller steps to the same
+		// place wins: onto the ledge first and then over, rather than up and over in one. Only that step: the steps of a route by way of
+		// somewhere else start or end elsewhere and cost the same, and the rest of the route stands. (Counted in the follower's own state,
+		// as it was, the count was lost on every hold for a fight and every other place it was stuck at, and the marks never grew.)
+		// (The climb is one step in the route, from the take-off to the top rung beside the landing: marking the route's next point, the top
+		// of the climb that every way up there passes, left the same climb the cheapest, and the unit stood at the same spot.)
 		{
 			Vector from = m_Pos;
 			Vector to = m_MovePath.empty() ? m_Pos : m_MovePath.front();
@@ -3128,28 +3134,9 @@ int AHuman::MoveAlongRoute() {
 			if (FindLanding(landing, landingFloorY, pointsToLanding, takeOff)) {
 				from = takeOff;
 				to = landing;
-				// (The climb is one step in the route, from the take-off to the top rung beside the landing: marking the route's next point,
-				// the top of the climb that every way up there passes, left the same climb the cheapest, and the unit stood at the same spot.)
-				AvoidPathLink(takeOff, landing, 20000.0F);
 			}
-			float near = static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 1.5F;
-			if (mover.stuckLevel > 0 && Towards(mover.stuckSpot, to).MagnitudeIsLessThan(near) && !mover.stuckSpotTimer.IsPastSimMS(60000)) {
-				++mover.stuckLevel;
-			} else {
-				mover.stuckLevel = 1;
-				mover.stuckSpot = to;
-				mover.stuckSpotTimer.Reset();
-			}
-			if (mover.stuckLevel >= 2) {
-				// (Each mark is another 25 on that step: two the second time, four the third and after.)
-				int marks = mover.stuckLevel == 2 ? 2 : 4;
-				for (int k = 0; k < marks; ++k) {
-					AvoidPathLink(from, to, 30000.0F);
-				}
-				MoverTrace("stuck again on the step to " + std::to_string(static_cast<int>(to.m_X)) + "," + std::to_string(static_cast<int>(to.m_Y)) + " (" + std::to_string(mover.stuckLevel) + " times); smaller steps there");
-			} else {
-				MoverTrace("stuck; new route");
-			}
+			const int times = NoteFailedStep(from, to);
+			MoverTrace(times >= 2 ? "stuck again on the step to " + std::to_string(static_cast<int>(to.m_X)) + "," + std::to_string(static_cast<int>(to.m_Y)) + " (" + std::to_string(times) + " times); smaller steps there" : std::string("stuck; new route"));
 		}
 		AvoidRouteLadder();
 		RefreshRoute();
@@ -3187,8 +3174,11 @@ int AHuman::MoveAlongRoute() {
 		// but climbed. A move that fails is the stuck handling's, the leap's and the ladder's own, which ask for a route as they end it.)
 		const bool midMove = airborne || IsLeaping() || IsMantling() || m_Ladder.active || mover.repathOnLanding;
 		if ((mover.noSightTimer.IsPastSimMS(noSightMS) || mover.repathTimer.IsPastSimMS(static_cast<double>(tuning.RefreshSeconds) * 1000.0)) && !IsWaitingOnNewMovePath() && !midMove) {
-			MoverTrace(mover.noSightTimer.IsPastSimMS(noSightMS) ? "next point out of sight; new route" : "route refreshed");
-			RefreshRoute(true);
+			// (Out of sight, the route in hand may be broken, and the answer is taken whatever it costs; on the timer, only a clearly better
+			// or clearly worse one is: see Actor::PreControllerUpdate.)
+			const bool outOfSight = mover.noSightTimer.IsPastSimMS(noSightMS);
+			MoverTrace(outOfSight ? "next point out of sight; new route" : "route refreshed");
+			RefreshRoute(true, !outOfSight);
 			mover.repathTimer.Reset();
 			mover.noSightTimer.Reset();
 		} else if (airborne && !IsLeaping() && !mover.repathOnLanding && (m_MovePathKinds.empty() || m_MovePathKinds.front() != PathStepKind::Fall) && mover.routeCheckTimer.IsPastSimMS(static_cast<double>(tuning.AirCheckSeconds) * 1000.0)) {
@@ -3558,9 +3548,9 @@ int AHuman::MoveAlongRoute() {
 				mover.directBlocked = true;
 				mover.directBlockTimer.Reset();
 			}
-			// (This take-off for that landing is dearer for a while, for this unit and its team: the next try goes from elsewhere, or for
-			// another landing; see Actor::AvoidPathLink.)
-			AvoidPathLink(flight.takeOff, flight.landing, 20000.0F);
+			// (This take-off for that landing is dearer for a while, for this unit and its team, more each time it fails again: the next try
+			// goes from elsewhere, or for another landing; see Actor::NoteFailedStep.)
+			NoteFailedStep(flight.FailedFrom(), flight.landing);
 			flight = RouteMover::Flight();
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();
@@ -3657,7 +3647,7 @@ int AHuman::MoveAlongRoute() {
 				mover.directBlocked = true;
 				mover.directBlockTimer.Reset();
 			}
-			Vector takeOffWas = flight.takeOff;
+			Vector takeOffWas = flight.FailedFrom();
 			Vector landingWas = flight.landing;
 			flight = RouteMover::Flight();
 			mover.bestGap = -1.0F;
@@ -3665,14 +3655,14 @@ int AHuman::MoveAlongRoute() {
 			mover.lastJetTime = -1.0;
 			if (!onLanding && !airborne && landingAbove) {
 				MoverTrace("down again under the landing; new route");
-				AvoidPathLink(takeOffWas, landingWas, 20000.0F);
+				NoteFailedStep(takeOffWas, landingWas);
 				RefreshRoute();
 				return RouteMover::Moving;
 			}
 			// (Ended in the air short of a landing above, the tank dry: marked as any failed climb is, and the route asked for once down.
 			// Left unmarked, the unit fell, landed, and was sent up the same climb again.)
 			if (!onLanding && airborne && landingAbove) {
-				AvoidPathLink(takeOffWas, landingWas, 20000.0F);
+				NoteFailedStep(takeOffWas, landingWas);
 				mover.repathOnLanding = true;
 			}
 		} else {
@@ -4730,8 +4720,9 @@ int AHuman::MoveAlongRoute() {
 			// the route asked again, so the next climb goes from elsewhere: a column further out, or another way up. (Left to the stuck
 			// handling, the unit stood six seconds and the route that came back was the same climb from the same spot.)
 			MoverTrace("no take-off from here for " + std::to_string(static_cast<int>(landing.m_X)) + "," + std::to_string(static_cast<int>(landingFloorY)) + "; a route from elsewhere");
-			AvoidPathLink(takeOff, landing, 20000.0F);
-			AvoidPathLink(takeOff, landing, 20000.0F);
+			// (Twice the first time, as it was: a take-off refused is the follower's own say, not a try that might go better.)
+			NoteFailedStep(takeOff, landing);
+			AvoidPathLink(takeOff, landing, 20000.0F, false);
 			mover.noTakeOff = false;
 			mover.bestGap = -1.0F;
 			mover.progressTimer.Reset();
@@ -4875,6 +4866,8 @@ int AHuman::MoveAlongRoute() {
 				mover.flight.startY = m_Pos.m_Y;
 				mover.flight.bestY = m_Pos.m_Y;
 				mover.flight.takeOff = m_Pos;
+				mover.flight.routeTakeOff = takeOff;
+				mover.flight.hasRouteTakeOff = true;
 				mover.flight.via = inShaft || cornerVia;
 				mover.flight.direct = directFlight;
 				if (directFlight) {
@@ -5529,9 +5522,12 @@ int AHuman::MoveAlongRoute() {
 	const char* const remedyNames[] = {"crouch", "back off", "leap", "hop", "lie down", "stand up", "mantle", "push"};
 	static constexpr int remedyWindowMS[] = {1000, 1000, 800, 1200, 1500, 800, 1200, 1000};
 	if (!stuck || mover.fuelWaiting) {
+		// (Worked only when it got the unit nearer the point: the stuck timer starts again for many things, a door's wait among them, and
+		// each was taken for the remedy working, so a remedy that did nothing was tried first at that spot ever after.)
 		if (mover.remedy >= 0 && !mover.fuelWaiting) {
-			RememberStuckRemedy(mover.remedySpot, mover.remedy, true);
-			MoverTrace(std::string("stuck remedy worked: ") + remedyNames[mover.remedy]);
+			const bool nearer = mover.remedyGap >= 0.0F && mover.bestGap >= 0.0F && mover.bestGap < mover.remedyGap - 4.0F;
+			RememberStuckRemedy(mover.remedySpot, mover.remedy, nearer);
+			MoverTrace(std::string(nearer ? "stuck remedy worked: " : "stuck remedy ended, no nearer: ") + remedyNames[mover.remedy]);
 		}
 		mover.remedy = -1;
 		mover.remedyTried = 0;
@@ -5557,6 +5553,7 @@ int AHuman::MoveAlongRoute() {
 			// worked at this spot before. Once a stuck spell, and not again for 3 s.)
 			allowed[static_cast<int>(StuckRemedy::Push)] = g_SettingsMan.StuckPushEnabled() && m_Controller.GetInputMode() == Controller::CIM_AI && m_StuckPushTimer.IsPastSimMS(3000) && !mover.flight.active && !m_Ladder.active && !IsMantling() && m_PinStrength <= 0.0F;
 			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
+			mover.remedyGap = mover.bestGap;
 			if (mover.remedy >= 0) {
 				mover.remedyTried |= 1U << mover.remedy;
 				mover.remedyTimer.Reset();
