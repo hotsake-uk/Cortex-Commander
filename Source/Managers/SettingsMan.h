@@ -369,6 +369,8 @@ namespace RTE {
 		float AICombatBurst() const { return m_AICombat.Burst; }
 		float AICombatHearing() const { return m_AICombat.Hearing; }
 		bool AICombatInvestigateNoises() const { return m_AICombat.InvestigateNoises; }
+		/// Whether a unit sent somewhere goes after only enemies near its way or the place it was sent (Battle Behavior's Stay on task).
+		bool AIStayOnTask() const { return m_DirectOrders.StayOnTask; }
 
 		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
 		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.
@@ -616,6 +618,7 @@ namespace RTE {
 			float LineWeight = 0.1F; //!< On a dig-to, what each node off the straight line costs them, in nodes walked (PathFinder::LineCost).
 			float MoveLineWeight = 0.6F; //!< On any other order, what each node off the straight line costs them at full risk, in nodes walked: less in a lesser risk's share.
 			bool IgnoreEnemies = true; //!< Whether their routes take no notice of enemies on the way.
+			bool StayOnTask = true; //!< Whether a unit sent somewhere, on any order, goes after only enemies near its way or the place it was sent (off: any its order lets it chase, as before).
 			bool KeepPace = false; //!< Whether a group sent together is still kept to its slowest walker's pace (s_KeepPace on the command row).
 			float StraightFlightRisk = 0.9F; //!< From how much risk (0.5 to 1) a unit with a jet flies straight at the goal when the air between is open and a tank flies it, rather than taking the route.
 			/// How much of a full tank a full-risk flight may need and still be flown (the risk accepted: it may come down short), by the order's

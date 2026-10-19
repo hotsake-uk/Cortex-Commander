@@ -1618,13 +1618,9 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 							AI.canHitTarget = false;
 
 							-- the target is too far away: go after it, if the order allows (an attack, or the guard modes; never a move or a defence)
-							if SharedBehaviors.MayClose(AI, Owner) then
+							if SharedBehaviors.MayChase(AI, Owner, AI.Target) then
 								if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then	-- move towards the target
-									local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4); -- move back here later
-									Owner:ClearAIWaypoints();
-									Owner:AddAIMOWaypoint(AI.Target);
-									Owner:AddAISceneWaypoint(OldWaypoint);
-									AI:CreateGoToBehavior(Owner);
+									SharedBehaviors.StartChase(AI, Owner, AI.Target);
 									AI.proneState = AHuman.NOTPRONE;
 								end
 								AI.closingIn = true;
@@ -1651,14 +1647,10 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 								end
 							end
 						end
-					elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and SharedBehaviors.MayClose(AI, Owner) then -- target out of reach; move towards it
+					elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and SharedBehaviors.MayChase(AI, Owner, AI.Target) then -- target out of reach; move towards it
 						-- check if we are already moving towards an actor
 						if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then	-- move towards the target
-							local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4); -- move back here later
-							Owner:ClearAIWaypoints();
-							Owner:AddAIMOWaypoint(AI.Target);
-							Owner:AddAISceneWaypoint(OldWaypoint);
-							AI:CreateGoToBehavior(Owner);
+							SharedBehaviors.StartChase(AI, Owner, AI.Target);
 							AI.proneState = AHuman.NOTPRONE;
 							AI.canHitTarget = false;
 						end
@@ -1964,15 +1956,11 @@ function HumanBehaviors.HoldRange(AI, Owner, Weapon, PrjDat, range, Dist)
 	holdRange = math.max(120, math.min(holdRange, FrameMan.PlayerScreenWidth * 0.6));
 	AI.holdRangeTick = holdRange; -- For the combat overlay (see SharedBehaviors.ExportDebugState).
 	local towards = Dist.X > 0 and 1 or -1;
-	if range > holdRange * 1.3 and SharedBehaviors.MayClose(AI, Owner) then
+	if range > holdRange * 1.3 and SharedBehaviors.MayChase(AI, Owner, AI.Target) then
 		-- Too far for a good shot: closing in by the path, firing on the way (the move behaviour keeps the legs going while closingIn is set).
 		if not AI.closingIn then
 			if not Owner.MOMoveTarget or not MovableMan:ValidMO(Owner.MOMoveTarget) or Owner.MOMoveTarget.RootID ~= AI.Target.RootID then
-				local OldWaypoint = SceneMan:MovePointToGround(Owner:GetLastAIWaypoint(), Owner.MoveHeight/5, 4);
-				Owner:ClearAIWaypoints();
-				Owner:AddAIMOWaypoint(AI.Target);
-				Owner:AddAISceneWaypoint(OldWaypoint);
-				AI:CreateGoToBehavior(Owner);
+				SharedBehaviors.StartChase(AI, Owner, AI.Target);
 			end
 			AI.closingIn = true;
 			SharedBehaviors.Trace(Owner, "range: closing from " .. math.floor(range) .. " to " .. math.floor(holdRange));

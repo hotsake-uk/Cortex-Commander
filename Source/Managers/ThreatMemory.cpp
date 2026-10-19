@@ -25,6 +25,8 @@ namespace {
 	constexpr float c_ShareRange = 500.0F; //!< How far from the unit that saw an enemy its teammates hear of it.
 	constexpr long long c_ShareEveryUpdates = 60; //!< A team hears of the same enemy at most once a second (at 60 updates a second).
 	constexpr long long c_ForgetUpdates = 3600; //!< A memory over a minute old is forgotten.
+	constexpr size_t c_ShareMates = 3; //!< At most this many teammates, the nearest that can see the enemy, are told of one sighting.
+	constexpr long long c_RelayQuietUpdates = 180; //!< A unit told of an enemy passes on none of its own sightings of it for 3 s.
 
 	struct Memory {
 		Vector Pos; //!< Where it was last seen.
@@ -33,6 +35,7 @@ namespace {
 		bool PlayerControlled = false; //!< Whether a player controlled it when it was seen.
 	};
 	std::array<std::map<long, Memory>, Activity::MaxTeamCount> s_Memories; //!< Per team, by the enemy's unique ID (so in a fixed order).
+	std::map<long, long long> s_ToldUpdates; //!< By unit unique ID, the sim update a teammate's sighting last alarmed it.
 
 	/// A sighting reported by a unit's AI, waiting for the main thread. (The AI scripts run on worker threads, one per Lua state, so a report
 	/// is only queued there; changing the memories or alarming teammates from them crashed the game as soon as two threads reported at once.)
@@ -108,17 +111,41 @@ void ThreatMemory::ApplyReports() {
 		if (report.Update - memory.SharedUpdate < c_ShareEveryUpdates) {
 			continue;
 		}
+		// (A unit that turned to the enemy because a teammate told it remembers it, and passes on nothing for a while: passed on, every unit
+		// that turned and saw alarmed the ones round it in turn, and a whole line spread over the map turned on one enemy ring by ring.)
+		auto told = s_ToldUpdates.find(report.ReporterID);
+		if (told != s_ToldUpdates.end() && report.Update - told->second < c_RelayQuietUpdates) {
+			continue;
+		}
 		memory.SharedUpdate = report.Update;
-		// The others close by hear of it and turn to face it (the alarm the AI scripts already answer). Not units a player controls: they
-		// have a player's eyes.
+		// The few nearest close by that could see the enemy from where they are hear of it and turn to face it (the alarm the AI scripts
+		// already answer). Not units a player controls: they have a player's eyes. (Every teammate in range was told, through walls and
+		// whatever its order, and a group on its way somewhere stopped and turned as one to an enemy most of them couldn't see.)
+		std::vector<std::pair<float, Actor*>> hearers;
 		for (Actor* mate: g_MovableMan.GetActorList()) {
 			// (Fighting units only: not doors, and not craft, which have no use for an alarm.)
 			if (!mate || mate->GetUniqueID() == report.ReporterID || mate->GetTeam() != report.Team || mate->IsDead() || mate->IsPlayerControlled() || dynamic_cast<const ADoor*>(mate) || dynamic_cast<const ACraft*>(mate)) {
 				continue;
 			}
-			if (g_SceneMan.ShortestDistance(report.ReporterPos, mate->GetPos(), g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(c_ShareRange)) {
-				mate->AlarmPoint(memory.Pos);
+			Vector toMate = g_SceneMan.ShortestDistance(report.ReporterPos, mate->GetPos(), g_SceneMan.SceneWrapsX());
+			if (toMate.MagnitudeIsLessThan(c_ShareRange)) {
+				hearers.emplace_back(toMate.GetSqrMagnitude(), mate);
 			}
+		}
+		std::stable_sort(hearers.begin(), hearers.end(), [](const std::pair<float, Actor*>& a, const std::pair<float, Actor*>& b) { return a.first < b.first; });
+		size_t alarmed = 0;
+		for (const auto& [distance, mate]: hearers) {
+			if (alarmed >= c_ShareMates) {
+				break;
+			}
+			const Vector eye = mate->GetEyePos();
+			Vector blocked;
+			if (g_SceneMan.CastStrengthRay(eye, g_SceneMan.ShortestDistance(eye, memory.Pos, g_SceneMan.SceneWrapsX()), 5.0F, blocked, 3)) {
+				continue;
+			}
+			mate->AlarmPoint(memory.Pos);
+			s_ToldUpdates[mate->GetUniqueID()] = report.Update;
+			++alarmed;
 		}
 	}
 }
@@ -236,6 +263,9 @@ void ThreatMemory::Update() {
 	if (!s_Enabled || now % 30 != 0) {
 		return;
 	}
+	for (auto told = s_ToldUpdates.begin(); told != s_ToldUpdates.end();) {
+		told = now - told->second > c_RelayQuietUpdates ? s_ToldUpdates.erase(told) : std::next(told);
+	}
 	for (std::map<long, Memory>& memories: s_Memories) {
 		for (auto entry = memories.begin(); entry != memories.end();) {
 			const MovableObject* enemy = g_MovableMan.FindObjectByUniqueID(entry->first);
@@ -257,4 +287,5 @@ void ThreatMemory::Clear() {
 	for (std::map<long, Memory>& memories: s_Memories) {
 		memories.clear();
 	}
+	s_ToldUpdates.clear();
 }

@@ -1300,6 +1300,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DirectMoveLineWeight", { reader >> m_DirectOrders.MoveLineWeight; m_DirectOrders.MoveLineWeight = std::clamp(m_DirectOrders.MoveLineWeight, 0.0F, 2.0F); });
 	MatchProperty("DirectLineWeight", { reader >> m_DirectOrders.LineWeight; m_DirectOrders.LineWeight = std::clamp(m_DirectOrders.LineWeight, 0.0F, 1.0F); });
 	MatchProperty("DirectIgnoreEnemies", { reader >> m_DirectOrders.IgnoreEnemies; });
+	MatchProperty("DirectStayOnTask", { reader >> m_DirectOrders.StayOnTask; });
 	MatchProperty("DirectKeepPace", { reader >> m_DirectOrders.KeepPace; });
 	MatchProperty("DirectStraightFlightRisk", { reader >> m_DirectOrders.StraightFlightRisk; m_DirectOrders.StraightFlightRisk = std::clamp(m_DirectOrders.StraightFlightRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectSkyRouteRisk", { reader >> m_DirectOrders.SkyRouteRisk; m_DirectOrders.SkyRouteRisk = std::clamp(m_DirectOrders.SkyRouteRisk, 0.5F, 1.0F); });
@@ -2049,6 +2050,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DirectLineWeight", m_DirectOrders.LineWeight);
 	writer.NewPropertyWithValue("DirectMoveLineWeight", m_DirectOrders.MoveLineWeight);
 	writer.NewPropertyWithValue("DirectIgnoreEnemies", m_DirectOrders.IgnoreEnemies);
+	writer.NewPropertyWithValue("DirectStayOnTask", m_DirectOrders.StayOnTask);
 	writer.NewPropertyWithValue("DirectKeepPace", m_DirectOrders.KeepPace);
 	writer.NewPropertyWithValue("DirectFullRiskDrag", m_DirectOrders.RiskDragPixels);
 	writer.NewPropertyWithValue("DirectStraightFlightRisk", m_DirectOrders.StraightFlightRisk);

@@ -835,6 +835,11 @@ function NativeHumanAI:Update(Owner)
 	if not self.Target and not self.UnseenTarget and (self.engineMover or self.flying or self.lateralMoveState ~= Actor.LAT_STILL) then
 		self.Ctrl:SetState(Controller.AIM_SHARP, false);
 	end
+	-- (Nor on a move order, fighting on its way: it fires as it goes but faces where it is going. Aiming sharp at an enemy behind it, it
+	-- walked backwards the rest of the way, missed the steps and ledges ahead and turned back on itself at the last climb.)
+	if self.Target and self.engineMover and not self.closingIn and SharedBehaviors.OrderKind(Owner) == "move" then
+		self.Ctrl:SetState(Controller.AIM_SHARP, false);
+	end
 	-- force jetpack at detrimental downwards velocity
 	-- (Not while the engine's route-follower and pilot fly the unit: the pilot brakes a fall for its landing, and lit over its head the
 	-- jet threw flights off.)
@@ -1051,7 +1056,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			self.Target = nil;
 			return;
 		end
-		if IsActor(self.Target) and not IsADoor(self.Target) and CreatureBehaviors.MayChase(self, Owner) then
+		if IsActor(self.Target) and not IsADoor(self.Target) and CreatureBehaviors.MayChase(self, Owner) and SharedBehaviors.ChaseNear(self, Owner, self.Target) then
 			self.NextBehavior = coroutine.create(CreatureBehaviors.ChargeTarget);
 			self.NextBehaviorName = "ChargeTarget";
 		else
@@ -1067,11 +1072,15 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 			AI.proneState = AHuman.NOTPRONE;
 			HumanBehaviors.StopRangeStep(AI, Owner);
 			AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(2000));
+			SharedBehaviors.EndChase(AI, Owner);
 		end
 		return;
 	end
 
 	local dist = SceneMan:ShortestDistance(Owner.Pos, self.Target.Pos, false);
+	-- (Hand to hand means going to it: not to one off the unit's way, SharedBehaviors.NearTheWay. A unit with only a melee weapon, a
+	-- digger or its fists turned round on any order and walked off after an enemy far from where it was sent.)
+	local offWay = not IsADoor(self.Target) and not SharedBehaviors.ChaseNear(self, Owner, self.Target);
 	if IsADoor(self.Target) and Owner.AIMode ~= Actor.AIMODE_SQUAD then
 		--TODO: Include other explosive weapons with varying effective ranges!
 		if Owner:EquipDeviceInGroup("Tools - Breaching", true) then
@@ -1098,6 +1107,10 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		self.NextBehaviorName = "ThrowTarget";
 	elseif Owner:EquipFirearm(true) then
 		if Owner.EquippedItem:HasObjectInGroup("Weapons - Melee") then
+			if offWay then
+				self.Target = nil;
+				return;
+			end
 			self.NextBehavior = coroutine.create(HumanBehaviors.AttackTarget);
 			self.NextBehaviorName = "AttackTarget";
 		else
@@ -1109,7 +1122,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 	and dist:MagnitudeIsGreaterThan(HumanBehaviors.BlastClearance(Owner.EquippedItem)) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.ThrowTarget);
 		self.NextBehaviorName = "ThrowTarget";
-	elseif Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipDiggingTool(true) and dist:MagnitudeIsLessThan(250) then
+	elseif not offWay and Owner.AIMode ~= Actor.AIMODE_SQUAD and Owner:EquipDiggingTool(true) and dist:MagnitudeIsLessThan(250) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.AttackTarget);
 		self.NextBehaviorName = "AttackTarget";
 	else	-- unarmed or far away
@@ -1121,7 +1134,7 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 
 			return;
 		else -- there are probably no weapons around here (in the vicinity of an area adjacent to a location)
-			if not (self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) and (self.Target.ClassName == "AHuman" or self.Target.ClassName == "ACrab" or self.Target.ClassName == "AMech") then
+			if not offWay and not (self.isPlayerOwned and Owner.AIMode == Actor.AIMODE_SENTRY) and (self.Target.ClassName == "AHuman" or self.Target.ClassName == "ACrab" or self.Target.ClassName == "AMech") then
 				self.NextBehavior = coroutine.create(HumanBehaviors.AttackTarget);
 				self.NextBehaviorName = "AttackTarget";
 			else
@@ -1140,12 +1153,13 @@ function NativeHumanAI:CreateAttackBehavior(Owner)
 		AI.proneState = AHuman.NOTPRONE;
 		HumanBehaviors.StopRangeStep(AI, Owner);
 		AI.TargetLostTimer:SetSimTimeLimitMS(SharedBehaviors.TargetMemoryMS(2000));
+		SharedBehaviors.EndChase(AI, Owner);
 	end
 end
 
 -- force the use of a digger when attacking
 function NativeHumanAI:CreateHtHBehavior(Owner)					-- has to be digger, not just "tool"
-	if Owner.AIMode ~= Actor.AIMODE_SQUAD and self.Target and (Owner:HasObjectInGroup("Tools - Diggers") or Owner:HasObjectInGroup("Weapons - Melee")) then
+	if Owner.AIMode ~= Actor.AIMODE_SQUAD and self.Target and (Owner:HasObjectInGroup("Tools - Diggers") or Owner:HasObjectInGroup("Weapons - Melee")) and SharedBehaviors.ChaseNear(self, Owner, self.Target) then
 		self.NextBehavior = coroutine.create(HumanBehaviors.AttackTarget);
 		self.NextBehaviorName = "AttackTarget";
 		self.NextCleanup = function(AI)
