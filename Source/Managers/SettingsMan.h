@@ -327,6 +327,13 @@ namespace RTE {
 		/// Sets whether humanoids die as whole ragdolls; see RagdollDeaths.
 		void SetRagdollDeaths(bool enable) { m_RagdollDeaths = enable; }
 
+		/// Whether humanoids (AHumans) are never dismembered (off as the game comes): no hit, blast or wound, however big, takes off a head, arm,
+		/// leg or foot or blows the body apart, alive or dead. One that would have done so to the torso or head kills the unit instead.
+		bool NoDismemberment() const { return m_NoDismemberment; }
+
+		/// Sets whether humanoids are never dismembered; see NoDismemberment.
+		void SetNoDismemberment(bool enable) { m_NoDismemberment = enable; }
+
 		/// With RagdollDeaths on, how many times a body part's own gib or joint limit a single hit has to be to still blow it apart or off, 1.5 to 10.
 		float RagdollBlowApartScale() const { return m_RagdollBlowApartScale; }
 
@@ -1561,6 +1568,7 @@ namespace RTE {
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		bool m_RagdollDeaths; //!< Whether humanoids die as whole ragdolls (see RagdollDeaths).
+		bool m_NoDismemberment; //!< Whether humanoids are never dismembered or blown apart (see NoDismemberment).
 		float m_RagdollBlowApartScale; //!< How big a hit still blows a ragdolling body apart (see RagdollBlowApartScale).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
 		AICombatTuning m_AICombat; //!< How well AI units shoot, react, spot and throw (see AICombat).
