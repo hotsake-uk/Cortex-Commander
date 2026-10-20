@@ -1166,9 +1166,7 @@ PathAgent AHuman::GetPathAgent() const {
 	// can't do the work: no jetpack, or one that lifts the unit less than four nodes. (Routed for every soldier, as the cheaper way, ladders
 	// on a map full of them, Bywater, took over the routes there before the follower handles every way they meet the rest: a route that
 	// stepped down a laddered hatch to climb back up it stood a unit still for the minute. A player climbs any ladder regardless.)
-	// (With "Jetpack units use ladders" on, every unit with a hand: the ladder against the flight by cost. Kept to the weak-jet units, a
-	// soldier with a jetpack never planned a ladder, and AI units were next to never seen on one.)
-	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F || g_SettingsMan.AIJetUnitsClimbLadders());
+	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F);
 	// The leap of its legs (see UpdateLeap), for anything with a leg.
 	agent.LeapHeight = (m_pFGLeg || m_pBGLeg) ? GetLegJumpHeight() : 0.0F;
 	agent.LeapSpeed = m_LegJumpSpeed;
@@ -2517,21 +2515,9 @@ void AHuman::PreControllerUpdate() {
 		}
 		if (travel != 0.0F) {
 			analogAim.m_X = travel > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
-		} else {
-			// (An aim near straight down or up keeps the facing. An AI aims from its gun or its eyes, which go to the other side of the body
-			// when it turns, so a target just below was on the other side after each turn and it turned back the next frame, every frame:
-			// it shook, its stride restarted and its lean snapped round, most of all crouched, where the lean puts the gun further forward.
-			// Just after a turn the margin is wider, so that jump can't turn it straight back.)
-			const float noTurnTan = m_AimFlipTimer.IsPastSimMS(300) ? 0.27F : 1.0F; // About 15 degrees off vertical, 45 just after a turn.
-			if (std::abs(analogAim.m_X) < std::abs(analogAim.m_Y) * noTurnTan) {
-				analogAim.m_X = m_HFlipped ? -std::abs(analogAim.m_X) - 0.01F : std::abs(analogAim.m_X) + 0.01F;
-				// The aim mirrored to the side faced, which a gun pointing down or up hardly changes; unmirrored it would clamp to the other end.
-				m_AimAngle = analogAim.GetAbsRadAngle();
-			}
 		}
 		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
 			SetHFlipped(!m_HFlipped);
-			m_AimFlipTimer.Reset();
 			m_CheckTerrIntersection = true;
 			if (m_ProneState == NOTPRONE) {
 				MoveOutOfTerrain(g_MaterialGrass);
