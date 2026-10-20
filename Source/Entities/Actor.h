@@ -2268,6 +2268,10 @@ namespace RTE {
 		/// Whether the body (and a head, for a body that has one) would be clear of terrain shifted by so much.
 		bool BodyFitsShifted(const Vector& shift, MOSRotating* head) const;
 
+		/// Whether the body (and a head) would be clear of terrain all along the mantle's pull from where it is, up and over to the end (offsets
+		/// from the body), on the curve UpdateMantle moves it by, a couple of pixels at a time.
+		bool MantlePathFits(const Vector& up, const Vector& end, MOSRotating* head) const;
+
 		/// Starts a mantle if this is pressing left or right into something it can get up onto: a ledge or an obstacle whose top is no
 		/// higher than 0.3 of the body (0.55 while rising on the jet), with room for the whole body on top and ground under it there.
 		/// Any body works, from its own sizes; the move itself is the same for all.
