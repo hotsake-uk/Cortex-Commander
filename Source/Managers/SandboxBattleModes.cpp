@@ -11,6 +11,14 @@
 #include <unordered_set>
 
 namespace SandboxDetail {
+	/// The battle's own looks while it's on, else the setup's.
+	static const BattleModeSettings& LooksFrom() { return s_ModeRun.Running ? s_ModeRun.Settings : s_ModeSetup; }
+	bool BattleShowsObjectives() { return LooksFrom().ShowObjectives >= 0 ? LooksFrom().ShowObjectives > 0 : BattleShowsObjectives(); }
+	int BattleObjectiveLookNow() { return LooksFrom().ObjectiveLook >= 0 ? LooksFrom().ObjectiveLook : BattleObjectiveLookNow(); }
+	bool BattleShowsSpawnZones() { return LooksFrom().ShowSpawnZones >= 0 ? LooksFrom().ShowSpawnZones > 0 : BattleShowsSpawnZones(); }
+	bool BattleShowsModeZones() { return LooksFrom().ShowModeZones >= 0 ? LooksFrom().ShowModeZones > 0 : BattleShowsModeZones(); }
+	bool BattleShowsInfo() { return LooksFrom().ShowInfo >= 0 ? LooksFrom().ShowInfo > 0 : BattleShowsInfo(); }
+
 	namespace {
 		/// Sim updates in a second of game time.
 		float UpdatesPerSecond() { return 1.0F / std::max(g_TimerMan.GetDeltaTimeSecs(), 0.001F); }
@@ -179,7 +187,7 @@ namespace SandboxDetail {
 		/// A spawn zone drawn on the map: its area shaded in its team's colour.
 		void DrawBase(ImDrawList* drawList, const std::vector<Vector>& base, ImU32 color) {
 			const Tool held = CurrentTool().Kind;
-			if (base.size() < 3 || (!g_SettingsMan.ShowBattleSpawnZones() && held != Tool::BattleModeBase && held != Tool::BattleModePoint && held != Tool::BattleModeFlag)) {
+			if (base.size() < 3 || (!BattleShowsSpawnZones() && held != Tool::BattleModeBase && held != Tool::BattleModePoint && held != Tool::BattleModeFlag)) {
 				return;
 			}
 			std::vector<ImVec2> corners = ZoneOnScreen(base, std::max(ScenePixelsPerWindowPixel(), 0.01F));
@@ -352,7 +360,7 @@ namespace SandboxDetail {
 			}
 			// (Hidden with "Show hills on the map" or the like off, but for its name, unless one is being drawn.)
 			const Tool held = CurrentTool().Kind;
-			if (g_SettingsMan.ShowBattleModeZones() || held == Tool::BattleModeZone || held == Tool::BattleModeGoal) {
+			if (BattleShowsModeZones() || held == Tool::BattleModeZone || held == Tool::BattleModeGoal) {
 				std::vector<ImVec2> corners = ZoneOnScreen(zone, std::max(ScenePixelsPerWindowPixel(), 0.01F));
 				drawList->AddConcavePolyFilled(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(fill, 0, 255)) << 24));
 				drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (static_cast<ImU32>(std::clamp(line, 0, 255)) << 24), ImDrawFlags_Closed, thickness);
@@ -5495,11 +5503,11 @@ namespace SandboxDetail {
 
 	/// The mode's objectives lit up on the map, under the rest of what it draws, with "Show battle objectives" on.
 	static void DrawObjectives() {
-		if (!g_SettingsMan.ShowBattleObjectives()) {
+		if (!BattleShowsObjectives()) {
 			return;
 		}
 		ImDrawList* drawList = ImGui::GetBackgroundDrawList();
-		const int override = std::clamp(g_SettingsMan.BattleObjectiveLook(), 0, static_cast<int>(ObjectiveLook::Count));
+		const int override = std::clamp(BattleObjectiveLookNow(), 0, static_cast<int>(ObjectiveLook::Count));
 		for (const BattleObjective& objective: BattleObjectives()) {
 			if (!objective.Shown) {
 				continue;
@@ -5724,7 +5732,7 @@ namespace SandboxDetail {
 			drawList->AddPolyline(corners.data(), static_cast<int>(corners.size()), (color & 0x00FFFFFF) | (line << IM_COL32_A_SHIFT), ImDrawFlags_Closed, thickness);
 		};
 		// The teams' spawn zones, faint.
-		if (g_SettingsMan.ShowBattleSpawnZones()) {
+		if (BattleShowsSpawnZones()) {
 			for (int side = 0; side < c_Sides; ++side) {
 				if (settings.Plays[side]) {
 					for (const std::vector<Vector>& zone: settings.SpawnZones[side]) {
@@ -5734,7 +5742,7 @@ namespace SandboxDetail {
 			}
 		}
 		// The mode's own zones (hills, assault objectives) and goal zones.
-		if (g_SettingsMan.ShowBattleModeZones()) {
+		if (BattleShowsModeZones()) {
 			if (mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(settings))) {
 				for (const std::vector<Vector>& zone: settings.Zones) {
 					zoneOnMap(zone, IM_COL32(255, 255, 255, 255), 30, 130, 1.0F);
@@ -5748,7 +5756,7 @@ namespace SandboxDetail {
 				}
 			}
 		}
-		if (!g_SettingsMan.ShowBattleObjectives()) {
+		if (!BattleShowsObjectives()) {
 			return;
 		}
 		// The objectives over them: a zone outlined in its colour (brighter while in play), a flag as a little flag, a carried flag over its
@@ -6406,37 +6414,56 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
 		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");
 		ImGui::SetItemTooltip("The share of each team's units that each pick a way of their own to where they're going, so a team spreads over the routes across the map rather than filing down the one. At 50%% half take the shortest way and the rest spread over the others that are near enough as short (up to about half as long again). New units only: those already in keep their way.");
-		if (bool show = g_SettingsMan.ShowBattleSpawnZones(); ToolUI::Checkbox("Show spawn zones on the map", &show)) {
-			g_SettingsMan.SetShowBattleSpawnZones(show);
-		}
+		// (Each look the battle's own, saved with it, once "This battle's own looks" is ticked; else the player's settings, kept between launches.)
+		auto lookBox = [&](const char* label, int& own, bool global, void (SettingsMan::*setGlobal)(bool)) {
+			bool show = own >= 0 ? own > 0 : global;
+			if (ToolUI::Checkbox(label, &show)) {
+				if (own >= 0) {
+					own = show ? 1 : 0;
+					changed = true;
+				} else {
+					(g_SettingsMan.*setGlobal)(show);
+				}
+			}
+		};
+		lookBox("Show spawn zones on the map", setup.ShowSpawnZones, g_SettingsMan.ShowBattleSpawnZones(), &SettingsMan::SetShowBattleSpawnZones);
 		ImGui::SetItemTooltip("The outline and shading of each team's spawn zones. Off, they're hidden (still shown while you draw one or place a point); flags, hills and the rest still show.");
 		BattleEditPanel();
 		// (Its own zones, if it uses them as set up: one flag's flag spawn zones only if the flag comes in in them.)
 		const char* zoneName = mode.ZoneName && (!mode.ZonesUsed || mode.ZonesUsed(setup)) ? mode.ZoneName : nullptr;
 		if (zoneName || mode.Goals) {
 			const std::string zones = zoneName ? std::string(zoneName) + "s" : std::string("goal zones");
-			if (bool show = g_SettingsMan.ShowBattleModeZones(); ToolUI::Checkbox(("Show " + zones + " on the map").c_str(), &show)) {
-				g_SettingsMan.SetShowBattleModeZones(show);
-			}
+			lookBox(("Show " + zones + " on the map").c_str(), setup.ShowModeZones, g_SettingsMan.ShowBattleModeZones(), &SettingsMan::SetShowBattleModeZones);
 			ImGui::SetItemTooltip("%s", ("The outline and shading of the " + zones + ". Off, they're hidden but for their names (still shown while you draw one); \"Show battle objectives\" lights them up apart from this.").c_str());
 		}
-		if (bool show = g_SettingsMan.ShowBattleInfo(); ToolUI::Checkbox("Show battle info", &show)) {
-			g_SettingsMan.SetShowBattleInfo(show);
-		}
+		lookBox("Show battle info", setup.ShowInfo, g_SettingsMan.ShowBattleInfo(), &SettingsMan::SetShowBattleInfo);
 		ImGui::SetItemTooltip("While a battle is on, a panel under the score: each team's tally, units in and fallen, respawns left, and how many are waiting to come back and when the next does.");
-		if (bool show = g_SettingsMan.ShowBattleObjectives(); ToolUI::Checkbox("Show battle objectives", &show)) {
-			g_SettingsMan.SetShowBattleObjectives(show);
-		}
+		lookBox("Show battle objectives", setup.ShowObjectives, g_SettingsMan.ShowBattleObjectives(), &SettingsMan::SetShowBattleObjectives);
 		ImGui::SetItemTooltip("What the game is about lit up on the map, in each mode's own look: a glowing ring round each flag and VIP, the ground along a hill glowing, the terrain and buildings in an assault objective glowing, a glowing line round each goal.");
-		if (g_SettingsMan.ShowBattleObjectives()) {
+		if (setup.ShowObjectives >= 0 ? setup.ShowObjectives > 0 : g_SettingsMan.ShowBattleObjectives()) {
 			static const char* const looks[] = {"Each mode's own", "Glowing ring", "Glowing outline", "Glowing ground line", "Glowing terrain"};
 			static_assert(std::size(looks) == static_cast<size_t>(ObjectiveLook::Count) + 1, "A name for each ObjectiveLook.");
 			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
-			if (int look = g_SettingsMan.BattleObjectiveLook(); ImGui::Combo("Objective look", &look, looks, static_cast<int>(std::size(looks)))) {
-				g_SettingsMan.SetBattleObjectiveLook(look);
+			if (int look = setup.ObjectiveLook >= 0 ? setup.ObjectiveLook : g_SettingsMan.BattleObjectiveLook(); ImGui::Combo("Objective look", &look, looks, static_cast<int>(std::size(looks)))) {
+				if (setup.ObjectiveLook >= 0) {
+					setup.ObjectiveLook = look;
+					changed = true;
+				} else {
+					g_SettingsMan.SetBattleObjectiveLook(look);
+				}
 			}
 			ImGui::SetItemTooltip("How zone objectives (hills, assault objectives, goals) are lit up: as the mode has them, or all the same way. Flags and VIPs always get a ring.");
 		}
+		if (bool own = setup.OwnLooks(); ToolUI::Checkbox("This battle's own looks", &own)) {
+			// (Ticked: the looks as they are now become the battle's, saved with it; unticked: back to your own settings.)
+			setup.ShowSpawnZones = own ? g_SettingsMan.ShowBattleSpawnZones() : -1;
+			setup.ShowModeZones = own ? g_SettingsMan.ShowBattleModeZones() : -1;
+			setup.ShowInfo = own ? g_SettingsMan.ShowBattleInfo() : -1;
+			setup.ShowObjectives = own ? g_SettingsMan.ShowBattleObjectives() : -1;
+			setup.ObjectiveLook = own ? g_SettingsMan.BattleObjectiveLook() : -1;
+			changed = true;
+		}
+		ImGui::SetItemTooltip("The show settings above saved with this battle (its preset, or a battle made in Cortex Studio), so it shows its objectives and zones its own way whoever plays it. Off, they're your own settings, the same for every battle.");
 		if (mode.Panel) {
 			mode.Panel(setup, changed);
 		}
@@ -6714,7 +6741,7 @@ namespace SandboxDetail {
 	/// stands now: the mode's own tally, its units in and fallen, its respawns left and when the next comes; or, in a custom battle, its
 	/// units in, sent and money left.
 	static void DrawBattleInfo() {
-		if (!g_SettingsMan.ShowBattleInfo()) {
+		if (!BattleShowsInfo()) {
 			return;
 		}
 		const bool modeOn = s_ModeRun.Running;
@@ -6911,7 +6938,7 @@ namespace SandboxDetail {
 			switch (ref.Kind) {
 				case EditKind::Spawn:
 					// (Not while hidden, before the game; while it's on, yours are drawn for you to move, DrawBattleEdit.)
-					return ZoneOf(ref) && ZoneOf(ref)->size() >= 3 && SpawnsEditable(ref.Side) && (g_SettingsMan.ShowBattleSpawnZones() || !setUp);
+					return ZoneOf(ref) && ZoneOf(ref)->size() >= 3 && SpawnsEditable(ref.Side) && (BattleShowsSpawnZones() || !setUp);
 				case EditKind::ModeZone:
 					return setUp && ModeZonesUsed() && ZoneOf(ref) && ZoneOf(ref)->size() >= 3;
 				case EditKind::Goal:
