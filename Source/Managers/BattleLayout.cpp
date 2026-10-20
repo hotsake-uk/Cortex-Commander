@@ -724,8 +724,8 @@ namespace SandboxDetail {
 						}
 						break;
 					case BattleMode::KingOfTheHill: {
-						// One hill, or a few along the middle when the hill moves on or hills are played for.
-						const int hills = setup.HillMoveSeconds > 0 || setup.HillsToWin > 0 ? 3 : 1;
+						// One hill, or a few along the middle when the hill moves on or hills are played for (not when it moves to new spots as it goes).
+						const int hills = (setup.HillMoveSeconds > 0 || setup.HillsToWin > 0 || setup.HillMovesWhenTaken) && !(setup.HillMovesWhenTaken && setup.NextHill == 2) ? 3 : 1;
 						std::vector<Vector> avoid = baseList;
 						for (int i = 0; i < hills; ++i) {
 							const Place hill = FairPlace(survey, sides, made.Bases, ColumnsFor(240.0F), false, 0.6F, avoid, i == 0 ? 400.0F : 500.0F, random);
@@ -1001,6 +1001,18 @@ namespace SandboxDetail {
 		if (!s_Note.empty()) {
 			ImGui::TextWrapped("%s", s_Note.c_str());
 		}
+	}
+	std::vector<Vector> NewHillZone(const std::vector<int>& sides, const std::array<Vector, c_Sides>& bases, const std::vector<Vector>& avoid, float away, unsigned seed) {
+		const Survey& survey = SurveyMap();
+		std::mt19937 random(seed);
+		// (Nearer the last hill and the bases than asked, rather than none, on a small map.)
+		for (const float by: {away, away * 0.6F, away * 0.3F}) {
+			const Place hill = FairPlace(survey, sides, bases, ColumnsFor(240.0F), false, 0.6F, avoid, by, random);
+			if (hill.Valid()) {
+				return ZoneOver(survey, hill, 100.0F);
+			}
+		}
+		return {};
 	}
 } // namespace SandboxDetail
 

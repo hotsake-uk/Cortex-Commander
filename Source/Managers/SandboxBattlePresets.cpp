@@ -105,6 +105,9 @@ namespace SandboxDetail {
 			visit("HillMoveSeconds", mode.HillMoveSeconds);
 			visit("MajorityScores", mode.MajorityScores);
 			visit("HillsToWin", mode.HillsToWin);
+			visit("HillMovesWhenTaken", mode.HillMovesWhenTaken);
+			visit("HillTakeSeconds", mode.HillTakeSeconds);
+			visit("NextHill", mode.NextHill);
 			visit("Attacker", mode.Attacker);
 			visit("CaptureSeconds", mode.CaptureSeconds);
 			visit("TimeLimit", mode.TimeLimit);
