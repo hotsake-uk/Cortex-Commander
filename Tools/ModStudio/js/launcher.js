@@ -263,8 +263,8 @@ window.MS = window.MS || {};
 		} else if (s.repoOk && !advanced) {
 			menu.append(item('⟳ Update & build', 'Fetch the newest ' + s.config.branch + ' and build it if it changed', () => L.open('play').then(() => startJob('update', {}))));
 		}
-		if (s.repoOk && advanced && !s.config.workDir) {
-			menu.append(item('Versions…', 'Pick and build a branch, tag or commit', () => L.open('versions')));
+		if (s.repoOk && !s.config.workDir) {
+			menu.append(item('Versions…', 'Pick a commit of ' + s.config.branch + ' (or any branch or tag) and build it', () => L.open('versions')));
 		}
 		menu.append(item('Launch settings…', 'Settings.ini, presets, mods folder and world', () => L.open('settings')));
 		document.body.append(menu);
@@ -306,7 +306,7 @@ window.MS = window.MS || {};
 			? [['community', 'Community Edition']]
 			: [
 				['play', 'Play'],
-				advanced ? ['versions', 'Versions'] : null,
+				!L.state.config.workDir ? ['versions', 'Versions'] : null,
 				['settings', 'Launch settings'],
 				['runs', 'Run configurations'],
 				MS.target.edition !== 'commander' ? ['community', 'Community Edition'] : null,
@@ -384,7 +384,8 @@ window.MS = window.MS || {};
 					? button('⚒ Build my copy', () => startJob('update', {}), { primary: !s.builtExe, title: 'Build ' + s.config.workDir + ' as it is now' })
 				: simple
 					? button('⟳ Update & build', () => startJob('update', {}), { primary: !s.builtExe, disabled: !!s.config.unlocked, title: s.config.unlocked ? 'Unlocked: Reset, or Lock again, first' : 'Fetch the newest ' + s.config.branch + ' and build it if it changed' })
-					: button('Pick a version…', () => openTab('versions')),
+					: null,
+				own ? null : button('Pick a version…', () => openTab('versions'), { title: 'Every commit of ' + s.config.branch + ': pick one to build' }),
 				el('label', { className: 'gm-inline' }, 'Build type ', configurationSelect()),
 			),
 			el('h4', { textContent: 'What Studio is editing' }),
@@ -737,6 +738,23 @@ window.MS = window.MS || {};
 		}
 		const refSelect = el('select', { className: 'gm-input gm-wide' });
 		const table = el('div', { className: 'gm-commits' }, el('p', { className: 'gm-dim', textContent: 'Reading the history…' }));
+		// what lands on the branch (one line per merged pull request), or every commit of everything merged into it
+		if (L.firstParent === undefined) {
+			L.firstParent = true;
+		}
+		const merges = el('select', { className: 'gm-input', title: 'Pull requests: one line per change merged into the branch. Every commit: each commit of every branch merged into it too.' },
+			el('option', { value: '1', textContent: 'Pull requests', selected: L.firstParent }), el('option', { value: '0', textContent: 'Every commit', selected: !L.firstParent }));
+		merges.onchange = () => {
+			L.firstParent = merges.value === '1';
+			L.picked = '';
+			loadCommits(table);
+		};
+		const filter = el('input', { type: 'search', className: 'gm-input', placeholder: 'Filter by text, version, author or commit…', value: L.commitFilter || '' });
+		filter.style.cssText = 'flex: 1; min-width: 240px;';
+		filter.oninput = () => {
+			L.commitFilter = filter.value;
+			drawCommits(table);
+		};
 		const buildBtn = button('Build', () => buildPicked(false), { primary: true });
 		const buildLaunch = button('Build & play', () => buildPicked(true));
 		const head = card(
@@ -753,7 +771,8 @@ window.MS = window.MS || {};
 				buildLaunch,
 				button('Delete build', deleteBuild, { title: 'Remove ' + s.slot + ' (the repo stays)' }),
 			),
-			el('p', { className: 'gm-dim' }, 'Built now: ', builtLine(), '. Pick a commit, then Build. Builds go in ', el('code', { textContent: s.slot }), ', so the next one is quick.'),
+			row(el('label', { className: 'gm-inline' }, 'Show ', merges), filter),
+			el('p', { className: 'gm-dim' }, 'Built now: ', builtLine(), '. Pick a commit, then Build (or double-click it). Builds go in ', el('code', { textContent: s.slot }), ', so the next one is quick. ⟳ Update & build on Play goes back to the newest.'),
 		);
 		body.append(head, card(null, table));
 		if (!L.refs) {
@@ -781,19 +800,26 @@ window.MS = window.MS || {};
 		loadCommits(table);
 	}
 
-	async function loadCommits(table) {
-		table.innerHTML = '';
-		table.append(el('p', { className: 'gm-dim', textContent: 'Reading the history…' }));
-		const answer = await guarded(() => call('commits', undefined, { ref: L.ref }));
+	const PAGE = 100;
+
+	// The branch's history, a page at a time: more adds the next page under what is shown.
+	async function loadCommits(table, more) {
+		if (!more) {
+			table.innerHTML = '';
+			table.append(el('p', { className: 'gm-dim', textContent: 'Reading the history…' }));
+		}
+		const skip = more ? L.commits.length : 0;
+		const answer = await guarded(() => call('commits', undefined, { ref: L.ref, skip, limit: PAGE, firstParent: L.firstParent ? 1 : 0 }));
 		if (!answer) {
 			return;
 		}
-		L.commits = answer.commits;
+		L.commits = more ? L.commits.concat(answer.commits) : answer.commits;
+		L.moreCommits = !!answer.more;
 		if (!L.picked && L.commits.length) {
 			L.picked = L.commits[0].sha;
 		}
 		drawCommits(table);
-		const missing = L.commits.map((c) => c.sha).filter((sha) => !(sha in L.versions));
+		const missing = answer.commits.map((c) => c.sha).filter((sha) => !(sha in L.versions));
 		if (missing.length) {
 			const versions = await guarded(() => call('versions', { shas: missing }));
 			if (versions) {
@@ -805,8 +831,10 @@ window.MS = window.MS || {};
 
 	function drawCommits(table) {
 		table.innerHTML = '';
-		const t = el('table', {}, el('tr', {}, el('th', { textContent: '' }), el('th', { textContent: 'Date' }), el('th', { textContent: 'Version' }), el('th', { textContent: 'Author' }), el('th', { textContent: 'Change' })));
-		for (const c of L.commits) {
+		const t = el('table', {}, el('tr', {}, el('th', { textContent: '' }), el('th', { textContent: 'Date' }), el('th', { textContent: 'Version' }), el('th', { textContent: 'Author' }), el('th', { textContent: 'Change' }), el('th', { textContent: 'Commit' })));
+		const q = (L.commitFilter || '').trim().toLowerCase();
+		const shown = L.commits.filter((c) => !q || [c.subject, c.author, c.sha, L.versions[c.sha] || '', c.date].some((v) => v.toLowerCase().includes(q)));
+		for (const c of shown) {
 			const tr = el(
 				'tr',
 				{ className: c.sha === L.picked ? 'sel' : '', title: c.sha },
@@ -815,6 +843,7 @@ window.MS = window.MS || {};
 				el('td', { textContent: L.versions[c.sha] || '…' }),
 				el('td', { textContent: c.author }),
 				el('td', { textContent: c.subject }),
+				el('td', {}, el('code', { textContent: short(c.sha) })),
 			);
 			tr.onclick = () => {
 				L.picked = c.sha;
@@ -824,6 +853,9 @@ window.MS = window.MS || {};
 			t.append(tr);
 		}
 		table.append(t);
+		const count = L.commits.length + (L.moreCommits ? '+' : '') + ' commits' + (q ? ', ' + shown.length + ' match' : '');
+		table.append(el('div', { className: 'gm-row gm-more' }, el('span', { className: 'gm-dim', textContent: count }),
+			L.moreCommits ? button('Show ' + PAGE + ' more', () => loadCommits(table, true)) : el('span', { className: 'gm-dim', textContent: L.commits.length ? '(back to the first)' : '' })));
 	}
 
 	async function buildPicked(thenPlay) {
