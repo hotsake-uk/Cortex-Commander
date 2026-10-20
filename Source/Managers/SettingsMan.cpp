@@ -243,6 +243,7 @@ void SettingsMan::Clear() {
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_RagdollDeaths = false;
+	m_RagdollBodySeconds = 30;
 	m_NoDismemberment = false;
 	m_RagdollBlowApartScale = 3.0F;
 	m_GibChunks = GibChunkTuning();
@@ -1142,6 +1143,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("RagdollDeaths", { reader >> m_RagdollDeaths; });
+	MatchProperty("RagdollBodySeconds", { int seconds = 30; reader >> seconds; SetRagdollBodySeconds(seconds); });
 	MatchProperty("NoDismemberment", { reader >> m_NoDismemberment; });
 	MatchProperty("RagdollBlowApartScale", { float scale = 3.0F; reader >> scale; SetRagdollBlowApartScale(scale); });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
@@ -1934,6 +1936,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("RagdollDeaths", m_RagdollDeaths);
+	writer.NewPropertyWithValue("RagdollBodySeconds", m_RagdollBodySeconds);
 	writer.NewPropertyWithValue("NoDismemberment", m_NoDismemberment);
 	writer.NewPropertyWithValue("RagdollBlowApartScale", m_RagdollBlowApartScale);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);

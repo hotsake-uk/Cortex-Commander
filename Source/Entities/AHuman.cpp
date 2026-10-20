@@ -3607,7 +3607,14 @@ bool AHuman::IsRagdolling() const {
 void AHuman::RestDetection() {
 	Actor::RestDetection();
 
-	// A ragdoll isn't at rest while its limbs or head still swing, for a while: one that jitters for ever still settles in the end.
+	// A ragdoll's body stays a body for a while after death (SettingsMan::RagdollBodySeconds), however still it lies.
+	if (IsRagdolling() && !m_DeathTmr.IsPastSimMS(static_cast<double>(g_SettingsMan.RagdollBodySeconds()) * 1000.0)) {
+		m_AngOscillations = 0;
+		m_VelOscillations = 0;
+		m_RestTimer.Reset();
+		m_ToSettle = false;
+	}
+	// Nor is it at rest while its limbs or head still swing, for a while: one that jitters for ever still settles in the end.
 	if (IsRagdolling() && m_RagdollStarted && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
 		bool swinging = std::abs(m_RagdollHeadSpin) > 1.0F;
 		for (const Vector& limbVel: m_RagdollLimbVel) {

@@ -334,6 +334,13 @@ namespace RTE {
 		/// Sets whether humanoids are never dismembered; see NoDismemberment.
 		void SetNoDismemberment(bool enable) { m_NoDismemberment = enable; }
 
+		/// With RagdollDeaths on, how long, in seconds, a humanoid's body stays a body after it dies before it may settle into the terrain, 0 to 600:
+		/// till then it lies about whole, to be pushed, shot and blown about, however still. 0: as soon as it lies still, as the game comes.
+		int RagdollBodySeconds() const { return m_RagdollBodySeconds; }
+
+		/// Sets how long a ragdoll's body stays before it may settle; see RagdollBodySeconds.
+		void SetRagdollBodySeconds(int seconds) { m_RagdollBodySeconds = std::clamp(seconds, 0, 600); }
+
 		/// With RagdollDeaths on, how many times a body part's own gib or joint limit a single hit has to be to still blow it apart or off, 1.5 to 10.
 		float RagdollBlowApartScale() const { return m_RagdollBlowApartScale; }
 
@@ -1568,6 +1575,7 @@ namespace RTE {
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		bool m_RagdollDeaths; //!< Whether humanoids die as whole ragdolls (see RagdollDeaths).
+		int m_RagdollBodySeconds; //!< How long a ragdoll's body stays before it may settle (see RagdollBodySeconds).
 		bool m_NoDismemberment; //!< Whether humanoids are never dismembered or blown apart (see NoDismemberment).
 		float m_RagdollBlowApartScale; //!< How big a hit still blows a ragdolling body apart (see RagdollBlowApartScale).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).

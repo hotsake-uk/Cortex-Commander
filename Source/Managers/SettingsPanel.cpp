@@ -1336,6 +1336,11 @@ void DebugMan::SettingsGUI() {
 			if (Slider("Ragdoll: hit that still blows apart", &scale, Normal{3.0F}, 1.5F, 10.0F, "%.1fx limit")) {
 				g_SettingsMan.SetRagdollBlowApartScale(scale);
 			}
+			int bodySeconds = g_SettingsMan.RagdollBodySeconds();
+			if (SliderI("Ragdoll: bodies stay for", &bodySeconds, Normal{30}, 0, 600, bodySeconds > 0 ? "%d s" : "Settle at once")) {
+				g_SettingsMan.SetRagdollBodySeconds(bodySeconds);
+			}
+			Tip("How long a soldier's body stays a whole body after it dies, before it may sink into the ground as remains: till then shots, blasts and other bodies knock it about, however still it lies. Longer keeps more bodies about, which costs a little in a big battle. Settle at once: as soon as it lies still, as the game comes.");
 			Tip("How big one hit has to be, as a multiple of what would blow the body or the limb apart or off as the game comes, to still do so with Ragdoll deaths on: a rocket or a grenade close by. A soldier's own limbs come off as before while it lives. 3: three times. 10: hardly ever.");
 		}
 		SliderI("Gib chunks per gib (%)", &chunks.CountPercent, 0, 200, "%d%%");
