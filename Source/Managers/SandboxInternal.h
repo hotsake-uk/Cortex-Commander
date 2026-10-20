@@ -687,6 +687,17 @@ namespace SandboxDetail {
 	constexpr const char* c_BattleStyleNames[] = {"Attack nearest enemy", "Hunt brains", "Defend a place", "Patrol", "Sentry"};
 	static_assert(std::size(c_BattleStyleNames) == static_cast<size_t>(BattleStyle::Count), "c_BattleStyleNames must name each BattleStyle.");
 
+	struct CraftChoice {
+		const char* Label;
+		const char* ClassName;
+		const char* PresetName;
+	};
+	constexpr CraftChoice c_Crafts[] = {{"Dropship", "ACDropShip", "Dropship MK1"}, {"Rocket", "ACRocket", "Rocket MK2"}, {"Drop crate", "ACRocket", "Battle Drop Crate"}};
+	/// The drop crate (of c_Crafts): no ship at all, but crates that fall from the sky, land, and let their units out (DropUnits).
+	constexpr int c_CraftCrate = 2;
+	/// Most units in each drop crate: a wave of more comes down in a few crates side by side.
+	constexpr int c_UnitsPerCrate = 3;
+
 	/// What the Battle tab's card for one team says: which units it buys, how it fights, and how its ships come in. The window keeps its own
 	/// copy (s_BattleSetup) and sends it to the sim in a stroke (Tool::BattleTeam) whenever it changes, as every other choice is sent.
 	struct BattleSettings {
@@ -700,7 +711,7 @@ namespace SandboxDetail {
 		int Budget = 5000; //!< What it may spend in all, in oz.
 		int WaveSize = 5; //!< Units in each ship.
 		int UnitLimit = 0; //!< Most units it has in at once, counting those still in its ships: none sent past it, fewer to top it up. 0 for no limit.
-		int Craft = 0; //!< Index into c_Crafts.
+		int Craft = c_CraftCrate; //!< Index into c_Crafts. The drop crate by default, so a battle's skies aren't full of ships.
 		bool DropOnLine = false; //!< Ships come in over the drop line, not anywhere across the scene.
 		bool HasLine = false;
 		Vector LineA; //!< The drop line's ends: only its span across counts, as ships come in from the top (or the bottom).
@@ -1173,13 +1184,6 @@ namespace SandboxDetail {
 		std::vector<CustomLoadout> CrewCustom; //!< As DriverCustom, for the rest of the crew.
 		SpawnPointSettings SpawnPoint; //!< Tool::SpawnPoint: the point's settings, for SpawnPointPlace and SpawnPointEdit.
 	};
-
-	struct CraftChoice {
-		const char* Label;
-		const char* ClassName;
-		const char* PresetName;
-	};
-	constexpr CraftChoice c_Crafts[] = {{"Dropship", "ACDropShip", "Dropship MK1"}, {"Rocket", "ACRocket", "Rocket MK2"}};
 
 	/// A unit the sandbox keeps a hold of, checked against its unique ID before use (its memory may be reused by a new object).
 	struct UnitRef {

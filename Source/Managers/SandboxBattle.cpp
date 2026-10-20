@@ -1425,7 +1425,8 @@ namespace SandboxDetail {
 			ImGui::SetItemTooltip("Most units the team has in at once, counting those still in its ships. At the limit no ships come; below it, only enough units to top it up. 0: no limit.");
 
 			ImGui::SeparatorText("Ships");
-			changed |= ImGui::Combo("Craft", &setup.Craft, "Dropship\0Rocket\0");
+			changed |= ImGui::Combo("Craft", &setup.Craft, "Dropship\0Rocket\0Drop crate\0");
+			ImGui::SetItemTooltip("What its units come in by. A drop crate falls straight down onto its spot, crushes any enemy under it, lets up to %d units out and is gone; a ship flies in, unloads and leaves. Battle modes use this too.", c_UnitsPerCrate);
 			if (ToolUI::RadioButton("Anywhere##from", !setup.DropOnLine)) {
 				setup.DropOnLine = false;
 				changed = true;

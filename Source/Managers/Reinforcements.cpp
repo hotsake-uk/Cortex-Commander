@@ -427,7 +427,7 @@ namespace SandboxDetail {
 		ImGui::SameLine();
 		{
 			const char* craft = c_Crafts[std::clamp(s_CallCraft, 0, static_cast<int>(std::size(c_Crafts)) - 1)].Label;
-			if (BarTile("##craft", craft, "What they come in by. Click: dropship or rocket. A ship can be shot down on the way in, with them aboard.", false, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Rocket, at, room / 12.0F, IM_COL32(190, 190, 190, 255)); }) == 1) {
+			if (BarTile("##craft", craft, "What they come in by. Click: dropship, rocket or drop crate. A ship can be shot down on the way in, with them aboard; a crate falls fast and lands on its spot.", false, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, Icon::Rocket, at, room / 12.0F, IM_COL32(190, 190, 190, 255)); }) == 1) {
 				s_CallCraft = (s_CallCraft + 1) % static_cast<int>(std::size(c_Crafts));
 			}
 		}

@@ -2138,7 +2138,7 @@ void Sandbox::DrawGUI() {
 					SideChooser();
 				}
 				if (kind == Tool::Drop) {
-					ImGui::Combo("Craft", &s_Craft, "Dropship\0Rocket\0");
+					ImGui::Combo("Craft", &s_Craft, "Dropship\0Rocket\0Drop crate\0");
 				}
 				if (kind == Tool::Unit || kind == Tool::Drop) {
 					ToolUI::Checkbox("Random units", &s_RandomUnits);

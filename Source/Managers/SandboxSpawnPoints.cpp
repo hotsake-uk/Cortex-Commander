@@ -702,7 +702,7 @@ namespace SandboxDetail {
 		}
 		ImGui::SetItemTooltip("A ship brings each lot in over the point and drops them off.");
 		if (setup.ByShip) {
-			changed |= ImGui::Combo("Craft", &setup.Craft, "Dropship\0Rocket\0");
+			changed |= ImGui::Combo("Craft", &setup.Craft, "Dropship\0Rocket\0Drop crate\0");
 			changed |= ToolUI::Checkbox("Ships can't be hurt", &setup.Invincible);
 		} else {
 			changed |= ImGui::SliderInt("Area", &setup.Radius, 10, 400, "%d px round it");
