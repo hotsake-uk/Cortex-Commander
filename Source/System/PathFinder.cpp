@@ -2337,7 +2337,7 @@ float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const
 	// A node with no floor under it has its free height measured from its own centre, not from a floor, so it says nothing about a
 	// body's head room: a step into one is a step off an edge, and only the room where the step starts counts. (Measured from the
 	// centre, the node over a hatch or past the top step of a stair read as a crawlspace, and units lay down to walk off the edge.)
-	int headRoom = HasFloor(to) ? std::min(from.WalkHeight, to.WalkHeight) : from.WalkHeight;
+	int headRoom = HasFloor(to) ? std::min(from.FreeHeight, to.FreeHeight) : from.FreeHeight;
 	if (static_cast<float>(headRoom) < s_CrawlHeight) {
 		return 1000.0F;
 	}
@@ -2417,7 +2417,7 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	// A diagonal step up or down an incline the legs walk (SurfaceWalkable): a walk, whatever the line between the centres clips. (Every step
 	// up was labelled a jump, and up a hillside the follower jumped or jetted node by node.)
 	if (s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - nodeSize) < 1.0F && SurfaceWalkable(*from, *to)) {
-		int headRoom = std::min(from->WalkHeight, to->WalkHeight);
+		int headRoom = std::min(from->FreeHeight, to->FreeHeight);
 		return static_cast<float>(headRoom) < s_CrouchHeight ? PathStepKind::Crawl : (static_cast<float>(headRoom) < s_StandHeight ? PathStepKind::Crouch : PathStepKind::Walk);
 	}
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
@@ -2465,7 +2465,7 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 		return PathStepKind::Fall;
 	}
 	// (Only where both have floors: see HeadRoomFactor.)
-	int headRoom = HasFloor(*to) ? std::min(from->WalkHeight, to->WalkHeight) : from->WalkHeight;
+	int headRoom = HasFloor(*to) ? std::min(from->FreeHeight, to->FreeHeight) : from->FreeHeight;
 	if (static_cast<float>(headRoom) < s_CrouchHeight) {
 		return PathStepKind::Crawl;
 	}
@@ -3136,7 +3136,6 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 
 	std::array<const Material*, PathNode::c_MaxAdjacentNodeCount> oldMaterials = node->AdjacentNodeBlockingMaterials;
 	int oldFreeHeight = node->FreeHeight;
-	int oldWalkHeight = node->WalkHeight;
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
 	bool oldLadder = node->Ladder;
@@ -3198,22 +3197,14 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// every 8 px, and a node whose centre was over them read as having no head room at all, so the shaft beside a ladder was no way up
 		// and every route past one came back impossible. A ceiling or a floor slab fills the cell, and stops all the lines alike.
 		int free = 0;
-		// The walk's head room is the least of those lines, of the ones that start in air (one that starts in ground is a wall or a step
-		// beside, not a ceiling). (The most open alone was taken for walking too: one open line at an overhang's edge read as full height,
-		// the step was labelled a walk, and a unit stood up into the slab, was stuck, and was given the same walk again.)
-		int walkFree = PathNode::c_ClearanceReach;
 		for (int dx: {0, -4, 4, -8, 8}) {
 			int lineFree = 0;
 			while (lineFree < PathNode::c_ClearanceReach && TerrNav(x + dx, from - lineFree) == MaterialColorKeys::g_MaterialAir) {
 				++lineFree;
 			}
 			free = std::max(free, lineFree);
-			if (lineFree > 0) {
-				walkFree = std::min(walkFree, lineFree);
-			}
 		}
 		node->FreeHeight = free;
-		node->WalkHeight = std::min(free, walkFree);
 		int sideY = floor >= 0 ? floor - 10 : centreY;
 		// (Out to two nodes a side: measured to one, a shaft two nodes wide read as narrower than it was from either of its columns, since
 		// neither is in the middle, and a jet column was refused where a body would have fitted twice over.)
@@ -3635,7 +3626,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Room that has changed enough to matter to a body counts as a change too.
-	if (std::abs(node->FreeHeight - oldFreeHeight) >= 4 || std::abs(node->WalkHeight - oldWalkHeight) >= 4 || std::abs(node->ClearLeft - oldClearLeft) >= 3 || std::abs(node->ClearRight - oldClearRight) >= 3) {
+	if (std::abs(node->FreeHeight - oldFreeHeight) >= 4 || std::abs(node->ClearLeft - oldClearLeft) >= 3 || std::abs(node->ClearRight - oldClearRight) >= 3) {
 		return true;
 	}
 
@@ -3752,7 +3743,6 @@ bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>&
 		    node.LadderBottom = source.LadderBottom;
 		    node.Surface = source.Surface;
 		    node.FreeHeight = source.FreeHeight;
-		    node.WalkHeight = source.WalkHeight;
 		    node.ClearLeft = source.ClearLeft;
 		    node.ClearRight = source.ClearRight;
 		    node.StairsUpRight = source.StairsUpRight;

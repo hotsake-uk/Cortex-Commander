@@ -1166,7 +1166,9 @@ PathAgent AHuman::GetPathAgent() const {
 	// can't do the work: no jetpack, or one that lifts the unit less than four nodes. (Routed for every soldier, as the cheaper way, ladders
 	// on a map full of them, Bywater, took over the routes there before the follower handles every way they meet the rest: a route that
 	// stepped down a laddered hatch to climb back up it stood a unit still for the minute. A player climbs any ladder regardless.)
-	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F);
+	// (With "Jetpack units use ladders" on, every unit with a hand: the ladder against the flight by cost. Kept to the weak-jet units, a
+	// soldier with a jetpack never planned a ladder, and AI units were next to never seen on one.)
+	agent.ClimbsLadders = (m_pFGArm != nullptr || m_pBGArm != nullptr) && (agent.JetTimeMS <= 0.0F || agent.JumpHeight * c_PPM < 96.0F || g_SettingsMan.AIJetUnitsClimbLadders());
 	// The leap of its legs (see UpdateLeap), for anything with a leg.
 	agent.LeapHeight = (m_pFGLeg || m_pBGLeg) ? GetLegJumpHeight() : 0.0F;
 	agent.LeapSpeed = m_LegJumpSpeed;

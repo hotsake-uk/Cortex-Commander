@@ -2736,6 +2736,11 @@ void AHuman::AvoidRouteLadder() {
 				continue;
 			}
 			if (!onLadder) {
+				// (Only stuck at its foot: stuck two nodes or more short of the ladder, the unit was held up by something else, a teammate or
+				// a door, and the ladder was avoided, by the team too the second time, for what had nothing to do with it.)
+				if (g_SceneMan.ShortestDistance(m_Pos, routePoint, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 2.0F)) {
+					break;
+				}
 				onLadder = true;
 				team = NoteLadderStall(routePoint.m_X, routePoint.m_Y);
 				MoverTrace(std::string("stuck getting onto the route's ladder; avoiding it") + (team ? " (the team avoids it now)" : ""));
@@ -3135,10 +3140,7 @@ int AHuman::MoveAlongRoute() {
 	// (2.5 s and 6 s as tuned: the Pathfinding settings.)
 	const SettingsMan::PathTuning& tuning = g_SettingsMan.PathTunings();
 	bool stuck = mover.progressTimer.IsPastSimMS(static_cast<double>(tuning.StuckRemedySeconds) * 1000.0);
-	// (Not while a remedy has only just started: given its moment first, so the lie down the stuck spell reached isn't cut off by the re-path
-	// and marked failed before the body was even down.)
-	const bool remedyStarting = mover.remedy >= 0 && !mover.remedyTimer.IsPastSimMS(1500);
-	if (stuck && !remedyStarting && mover.progressTimer.IsPastSimMS(static_cast<double>(std::max(tuning.StuckRepathSeconds, tuning.StuckRemedySeconds)) * 1000.0)) {
+	if (stuck && mover.progressTimer.IsPastSimMS(static_cast<double>(std::max(tuning.StuckRepathSeconds, tuning.StuckRemedySeconds)) * 1000.0)) {
 		// Long stuck: the route asked for afresh from here, and the place avoided.
 		AvoidPathPoint(m_MovePath.empty() ? m_Pos : m_MovePath.front(), 20000.0F);
 		// The step it is stuck on (from here to there: the flight's take-off and landing when there is one ahead, else the next point) is made
@@ -4290,11 +4292,6 @@ int AHuman::MoveAlongRoute() {
 			const float gap = toPoint.GetMagnitude();
 			const Vector along = way * std::min(h * 0.5F, gap);
 			bool groundAhead = g_SceneMan.CastStrengthRay(m_Pos, along, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
-			// (And at head height, for the unstick dig: a lip over the way at the head, which the waist's ray passes under, read as no ground
-			// to dig, and a digger wedged under an overhang stood at it for good.)
-			if (!groundAhead && unstickDig) {
-				groundAhead = g_SceneMan.CastStrengthRay(m_Pos + Vector(0.0F, -h * 0.25F), along, 5.0F, hit, 2, MaterialColorKeys::g_MaterialDoor);
-			}
 			const float cuts = groundAhead ? EstimateDigStrength() : 0.0F;
 			if (!groundAhead) {
 				mover.unstickDigSet = false;
@@ -5079,19 +5076,8 @@ int AHuman::MoveAlongRoute() {
 	} else if (crawlNear || ((noRoomHere || noRoomAhead) && !crouchFits)) {
 		prone = true;
 		mover.proneHoldTimer.Reset();
-	} else if (mover.crawlHeld && (noRoomHere || noRoomAhead || !mover.crawlHoldTimer.IsPastSimMS(800))) {
-		// Lying down to get under something the crouch looked to fit under and didn't (the stuck remedy's lie down): crawled on while there
-		// is a ceiling over the head or ahead, and a moment after. (Stood up again as the remedy's moment ended, the unit crouched back into
-		// the same overhang, was stuck again, backed off and came on again, over and over.)
-		prone = true;
-		if (noRoomHere || noRoomAhead) {
-			mover.crawlHoldTimer.Reset();
-		}
 	} else {
 		prone = m_ProneState == PRONE && !mover.proneHoldTimer.IsPastSimMS(400);
-	}
-	if (!prone) {
-		mover.crawlHeld = false;
 	}
 	if (prone) {
 		ctrl.SetState(BODY_PRONE, true);
@@ -5605,7 +5591,7 @@ int AHuman::MoveAlongRoute() {
 			allowed[static_cast<int>(StuckRemedy::Crouch)] = !prone && !crouch && m_ProneState == NOTPRONE && crouched < standing - 1.0F;
 			float floorBehind = FloorUnder(m_Pos + Vector(-direction * h * 0.5F, 0.0F), feet + h * 0.3F);
 			allowed[static_cast<int>(StuckRemedy::BackOff)] = !prone && m_ProneState == NOTPRONE && floorBehind >= 0.0F && std::abs(floorBehind - floorY) < h * 0.3F;
-			allowed[static_cast<int>(StuckRemedy::Leap)] = !prone && CanLeap() && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
+			allowed[static_cast<int>(StuckRemedy::Leap)] = !prone && CanLeap();
 			allowed[static_cast<int>(StuckRemedy::Hop)] = standardJet && !prone && m_pJetpack->GetJetTimeLeft() > 300.0F && ColumnOpen(m_Pos.m_X, topHeadY + 2.0F, topHeadY - h * 0.5F);
 			const float crawlRoom = std::max(8.0F, h * 0.2F);
 			allowed[static_cast<int>(StuckRemedy::Prone)] = !prone && !steep && m_ProneState == NOTPRONE && !g_SceneMan.CastStrengthRay(Vector(m_Pos.m_X, floorY - crawlRoom), heading, 5.0F, hit, 4, MaterialColorKeys::g_MaterialDoor);
@@ -5614,15 +5600,6 @@ int AHuman::MoveAlongRoute() {
 			allowed[static_cast<int>(StuckRemedy::Mantle)] = !prone && m_ProneState == NOTPRONE && g_SettingsMan.MantlingEnabled() && !IsMantling() && (m_pFGArm || m_pBGArm);
 			// (The push, behind its setting and off by default: last in the order, so only once the unit's own moves are spent here, unless it
 			// worked at this spot before. Once a stuck spell, and not again for 3 s.)
-			// Under a ceiling (no room to stand here or a stride ahead, or ducking under something): lying down and crawling first. (Last but
-			// one in the order, it came after the duck, the back-off, the leap and the hop, and the re-path at 6 s came before it: a unit wedged
-			// under an overhang it could crawl under backed off, came on again and leapt into the slab, and never lay down.)
-			const bool underCeiling = noRoomHere || noRoomAhead || crouch;
-			if (underCeiling && allowed[static_cast<int>(StuckRemedy::Prone)] && !(mover.remedyTried & (1U << static_cast<int>(StuckRemedy::Prone)))) {
-				allowed[static_cast<int>(StuckRemedy::BackOff)] = false;
-				allowed[static_cast<int>(StuckRemedy::Leap)] = false;
-				allowed[static_cast<int>(StuckRemedy::Hop)] = false;
-			}
 			allowed[static_cast<int>(StuckRemedy::Push)] = g_SettingsMan.StuckPushEnabled() && m_Controller.GetInputMode() == Controller::CIM_AI && m_StuckPushTimer.IsPastSimMS(3000) && !mover.flight.active && !m_Ladder.active && !IsMantling() && m_PinStrength <= 0.0F;
 			mover.remedy = PickStuckRemedy(m_Pos, allowed, mover.remedyTried);
 			mover.remedyGap = mover.bestGap;
@@ -5634,10 +5611,6 @@ int AHuman::MoveAlongRoute() {
 				Say("Stuck");
 				if (mover.remedy == static_cast<int>(StuckRemedy::Push)) {
 					PushFree(direction);
-				}
-				if (mover.remedy == static_cast<int>(StuckRemedy::Prone)) {
-					mover.crawlHeld = true;
-					mover.crawlHoldTimer.Reset();
 				}
 			}
 		}
