@@ -807,9 +807,47 @@ namespace {
 		}
 	}
 
-	/// Keeps a point out of the ground: back to the last free place along the way it came, then slid along the ground from there.
+	/// Finds the free place nearest a point in the ground: first along the way to the blob's middle, then in rings round it.
+	/// @return Whether one was found near enough (within 8 pixels).
+	bool NearestFree(const glm::vec2& at, const glm::vec2& middle, glm::vec2& free) {
+		glm::vec2 in = middle - at;
+		float inLength = glm::length(in);
+		if (inLength > 1e-4F) {
+			in /= inLength;
+			for (int step = 1; step <= std::min(static_cast<int>(inLength), 8); ++step) {
+				glm::vec2 next = at + in * static_cast<float>(step);
+				if (!Solid(next)) {
+					free = next;
+					return true;
+				}
+			}
+		}
+		for (int reach = 1; reach <= 8; ++reach) {
+			int ways = 8 * reach;
+			for (int way = 0; way < ways; ++way) {
+				float angle = static_cast<float>(way) * glm::two_pi<float>() / static_cast<float>(ways);
+				glm::vec2 next = at + glm::vec2(std::cos(angle), std::sin(angle)) * static_cast<float>(reach);
+				if (!Solid(next)) {
+					free = next;
+					return true;
+				}
+			}
+		}
+		return false;
+	}
+
+	/// Keeps a point out of the ground: back to the last free place along the way it came, then slid along the ground from there. Its speed is
+	/// left to Rub, once an update: here it would be taken every pass, and a blob pressed to a wall or a ledge by its own air would never slide off.
 	/// @return Whether it met the ground.
-	bool Collide(Point& point, float groundKeep) {
+	bool Collide(Point& point, const glm::vec2& middle) {
+		if (Solid(point.Safe)) {
+			// Its last free place is ground now (another blob drawn over it, falling ground, or made in a wall): it would be held there for good.
+			glm::vec2 free;
+			if (NearestFree(point.Safe, middle, free)) {
+				point.Prev += free - point.Safe;
+				point.Safe = free;
+			}
+		}
 		glm::vec2 way = point.Pos - point.Safe;
 		bool hit = Solid(point.Pos);
 		glm::vec2 free = point.Safe;
@@ -847,11 +885,83 @@ namespace {
 		} else {
 			point.Pos = free;
 		}
-		point.Prev = point.Pos - (point.Pos - point.Prev) * groundKeep;
 		if (!Solid(point.Pos)) {
 			point.Safe = point.Pos;
 		}
 		return true;
+	}
+
+	/// The way out of the ground at a point beside it, of length one: away from the ground pixels round it. Zero if there are none or no clear way.
+	glm::vec2 GroundNormal(const glm::vec2& at) {
+		glm::vec2 out(0.0F);
+		for (int way = 0; way < 8; ++way) {
+			float angle = static_cast<float>(way) * glm::two_pi<float>() / 8.0F;
+			glm::vec2 offset(std::cos(angle), std::sin(angle));
+			if (Solid(at + offset * 1.5F)) {
+				out -= offset;
+			}
+		}
+		float length = glm::length(out);
+		return length > 1e-3F ? out / length : glm::vec2(0.0F);
+	}
+
+	/// The ground's rub on a point that met it this update, once: no speed on into the ground, its slide along it slowed, and what springs off it
+	/// cut by how much the ground keeps.
+	void Rub(Point& point, float groundKeep) {
+		glm::vec2 velocity = point.Pos - point.Prev;
+		glm::vec2 normal = GroundNormal(point.Pos);
+		if (normal == glm::vec2(0.0F)) {
+			point.Prev = point.Pos - velocity * groundKeep;
+			return;
+		}
+		float into = glm::dot(velocity, normal);
+		glm::vec2 slide = velocity - normal * into;
+		// A slide kept much more than a bounce, so a blob on a wall or a slope runs down it rather than hanging there.
+		float slideKeep = 0.5F + 0.5F * groundKeep;
+		point.Prev = point.Pos - (slide * slideKeep + normal * (std::max(into, 0.0F) * groundKeep));
+	}
+
+	/// Keeps the edges between a blob's points out of thin ground: where a lip or a panel thinner than the points' spacing pokes through an edge,
+	/// both its ends are drawn in a pixel, to the blob's side, so it slides off the lip rather than hanging on it like a hook.
+	void UnhookEdges(Blob& blob) {
+		size_t count = blob.Points.size();
+		for (size_t i = 0; i < count; ++i) {
+			Point& a = blob.Points[i];
+			Point& b = blob.Points[(i + 1) % count];
+			if (Solid(a.Pos) || Solid(b.Pos)) {
+				continue;
+			}
+			glm::vec2 way = b.Pos - a.Pos;
+			// In: the edge's normal to the inside of the blob (Outward's for a point, turned round).
+			glm::vec2 in(-way.y, way.x);
+			if (blob.RestArea < 0.0F) {
+				in = -in;
+			}
+			float length = glm::length(in);
+			if (length < 1e-4F) {
+				continue;
+			}
+			in /= length;
+			// Hooked where the ground goes on into the blob past the edge; an edge only grazing a corner of the ground it lies on (a stepped slope) is let be.
+			int steps = static_cast<int>(std::ceil(std::max(std::abs(way.x), std::abs(way.y))));
+			bool hooked = false;
+			for (int step = 1; step < steps && !hooked; ++step) {
+				glm::vec2 at = a.Pos + way * (static_cast<float>(step) / static_cast<float>(steps));
+				hooked = Solid(at) && Solid(at + in * 1.5F);
+			}
+			if (!hooked) {
+				continue;
+			}
+			for (Point* end: {&a, &b}) {
+				glm::vec2 next = end->Pos + in;
+				if (!Solid(next)) {
+					// (Moved, not thrown: its speed kept as it was.)
+					end->Prev += in;
+					end->Pos = next;
+					end->Safe = next;
+				}
+			}
+		}
 	}
 
 	/// Where its own shape, turned to how it lies now and at the size it keeps, puts each point.
@@ -1087,10 +1197,21 @@ namespace {
 		}
 		PressedByUnits(blob, contacts, seconds, gravity);
 		MatchShape(blob, type.Shape);
+		static std::vector<unsigned char> touched;
+		touched.assign(blob.Points.size(), 0);
 		for (int pass = 0; pass < c_Iterations; ++pass) {
 			SolveShape(blob, type);
-			for (Point& point: blob.Points) {
-				Collide(point, type.GroundKeep);
+			glm::vec2 middle = Middle(blob);
+			for (size_t i = 0; i < blob.Points.size(); ++i) {
+				if (Collide(blob.Points[i], middle)) {
+					touched[i] = 1;
+				}
+			}
+			UnhookEdges(blob);
+		}
+		for (size_t i = 0; i < blob.Points.size(); ++i) {
+			if (touched[i]) {
+				Rub(blob.Points[i], type.GroundKeep);
 			}
 		}
 		ThrowUnits(blob, contacts, seconds);
