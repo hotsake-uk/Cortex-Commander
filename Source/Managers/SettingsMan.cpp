@@ -242,6 +242,8 @@ void SettingsMan::Clear() {
 	m_SensesPassSpecks = true;
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
+	m_RagdollDeaths = false;
+	m_RagdollBlowApartScale = 3.0F;
 	m_GibChunks = GibChunkTuning();
 	m_AICombat = AICombatTuning();
 	m_SlowdownFixes = SlowdownFixTuning();
@@ -1138,6 +1140,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("CreatureFlySpeed", { float speed = 1.0F; reader >> speed; SetCreatureFlySpeed(speed); });
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
+	MatchProperty("RagdollDeaths", { reader >> m_RagdollDeaths; });
+	MatchProperty("RagdollBlowApartScale", { float scale = 3.0F; reader >> scale; SetRagdollBlowApartScale(scale); });
 	MatchProperty("GibChunkPercent", { reader >> m_GibChunks.CountPercent; ClampGibChunks(); });
 	MatchProperty("MaxLooseGibChunks", { reader >> m_GibChunks.MaxLoose; ClampGibChunks(); });
 	MatchProperty("GibChunkSettleMS", { reader >> m_GibChunks.SettleMS; ClampGibChunks(); });
@@ -1927,6 +1931,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("CreatureFlySpeed", m_CreatureFlySpeed);
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
+	writer.NewPropertyWithValue("RagdollDeaths", m_RagdollDeaths);
+	writer.NewPropertyWithValue("RagdollBlowApartScale", m_RagdollBlowApartScale);
 	writer.NewPropertyWithValue("GibChunkPercent", m_GibChunks.CountPercent);
 	writer.NewPropertyWithValue("MaxLooseGibChunks", m_GibChunks.MaxLoose);
 	writer.NewPropertyWithValue("GibChunkSettleMS", m_GibChunks.SettleMS);

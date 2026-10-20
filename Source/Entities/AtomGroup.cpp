@@ -1330,6 +1330,40 @@ void AtomGroup::FlailAsLimb(const Vector& ownerPos, const Vector& jointOffset, c
 	return;
 }
 
+Vector AtomGroup::RagdollAsLimb(const Vector& jointPos, float limbRadius, Vector& limbVel, float mass, float travelTime) {
+	RTEAssert(m_OwnerMOSR, "Tried to ragdoll an AtomGroup that has no parent!");
+	if (travelTime <= 0.0F) {
+		return Vector();
+	}
+
+	limbVel += g_SceneMan.GetGlobalAcc() * m_OwnerMOSR->GetGlobalAccScalar() * travelTime;
+	limbVel *= 1.0F - std::min(1.5F * travelTime, 0.5F); // A little air and joint drag, so a limb settles rather than swinging for ever.
+
+	// Moved as far as the terrain lets it, and its velocity what it really moved: stopped by the ground it hit, sliding along it.
+	bool didWrap = false;
+	Vector before = m_LimbPos;
+	PushTravel(m_LimbPos, limbVel, 100, didWrap, travelTime, false, false);
+	Vector moved = g_SceneMan.ShortestDistance(before, m_LimbPos, g_SceneMan.SceneWrapsX());
+	limbVel = moved / (travelTime * c_PPM);
+
+	Vector pull;
+	Vector reach = g_SceneMan.ShortestDistance(jointPos, m_LimbPos, g_SceneMan.SceneWrapsX());
+	if (reach.MagnitudeIsGreaterThan(limbRadius)) {
+		float stretch = reach.GetMagnitude() - limbRadius;
+		Vector along = reach / reach.GetMagnitude();
+		m_LimbPos = jointPos + along * limbRadius;
+		g_SceneMan.WrapPosition(m_LimbPos);
+		// Held at full reach: it stops going outward, and the body is pulled after the limb by as much as it took to hold it there.
+		float outward = limbVel.Dot(along);
+		if (outward > 0.0F) {
+			limbVel -= along * outward;
+		}
+		pull = along * (mass * (stretch / c_PPM) / (travelTime * travelTime));
+		pull.CapMagnitude(mass * 60.0F);
+	}
+	return pull;
+}
+
 bool AtomGroup::InTerrain() const {
 	SceneMan::LiquidsPassable liquidsPassable; // Bodies move through liquid rather than hitting it.
 	RTEAssert(m_OwnerMOSR, "Tried to check overlap with terrain for an AtomGroup that has no parent!");

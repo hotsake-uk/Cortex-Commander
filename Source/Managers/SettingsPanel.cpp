@@ -1327,6 +1327,15 @@ void DebugMan::SettingsGUI() {
 			}
 			ImGui::TextDisabled("%d gib chunks loose", loose);
 		}
+		Toggle("Ragdoll deaths", g_SettingsMan.RagdollDeaths(), [](bool on) { g_SettingsMan.SetRagdollDeaths(on); });
+		Tip("Experimental. On: a soldier (any humanoid) killed by a hit or a wound that would have blown it apart dies whole instead, and the body keeps its head and limbs while it falls limp, its arms and legs swinging under their own weight, catching on ledges and dragging on the ground, until it all lies still and settles into the ground. Only a really big hit still blows it apart or tears a limb off (see below). Off, as the game comes: bodies burst when a hit or a wound passes their limit, and fall stiffly.");
+		if (g_SettingsMan.RagdollDeaths()) {
+			float scale = g_SettingsMan.RagdollBlowApartScale();
+			if (Slider("Ragdoll: hit that still blows apart", &scale, Normal{3.0F}, 1.5F, 10.0F, "%.1fx limit")) {
+				g_SettingsMan.SetRagdollBlowApartScale(scale);
+			}
+			Tip("How big one hit has to be, as a multiple of what would blow the body or the limb apart or off as the game comes, to still do so with Ragdoll deaths on: a rocket or a grenade close by. A soldier's own limbs come off as before while it lives. 3: three times. 10: hardly ever.");
+		}
 		SliderI("Gib chunks per gib (%)", &chunks.CountPercent, 0, 200, "%d%%");
 		Tip("How many of the solid pieces (bits of plating, flesh, bone and metal) come out when a body, wreck or crate breaks apart, against what each says: at 50 about half. Blood, flecks and sparks are unchanged, and so are the parts that were attached to it (limbs, heads, guns). 100: all of them, as the game comes.");
 		SliderI("Most loose gib chunks", &chunks.MaxLoose, 0, 2000, chunks.MaxLoose > 0 ? "%d" : "No limit");

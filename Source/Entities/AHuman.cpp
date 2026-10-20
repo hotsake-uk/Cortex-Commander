@@ -125,6 +125,11 @@ void AHuman::Clear() {
 	m_SharpAimRevertTimer.Reset();
 	m_FGArmFlailScalar = 0.0F;
 	m_BGArmFlailScalar = 0.7F;
+	m_RagdollStarted = false;
+	for (Vector& limbVel: m_RagdollLimbVel) {
+		limbVel.Reset();
+	}
+	m_RagdollHeadSpin = 0.0F;
 	m_EquipHUDTimer.Reset();
 	m_WalkAngle.fill(Matrix());
 	m_WalkPathOffset.Reset();
@@ -3066,6 +3071,29 @@ void AHuman::PreControllerUpdate() {
 				}
 			}
 		}
+	} else if (IsRagdolling()) {
+		// Dying or dead as a whole ragdoll: each hand and foot swings on its own under its weight, hits and drags on the ground, and pulls the body
+		// after it at full reach, so a body drapes over a ledge or hangs by a caught limb rather than falling stiff.
+		if (!m_RagdollStarted) {
+			m_RagdollStarted = true;
+			for (Vector& limbVel: m_RagdollLimbVel) {
+				limbVel = m_Vel;
+			}
+			m_RagdollHeadSpin = 0.0F;
+		}
+		const std::array<std::pair<Attachable*, AtomGroup*>, 4> limbs{{{m_pFGArm, m_pFGHandGroup}, {m_pBGArm, m_pBGHandGroup}, {m_pFGLeg, m_pFGFootGroup}, {m_pBGLeg, m_pBGFootGroup}}};
+		for (int index = 0; index < 4; ++index) {
+			auto [limb, limbGroup] = limbs[index];
+			if (!limb || !limbGroup) {
+				continue;
+			}
+			float reach = index < 2 ? static_cast<Arm*>(limb)->GetMaxLength() : static_cast<Leg*>(limb)->GetMaxLength();
+			Vector jointOffset = RotateOffset(limb->GetParentOffset());
+			Vector pull = limbGroup->RagdollAsLimb(m_Pos + jointOffset, reach, m_RagdollLimbVel[index], limb->GetMass(), deltaTime);
+			if (!pull.IsZero()) {
+				AddForce(pull, jointOffset / c_PPM);
+			}
+		}
 	} else {
 		// Not stable/standing, so make sure the end of limbs are moving around limply in a ragdoll fashion.
 		// TODO: Make the limb atom groups fly around and react to terrain, without getting stuck etc.
@@ -3097,6 +3125,20 @@ void AHuman::PreControllerUpdate() {
 		// Only rotate the head to match the aim angle if body is stable and upright
 		if (m_Status == STABLE && std::abs(rot) < (c_HalfPI + c_QuarterPI)) {
 			toRotate = m_pHead->GetRotMatrix().GetRadAngleTo((adjustedAimAngle)*m_LookToAimRatio + rot * (0.9F - m_LookToAimRatio)) * 0.15F;
+		} else if (IsRagdolling()) {
+			// Lolls under its own weight: a pendulum about the neck that would hang head down (an angle of pi, whichever way it faces), held within
+			// a bend of the neck either side of the body.
+			const float neckBend = 1.0F;
+			float headAngle = m_pHead->GetRotAngle();
+			float gravity = g_SceneMan.GetGlobalAcc().m_Y * m_GlobalAccScalar / 9.8F;
+			m_RagdollHeadSpin += std::sin(headAngle) * 40.0F * gravity * deltaTime;
+			m_RagdollHeadSpin *= 1.0F - std::min(4.0F * deltaTime, 1.0F);
+			float bend = NormalizeAngleBetweenNegativePIAndPI(headAngle + m_RagdollHeadSpin * deltaTime - rot);
+			if (std::abs(bend) > neckBend) {
+				bend = std::copysign(neckBend, bend);
+				m_RagdollHeadSpin = 0.0F;
+			}
+			toRotate = rot + bend - headAngle;
 		} else {
 			// Rotate the head loosely along with the body if upside down, unstable or dying.
 			toRotate = m_pHead->GetRotMatrix().GetRadAngleTo(rot) * m_pHead->GetJointStiffness() * c_QuarterPI;
@@ -3105,12 +3147,12 @@ void AHuman::PreControllerUpdate() {
 	}
 
 	if (m_pFGLeg) {
-		m_pFGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active && !m_RopeHold.active);
+		m_pFGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active && !m_RopeHold.active && !IsRagdolling());
 		m_pFGLeg->SetTargetPosition(m_pFGFootGroup->GetLimbPos(m_HFlipped));
 	}
 
 	if (m_pBGLeg) {
-		m_pBGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active && !m_RopeHold.active);
+		m_pBGLeg->EnableIdle(m_ProneState == NOTPRONE && m_Status != UNSTABLE && !m_Ladder.active && !m_RopeHold.active && !IsRagdolling());
 		m_pBGLeg->SetTargetPosition(m_pBGFootGroup->GetLimbPos(m_HFlipped));
 	}
 
@@ -3558,8 +3600,26 @@ void AHuman::Update() {
 	//    m_DeepCheck = true/*m_Status == DEAD*/;
 }
 
+bool AHuman::IsRagdolling() const {
+	return (m_Status == DYING || m_Status == DEAD) && g_SettingsMan.RagdollDeaths();
+}
+
 void AHuman::RestDetection() {
 	Actor::RestDetection();
+
+	// A ragdoll isn't at rest while its limbs or head still swing, for a while: one that jitters for ever still settles in the end.
+	if (IsRagdolling() && m_RagdollStarted && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
+		bool swinging = std::abs(m_RagdollHeadSpin) > 1.0F;
+		for (const Vector& limbVel: m_RagdollLimbVel) {
+			swinging = swinging || limbVel.MagnitudeIsGreaterThan(0.6F);
+		}
+		if (swinging) {
+			m_AngOscillations = 0;
+			m_VelOscillations = 0;
+			m_RestTimer.Reset();
+			m_ToSettle = false;
+		}
+	}
 
 	if (m_Status == DEAD && !m_DeathTmr.IsPastSimMS(c_DeadToppleGiveUpMS)) {
 		float rotDiff = c_HalfPI - std::abs(NormalizeAngleBetweenNegativePIAndPI(m_Rotation.GetRadAngle()));

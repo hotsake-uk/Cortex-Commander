@@ -224,6 +224,11 @@ bool Attachable::TransferJointImpulses(Vector& jointImpulses, float jointStiffne
 	}
 	jointStrengthValueToUse = ToughenedGibLimit(jointStrengthValueToUse);
 	gibImpulseLimitValueToUse = ToughenedGibLimit(gibImpulseLimitValueToUse);
+	// A ragdolling body's parts hold against all but a much bigger hit (SettingsMan::RagdollDeaths); a head that would have come off kills instead.
+	const float ragdollHoldScale = GetRagdollHoldScale();
+	const float usualLimit = jointStrengthValueToUse > 0.0F ? jointStrengthValueToUse : gibImpulseLimitValueToUse;
+	jointStrengthValueToUse *= ragdollHoldScale;
+	gibImpulseLimitValueToUse *= ragdollHoldScale;
 
 	Vector totalImpulseForce;
 	for (const auto& [impulseForce, impulseForceOffset]: m_ImpulseForces) {
@@ -254,6 +259,9 @@ bool Attachable::TransferJointImpulses(Vector& jointImpulses, float jointStiffne
 		return false;
 	}
 
+	if (ragdollHoldScale > 1.0F && usualLimit > 0.0F && totalImpulseForce.MagnitudeIsGreaterThan(usualLimit)) {
+		TakeBlowAsRagdoll();
+	}
 	m_ImpulseForces.clear();
 	jointImpulses += totalImpulseForce;
 	return true;

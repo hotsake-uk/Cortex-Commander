@@ -139,6 +139,15 @@ namespace RTE {
 		/// @param under What holds it up (see GetMOUnderneath).
 		static bool ChunkMaySettleOn(const MovableObject* under);
 
+		/// With Ragdoll deaths on (SettingsMan::RagdollDeaths), how many times its usual gib and joint limits this holds against a single hit, and whether
+		/// it takes no gib from wounds: RagdollBlowApartScale for a humanoid's torso and head, and for its arms, legs and feet once it is dying or dead.
+		/// @return The scale, or 1 with the setting off or for anything else (its gear, guns and other units).
+		float GetRagdollHoldScale() const;
+
+		/// With Ragdoll deaths on, a hit or wound this held against that would have blown it apart or off as the game comes: the humanoid it is the
+		/// torso or head of dies of it, whole, if it still lives. Nothing for a limb.
+		void TakeBlowAsRagdoll();
+
 		/// Whether this address holds a MOSRotating that has not been deleted. Only compares the address, so it is safe to call with a pointer to a deleted object (a Lua script holding on to a unit that has since died, say).
 		/// @param mosRotating The address to check.
 		/// @return Whether a MOSRotating still lives at that address.

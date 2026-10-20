@@ -319,6 +319,20 @@ namespace RTE {
 		/// Sets whether what came off a unit settles as Flesh Scraps. Remains already in the terrain stay as they settled.
 		void SetBodyGearSettlesAsScraps(bool enable) { m_BodyGearSettlesAsScraps = enable; }
 
+		/// Whether humanoids (AHumans) die as whole ragdolls (off as the game comes): a hit or wound that would blow one apart kills it instead,
+		/// and its head and limbs stay on while the body falls limp, its hands and feet swinging under their own weight and catching on the
+		/// ground, until it all lies still and settles. Only a hit past RagdollBlowApartScale times the part's limit still breaks it.
+		bool RagdollDeaths() const { return m_RagdollDeaths; }
+
+		/// Sets whether humanoids die as whole ragdolls; see RagdollDeaths.
+		void SetRagdollDeaths(bool enable) { m_RagdollDeaths = enable; }
+
+		/// With RagdollDeaths on, how many times a body part's own gib or joint limit a single hit has to be to still blow it apart or off, 1.5 to 10.
+		float RagdollBlowApartScale() const { return m_RagdollBlowApartScale; }
+
+		/// Sets how big a hit still blows a ragdolling body apart; see RagdollBlowApartScale.
+		void SetRagdollBlowApartScale(float scale) { m_RagdollBlowApartScale = std::clamp(scale, 1.5F, 10.0F); }
+
 		/// The gib chunk settings ("Gibs" in the settings panel): the solid pieces (plain MOSRotatings, not units or what was attached to the
 		/// thing) a body or wreck breaks into when it gibs, which tumble about and cost far more to move than a pixel of blood. Each member's
 		/// default is how the game has always behaved, so GibChunkTuning() is the reset.
@@ -1546,6 +1560,8 @@ namespace RTE {
 		unsigned m_DebugChannels; //!< The debug text channels ticked in the settings, a bit per DebugChannel.
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
+		bool m_RagdollDeaths; //!< Whether humanoids die as whole ragdolls (see RagdollDeaths).
+		float m_RagdollBlowApartScale; //!< How big a hit still blows a ragdolling body apart (see RagdollBlowApartScale).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
 		AICombatTuning m_AICombat; //!< How well AI units shoot, react, spot and throw (see AICombat).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).

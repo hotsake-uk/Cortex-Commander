@@ -13,6 +13,9 @@
 #include "ACraft.h"
 #include "ADoor.h"
 #include "AVehicle.h"
+#include "AHuman.h"
+#include "Arm.h"
+#include "Leg.h"
 #include "ActorWater.h"
 #include "RopeSim.h"
 #include "SoftBodySim.h"
@@ -513,7 +516,15 @@ void MOSRotating::AddWoundExt(AEmitter* woundToAdd, const Vector& parentOffsetTo
 		if (const Material* struck = GetMaterial(); struck && struck->GetMetalness() + std::max(m_Metalness, 0.0F) > 0.25F) {
 			AddHeatAt(parentOffsetToSet, 0.55F, 5.0F);
 		}
-		if (checkGibWoundLimit && m_GibWoundLimit > 0 && static_cast<float>(m_Wounds.size() + 1) >= ToughenedGibWoundLimit(static_cast<float>(m_GibWoundLimit))) {
+		if (checkGibWoundLimit && m_GibWoundLimit > 0 && static_cast<float>(m_Wounds.size() + 1) >= ToughenedGibWoundLimit(static_cast<float>(m_GibWoundLimit)) && GetRagdollHoldScale() > 1.0F) {
+			// A ragdoll holding together: dies of it whole, and past twice its limit takes no more wounds (they'd only pile up on a corpse riddled through).
+			TakeBlowAsRagdoll();
+			if (static_cast<float>(m_Wounds.size()) >= 2.0F * ToughenedGibWoundLimit(static_cast<float>(m_GibWoundLimit))) {
+				woundToAdd->DestroyScriptState();
+				delete woundToAdd;
+				return;
+			}
+		} else if (checkGibWoundLimit && m_GibWoundLimit > 0 && static_cast<float>(m_Wounds.size() + 1) >= ToughenedGibWoundLimit(static_cast<float>(m_GibWoundLimit))) {
 			// Find and detach an attachable near the new wound before gibbing the object itself. TODO: Perhaps move this to Actor, since it's more relevant there?
 			if (Attachable* attachableToDetach = GetNearestDetachableAttachableToOffset(parentOffsetToSet); attachableToDetach && m_DetachAttachablesBeforeGibbingFromWounds) {
 				RemoveAttachable(attachableToDetach, true, true);
@@ -1263,6 +1274,32 @@ bool MOSRotating::ChunkMaySettleOn(const MovableObject* under) {
 	return !unit || unit->IsDead() || unit->GetStatus() == Actor::DYING;
 }
 
+float MOSRotating::GetRagdollHoldScale() const {
+	if (!g_SettingsMan.RagdollDeaths()) {
+		return 1.0F;
+	}
+	const AHuman* human = dynamic_cast<const AHuman*>(GetRootParent());
+	if (!human) {
+		return 1.0F;
+	}
+	if (this == human || this == human->GetHead()) {
+		return g_SettingsMan.RagdollBlowApartScale();
+	}
+	// The limbs (and a foot on its leg) hold only once the body is going limp: a soldier still alive loses them as before.
+	const MOSRotating* limb = dynamic_cast<const Arm*>(this) || dynamic_cast<const Leg*>(this) ? this : nullptr;
+	if (!limb && !dynamic_cast<const HeldDevice*>(this) && GetParent() && dynamic_cast<const Leg*>(GetParent())) {
+		limb = this;
+	}
+	return limb && (human->GetStatus() == Actor::DYING || human->GetStatus() == Actor::DEAD) ? g_SettingsMan.RagdollBlowApartScale() : 1.0F;
+}
+
+void MOSRotating::TakeBlowAsRagdoll() {
+	AHuman* human = dynamic_cast<AHuman*>(GetRootParent());
+	if (human && (this == human || this == human->GetHead()) && human->GetStatus() != Actor::DYING && human->GetStatus() != Actor::DEAD) {
+		human->SetHealth(std::min(human->GetHealth(), 0.0F));
+	}
+}
+
 void MOSRotating::RemoveAttachablesWhenGibbing(const Vector& impactImpulse, MovableObject* movableObjectToIgnore) {
 	const std::vector<Attachable*> nonVolatileAttachablesVectorForLuaSafety{m_Attachables.begin(), m_Attachables.end()};
 	for (Attachable* attachable: nonVolatileAttachablesVectorForLuaSafety) {
@@ -1329,7 +1366,9 @@ void MOSRotating::ApplyImpulses() {
 		if (m_WoundCountAffectsImpulseLimitRatio != 0 && m_GibWoundLimit > 0) {
 			impulseLimit *= 1.0F - (static_cast<float>(m_Wounds.size()) / static_cast<float>(m_GibWoundLimit)) * m_WoundCountAffectsImpulseLimitRatio;
 		}
-		if (totalImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
+		if (totalImpulse.MagnitudeIsGreaterThan(impulseLimit) && !totalImpulse.MagnitudeIsGreaterThan(impulseLimit * GetRagdollHoldScale())) {
+			TakeBlowAsRagdoll();
+		} else if (totalImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
 			DetachAttachablesFromImpulse(totalImpulse);
 			// Use the remainder of the impulses left over from detaching to gib the parent object.
 			if (totalImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
@@ -1611,7 +1650,9 @@ void MOSRotating::PostTravel() {
 		if (m_WoundCountAffectsImpulseLimitRatio != 0 && m_GibWoundLimit > 0) {
 			impulseLimit *= 1.0F - (static_cast<float>(m_Wounds.size()) / static_cast<float>(m_GibWoundLimit)) * m_WoundCountAffectsImpulseLimitRatio;
 		}
-		if (m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
+		if (m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit) && !m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit * GetRagdollHoldScale())) {
+			TakeBlowAsRagdoll();
+		} else if (m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
 			Vector totalImpulse(m_TravelImpulse.GetX(), m_TravelImpulse.GetY());
 			DetachAttachablesFromImpulse(totalImpulse);
 			// Use the remainder of the impulses left over from detaching to gib the parent object.
