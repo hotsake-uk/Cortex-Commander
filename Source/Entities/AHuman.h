@@ -628,6 +628,9 @@ namespace RTE {
 		/// stuck for a while.
 		void RestDetection() override;
 
+		/// Whether this is going limp as a whole ragdoll (SettingsMan::RagdollDeaths): dying or dead with the setting on.
+		bool IsRagdolling() const;
+
 		/// Draws this AHuman's current graphical representation to a
 		/// BITMAP of choice.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
@@ -866,6 +869,9 @@ namespace RTE {
 		Timer m_SharpAimRevertTimer; //!< For timing the transition from sharp aim back to regular aim.
 		float m_FGArmFlailScalar; //!< The rate at which this AHuman's FG Arm follows the the bodily rotation. Best to keep this at 0 so it doesn't complicate aiming.
 		float m_BGArmFlailScalar; //!< The rate at which this AHuman's BG Arm follows the the bodily rotation. Set to a negative value for a "counterweight" effect.
+		bool m_RagdollStarted; //!< Whether the limbs have been let go limp yet, once this started to die as a ragdoll (see IsRagdolling).
+		Vector m_RagdollLimbVel[4]; //!< The velocities, in m/s, of the ends of the FG arm, BG arm, FG leg and BG leg as they swing limp (see AtomGroup::RagdollAsLimb).
+		float m_RagdollHeadSpin; //!< The head's own angular velocity, in rad/s, as it lolls about the neck on a ragdoll.
 		Timer m_EquipHUDTimer; //!< Timer for showing the name of any newly equipped Device.
 		std::array<Matrix, 2> m_WalkAngle; //!< An array of rot angle targets for different movement states.
 		Vector m_WalkPathOffset;

@@ -238,6 +238,16 @@ namespace RTE {
 		/// @param mass The mass of this dead weight limb.
 		/// @param travelTime The amount of time in seconds that this AtomGroup is supposed to travel.
 		void FlailAsLimb(const Vector& ownerPos, const Vector& jointOffset, const float limbRadius, const Vector& velocity, const float angularVel, const float mass, const float travelTime);
+
+		/// Makes this AtomGroup travel as a limp limb of a dead body's ragdoll (SettingsMan::RagdollDeaths): its end keeps its own momentum, falls
+		/// under gravity, hits and slides on the terrain and is held within the limb's reach of the joint, so it swings, drapes and drags.
+		/// @param jointPos The world position of the joint (shoulder or hip) it hangs from.
+		/// @param limbRadius The reach of the limb.
+		/// @param limbVel The limb end's own velocity, in m/s, carried from one update to the next and updated here.
+		/// @param mass The mass of the limb.
+		/// @param travelTime The amount of time in seconds that this AtomGroup is supposed to travel.
+		/// @return The force, in N, the limb pulls its joint with as it reaches the end of its reach: towards the limb, to put on the body at the joint.
+		Vector RagdollAsLimb(const Vector& jointPos, float limbRadius, Vector& limbVel, float mass, float travelTime);
 #pragma endregion
 
 #pragma region Collision
