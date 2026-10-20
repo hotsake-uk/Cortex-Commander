@@ -510,6 +510,9 @@ namespace RTE {
 		bool AIGrabsLaddersOnPurpose() const { return m_AIGrabsLaddersOnPurpose; }
 		/// Whether an AI unit meaning to climb a ladder can take hold of it with its jetpack lit (cutting the jet), on as the game comes.
 		bool AIGrabsLaddersMidJet() const { return m_AIGrabsLaddersMidJet; }
+		/// Whether AI units with a jetpack that lifts them well have ladders in their routes too, taken where the climb costs less than the flight,
+		/// on as the game comes. Off: only units with no jetpack, or a weak one, route by ladder (as before).
+		bool AIJetUnitsClimbLadders() const { return m_AIJetUnitsClimbLadders; }
 		/// Whether AI units pull themselves up onto ledges and over obstacles, or catch ledges in the air, only when they mean to (AHuman::WantMantle).
 		bool AIMantlesOnPurpose() const { return m_AIMantlesOnPurpose; }
 		/// Whether an AI unit whose flight comes up short beside its landing catches the landing's lip in the air.
@@ -1165,6 +1168,7 @@ namespace RTE {
 		void SetAILadderTeamStalls(int stalls) { m_AILadderTeamStalls = std::clamp(stalls, 1, 5); }
 		void SetAIGrabsLaddersOnPurpose(bool on) { m_AIGrabsLaddersOnPurpose = on; }
 		void SetAIGrabsLaddersMidJet(bool on) { m_AIGrabsLaddersMidJet = on; }
+		void SetAIJetUnitsClimbLadders(bool on) { m_AIJetUnitsClimbLadders = on; }
 		void SetAIMantlesOnPurpose(bool on) { m_AIMantlesOnPurpose = on; }
 		void SetAICatchesLedgesMidAir(bool on) { m_AICatchesLedgesMidAir = on; }
 		void SetRiskyOrdersFlyPastLadders(bool on) { m_RiskyOrdersFlyPastLadders = on; }
@@ -1190,7 +1194,7 @@ namespace RTE {
 		/// Puts the Movement category's carry weight settings back as the game comes.
 		void ResetCarryWeightSettings() { m_CarriedWeightMultiplier = 1.0F; m_LegStrength = 1.0F; m_JetpackWeightCompensation = 0; m_OverloadSlowdown = 0.0F; m_JetpackFuelMultiplier = 1.0F; m_InfiniteJetpackFuel = false; }
 		/// Puts the Movement category's ladder settings back as the game comes.
-		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_RiskyOrdersFlyPastLadders = true; }
+		void ResetLadderSettings() { m_AILadderGiveUpSeconds = 1.5F; m_AILadderTeamStalls = 2; m_AIGrabsLaddersOnPurpose = true; m_AIGrabsLaddersMidJet = true; m_AIJetUnitsClimbLadders = true; m_RiskyOrdersFlyPastLadders = true; }
 		/// Sets the percentage of units handed a digger as they come into the scene; see AISpawnDiggerChance.
 		void SetAISpawnDiggerChance(float percent) { m_AISpawnDiggerChance = std::clamp(percent, 0.0F, 100.0F); }
 		/// Sets the percentage of wounds that keep bleeding; see BleedOutChance.
@@ -1583,6 +1587,7 @@ namespace RTE {
 		int m_AILadderTeamStalls; //!< See AILadderTeamStalls.
 		bool m_AIGrabsLaddersOnPurpose; //!< See AIGrabsLaddersOnPurpose.
 		bool m_AIGrabsLaddersMidJet; //!< See AIGrabsLaddersMidJet.
+		bool m_AIJetUnitsClimbLadders = true; //!< See AIJetUnitsClimbLadders.
 		bool m_AIMantlesOnPurpose = true; //!< See AIMantlesOnPurpose.
 		bool m_AICatchesLedgesMidAir = true; //!< See AICatchesLedgesMidAir.
 		bool m_RiskyOrdersFlyPastLadders; //!< See RiskyOrdersFlyPastLadders.
