@@ -113,7 +113,7 @@ window.MS = window.MS || {};
 		['Ctrl+Shift+F', 'Search every file'],
 		['Ctrl+P', 'Open a file by name'],
 		['Ctrl+J, Ctrl+`', 'Hide or show the console panel', (e) => ctrl(e) && e.key === '`', () => ide().togglePanel()],
-		['Ctrl+M', 'Missions', (e, k) => ctrl(e) && !e.shiftKey && k === 'm', () => click('btnMissions')],
+		['Ctrl+M', 'Missions and battles', (e, k) => ctrl(e) && !e.shiftKey && k === 'm', () => click('btnMissions')],
 		['Ctrl+N', 'Make something new', (e, k) => ctrl(e) && !e.shiftKey && k === 'n', () => click('btnNew')],
 		['F5', 'Play: start the game', (e) => e.key === 'F5' && !ctrl(e), () => click('btnRun')],
 		['Ctrl+Shift+S', 'Spawn the open (or game-linked) thing in the running game', (e, k) => ctrl(e) && e.shiftKey && k === 's', () => click('btnSpawn')],

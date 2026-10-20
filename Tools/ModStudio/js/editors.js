@@ -554,6 +554,9 @@ window.MS = window.MS || {};
 
 	// Opens one of the editors below for a module, in a tab (or, from a pop-out window's address, as that window's only tab).
 	function openEditor(id, module) {
+		if (id === 'battle' && MS.battleEditor) {
+			return MS.battleEditor.openByKey(module);
+		}
 		if (/^mission(Map|Graph)?$/.test(id) && MS.missionEditor) {
 			// a mission's "module" is its scenario: the file and the name; the map and the graph can each have a tab of their own
 			const scenario = app().lib.presets.find((p) => p.topLevel && p.node.key === 'AddActivity' && p.doc.path + '::' + p.name === module);

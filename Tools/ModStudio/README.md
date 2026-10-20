@@ -49,6 +49,19 @@ Studio app does this itself).
   craft and item), **Loadouts** (the craft each comes in and what it brings, picked from thumbnails; make your mod a faction;
   copy a faction's loadouts into your mod) and **Sounds** (a sound's files to play, add and remove, and how it plays: volume,
   pitch, range, overlap...). Edits undo and save like any other; the game's own modules are read only unless unlocked.
+- **Scenarios** (⚑ in the top bar, Ctrl+M) are missions or battles. A **mission** opens in the Mission Editor: its map, where its areas
+  are drawn, beside its logic graph. A **battle** (+ New battle…) is one of the game's battle modes (capture the flag, king of the
+  hill, assault, one flag, the point...) laid out on a map by hand, in the **Battle Editor**: the same map, and beside it the mode,
+  the teams (who plays, their size and faction, which one the player commands), a checklist of what the mode needs placed (each
+  team's spawn zones, flags, goal zones, the hills or objectives in order, flag or ship positions, pickup spots), its rules, and a
+  red line saying what still stops it starting. Place one from the checklist or by right-clicking the map: a click for a point (it
+  lands on the ground under it), a dragged box for a zone, or its corners with Zones set to Polygon. Drag to move, drag a corner to
+  reshape, Alt-click an edge for a new corner, Shift-click a corner to take it out; Mirror copies a team's side across the map.
+  A battle is a copy of Battle Command under its own name (`Activities/<name>.ini`) and its setup, in the form the game's Battle tab
+  saves setups in, in `Battles/<name>.txt` in the mod. The game plays it as Battle Command with that setup started, and lists it
+  with its map's battles in the map browser and the Sandbox's Battle tab, to play there too. The Battle Editor can copy a setup
+  saved on the map in the game's Battle tab, or save the battle there. A mission's Start a battle step can start a battle saved
+  for its map by name (`SandboxBattleSetup` in Lua).
 - **Panels resize**: drag the edge of the list, the parts and properties panel, the line between the parts and the properties,
   or the console's top edge. Studio remembers the sizes; double-click an edge for the usual size.
 - **Modules** in the top bar picks which modules (.rte) the lists, files and search show (All, My mods, Base only, or any set).

@@ -3107,9 +3107,12 @@ namespace SandboxDetail {
 	/// The Battle tab's setups saved for the map, to save, load, delete, or mark to load with the map.
 	void BattlePresetsPanel();
 
-	/// One of the Battle tab's setups saved with a map (SandboxBattlePresets.cpp), as kept in Userdata/BattlePresets/<map>.txt.
+	/// One of the Battle tab's setups saved with a map (SandboxBattlePresets.cpp), as kept in Userdata/BattlePresets/<map>.txt, or one a mod
+	/// brings in its Battles folder (<mod>.rte/Battles/*.txt, the same form, made in Cortex Studio's Battle editor).
 	struct SavedBattle {
 		std::string Name;
+		std::string Scene; //!< A mod's battle: the map it is for (its "Scene = " line). Userdata's are by their file.
+		std::string Mod; //!< A mod's battle: the mod it comes from ("Foo.rte"). Empty for those saved from the Battle tab.
 		bool WithMap = false; //!< Set up again whenever the map starts.
 		bool Linked = false; //!< One of the map's linked battles, played in the list's order.
 		std::array<BattleSettings, c_Sides> Cards;
@@ -3118,8 +3121,11 @@ namespace SandboxDetail {
 		std::vector<std::vector<Vector>> HoldZones;
 	};
 
-	/// The setups saved with a map, read from its file, in their order there. None if it has none.
+	/// The setups saved with a map, read from its file, in their order there, then those the loaded mods bring for it. None if it has none.
 	std::vector<SavedBattle> ReadSavedBattles(const std::string& scene);
+
+	/// The mods' battles are read again the next time they are wanted (mods turned on, or saved from Studio, since).
+	void ForgetModBattles();
 
 	/// The next game started (the map browser's Play): the setup of this name goes in once its map is there, in place of the one marked to
 	/// load with the map. With none, nothing does, not even that one.

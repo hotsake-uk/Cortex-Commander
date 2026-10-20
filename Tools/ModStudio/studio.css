@@ -1644,3 +1644,41 @@ body.edition-community .brand b::after, body.edition-community .welcome-card h1:
 .carry-name small { color: var(--faint); font-size: 10.5px; }
 .carry-name small.own { color: var(--good); }
 .carry-row .ico-btn.on { color: var(--accent); }
+
+/* The Battle Editor (battleeditor.js): the Mission Editor's map and strip, with the battle's panel beside it */
+.be-kind { font-size: 11px; text-transform: uppercase; letter-spacing: .6px; padding: 2px 7px; border-radius: 4px; background: var(--panel3); color: var(--dim); }
+.be-panel { display: flex; flex-direction: column; gap: 10px; }
+.be-sec h3 { margin: 4px 0 6px; font-size: 11px; text-transform: uppercase; letter-spacing: .6px; color: var(--faint); }
+.be-modes { display: grid; grid-template-columns: repeat(auto-fill, minmax(120px, 1fr)); gap: 4px; }
+.be-mode { display: flex; align-items: center; gap: 6px; padding: 6px 8px; border: 1px solid var(--line); border-radius: 6px; background: var(--panel2); color: var(--text); cursor: pointer; font: inherit; font-size: 12px; text-align: left; }
+.be-mode:hover:not(:disabled) { border-color: var(--accent); }
+.be-mode.sel { background: var(--accent); color: var(--accent-ink); border-color: var(--accent); }
+.be-mode-icon { width: 16px; text-align: center; flex: none; }
+.be-teamhead { display: flex; flex-wrap: wrap; gap: 10px; margin-bottom: 4px; }
+.be-team { display: grid; grid-template-columns: 90px 64px minmax(0, 1fr) minmax(0, 1fr); gap: 6px; align-items: center; padding: 2px 0; }
+.be-team.off > :not(:first-child) { opacity: .45; }
+.be-flag { display: flex; align-items: center; gap: 6px; cursor: pointer; }
+.be-num { width: 64px; }
+.be-fac { min-width: 0; }
+.be-need { display: flex; align-items: center; gap: 6px; padding: 3px 4px; border-radius: 5px; }
+.be-need.placing { background: var(--panel3); }
+.be-need-name { flex: 1; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.be-need .tb { padding: 2px 9px; }
+.be-tick { width: 16px; height: 16px; flex: none; border-radius: 50%; display: inline-flex; align-items: center; justify-content: center; font-size: 10px; font-weight: 700; }
+.be-tick.done { background: var(--good); color: #fff; }
+.be-tick.missing { background: var(--bad); color: #fff; }
+.be-tick.optional { border: 1px solid var(--line2); color: var(--faint); }
+.be-shapes { display: flex; flex-direction: column; gap: 1px; margin: 0 0 4px 30px; }
+.be-shape { display: flex; align-items: center; gap: 4px; }
+.be-shape .me-area { flex: 1; padding: 2px 6px; font-size: 12px; }
+.be-shape.sel .me-area { background: var(--panel3); color: var(--text); }
+.be-shape .tb { padding: 0 6px; font-size: 11px; }
+.be-why { padding: 5px 8px; border-radius: 5px; background: color-mix(in srgb, var(--bad) 16%, var(--panel)); color: color-mix(in srgb, var(--bad) 60%, var(--text)); font-size: 12px; margin-bottom: 4px; }
+.be-ready { padding: 5px 8px; border-radius: 5px; background: var(--good-bg); color: var(--good-text); font-size: 12px; margin-bottom: 4px; }
+.be-mirror { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; margin-top: 6px; font-size: 12px; color: var(--dim); }
+.be-rule { display: flex; align-items: center; justify-content: space-between; gap: 8px; padding: 2px 0; font-size: 12.5px; }
+.be-rule.be-flag { justify-content: flex-start; }
+.be-ringrow { display: grid; grid-template-columns: 70px 1fr 1fr; gap: 6px; align-items: center; font-size: 12px; }
+.be-more { margin-top: 6px; }
+.be-more summary { cursor: pointer; color: var(--dim); font-size: 12px; padding: 3px 0; }
+.be-io { display: flex; gap: 6px; flex-wrap: wrap; }
