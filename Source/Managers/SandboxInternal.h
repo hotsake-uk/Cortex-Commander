@@ -890,6 +890,8 @@ namespace SandboxDetail {
 		int PointsToWin = 300; //!< The point: points that win. 0 plays on for good.
 		bool TerritoryKeep = false; //!< Territory control: ground a team's unit claims stays its team's after it moves on, till an enemy claims it.
 		                            //!< Off: ground counts for a team only while one of its units is on it.
+		int TerritoryHoldSeconds = 0; //!< Territory control, with taken ground kept: seconds it stays taken after its team's last unit leaves it
+		                              //!< (unless an enemy takes it first). 0: unlimited.
 		int TerritoryScale = 100; //!< Territory control: how wide each unit claims the line, in percent of its own width (a soldier a soldier's, a tank a tank's).
 		int TerritoryPadding = 6; //!< Territory control: and pixels more each side of it.
 		bool TerritoryAirCounts = false; //!< Territory control: units flying high over the line (on a jetpack, a flying craft) claim the ground under them.

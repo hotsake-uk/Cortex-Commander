@@ -96,6 +96,7 @@ window.MS = window.MS || {};
 			rules: [['TerritoryToWin', 'Points to win (0: play on)', 0, 100000, 1000], ['TerritoryRate', 'Points a second for holding all of it', 1, 100, 10],
 				['TerritoryKeep', 'Ground counts', 'choice', 0, [[0, 'While a unit stands on it'], [1, 'Taken till an enemy takes it']],
 					'Taken: a unit walking over ground takes it for its team, and it stays theirs till an enemy unit walks over it.'],
+				['TerritoryHoldSeconds', 'Taken ground stays taken for (seconds, 0: unlimited)', 0, 300, 0],
 				['TerritoryScale', 'Claim width (% of the unit\'s width)', 25, 300, 100], ['TerritoryPadding', 'Claim padding (px each side)', 0, 60, 6],
 				['TerritoryAirCounts', 'Flying units count', 'bool', false], ['TerritoryUnderCounts', 'Units underground count', 'bool', false],
 				['TerritorySectors', 'Sectors (objectives along the line)', 1, 16, 8]] },
