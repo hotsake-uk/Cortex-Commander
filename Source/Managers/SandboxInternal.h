@@ -854,6 +854,11 @@ namespace SandboxDetail {
 		bool MajorityScores = false; //!< King of the hill: a hill with more than one team on it scores for the team with the most there, not for none.
 		int HillsToWin = 0; //!< King of the hill: hills a team has to take to win, each taken by holding it HoldToWin seconds, after which the next
 		                    //!< comes into play. 0: the seconds held, all told, win instead.
+		bool HillMovesWhenTaken = false; //!< King of the hill: the hill moves on each time a team takes it (playing for hills, as it does with more than
+		                                 //!< one drawn; for seconds held, by holding it alone for HillTakeSeconds), to the spot NextHill picks.
+		int HillTakeSeconds = 20; //!< King of the hill, moving when taken and played for seconds held: seconds a team holds it alone to take it.
+		int NextHill = 2; //!< King of the hill, moving when taken: where it goes. 0 the next hill drawn, in order; 1 another drawn hill, at random;
+		                  //!< 2 a new spot on open ground every team can get to, picked as the battle goes (BattleLayout.cpp's NewHillZone).
 		int Attacker = 0; //!< Assault: the side that attacks; the rest defend.
 		int CaptureSeconds = 15; //!< Assault: seconds attackers stand in an objective with no defender in it to take it.
 		int TimeLimit = 300; //!< Assault: seconds the attackers have; each objective taken adds BonusSeconds.
@@ -3283,6 +3288,9 @@ namespace SandboxDetail {
 	/// what it did in note, and any check it couldn't meet (a team that can't get to an objective, routes far from even). Each playing
 	/// team gets zonesPerTeam spawn zones (1 to 4) where the map has room: its base and more round it.
 	bool LayoutBattle(BattleModeSettings& setup, unsigned seed, int zonesPerTeam, std::string& note);
+	/// King of the hill's next hill, picked as the battle goes: a zone on ground the teams (sides, their bases at bases) reach as evenly as
+	/// the map allows, at least away from each of avoid (the hill it moves on from, the bases) where it can be. Empty if there is none.
+	std::vector<Vector> NewHillZone(const std::vector<int>& sides, const std::array<Vector, c_Sides>& bases, const std::vector<Vector>& avoid, float away, unsigned seed);
 	/// The Battle tab's "Generate layout": a seed, and the mode laid out with it on the map (the teams' cards sent; changed set for the mode's).
 	void BattleLayoutPanel(BattleModeSettings& setup, bool& changed);
 	/// The battle mode's objectives, flags and their carriers, spawn zones and mode zones on the sandbox's map window (B-7), as the "Show..."

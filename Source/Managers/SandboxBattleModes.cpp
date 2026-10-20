@@ -2395,6 +2395,8 @@ namespace SandboxDetail {
 		long long s_HillSince = 0; //!< The sim update it came into play on (held back while the AI is paused).
 		std::array<float, c_Sides> s_Held{}; //!< Seconds each team has held the hill (playing for hills: the hill in play, since it came in).
 		int s_Holder = -1; //!< The team holding it now: -1 nobody, -2 more than one (contested).
+		std::vector<Vector> s_SpotZone; //!< The hill in play when it has moved to a new spot (NextHill 2), not one of the mode's zones; empty for those.
+		std::array<float, c_Sides> s_Taking{}; //!< Moving when taken, played for seconds held: seconds each team has held the hill in play alone.
 
 		/// Playing for a number of hills (HillsToWin), rather than for seconds held all told.
 		bool ForHills(const BattleModeSettings& settings) { return settings.HillsToWin > 0; }
@@ -2402,10 +2404,15 @@ namespace SandboxDetail {
 		/// Seconds a team has to hold the hill: all told to win, or playing for hills, on the one in play to take it.
 		int HoldSeconds(const BattleModeSettings& settings) { return ForHills(settings) ? std::max(settings.HoldToWin, 5) : settings.HoldToWin; }
 
+		/// The hill in play: a new spot it has moved to, or one of the mode's zones.
+		const std::vector<Vector>& HillZone() {
+			const std::vector<std::vector<Vector>>& zones = s_ModeRun.Settings.Zones;
+			return !s_SpotZone.empty() ? s_SpotZone : zones[std::clamp(s_Hill, 0, static_cast<int>(zones.size()) - 1)];
+		}
+
 		/// Where the teams fight for the hill in play: every unit defends it.
 		BattleSettings HillPost() {
-			const std::vector<std::vector<Vector>>& zones = s_ModeRun.Settings.Zones;
-			const std::vector<Vector>& hill = zones[std::clamp(s_Hill, 0, static_cast<int>(zones.size()) - 1)];
+			const std::vector<Vector>& hill = HillZone();
 			const float radius = GuardRadius(hill);
 			return PostAt(ZoneMiddle(hill), radius, radius + 250.0F, 0);
 		}
@@ -2415,6 +2422,8 @@ namespace SandboxDetail {
 			s_HillSince = g_TimerMan.GetSimUpdateCount();
 			s_Held.fill(0.0F);
 			s_Holder = -1;
+			s_SpotZone.clear();
+			s_Taking.fill(0.0F);
 		}
 
 		void HillSettingsChanged() {
@@ -2435,11 +2444,13 @@ namespace SandboxDetail {
 			return SpreadSpot(zone, unit ? unit->GetHeight() : 0.0F, [&hill](const Vector& spot) { return DistanceBetween(spot, hill); });
 		}
 
-		/// The next hill comes into play: every team's units make for it.
-		void MoveHill(int next) {
+		/// The next hill comes into play, one of the mode's zones or (with spot) a new spot: every team's units make for it.
+		void MoveHill(int next, const std::vector<Vector>& spot = {}) {
 			s_Hill = next;
+			s_SpotZone = spot;
 			s_HillSince = g_TimerMan.GetSimUpdateCount();
 			s_Holder = -1;
+			s_Taking.fill(0.0F);
 			if (ForHills(s_ModeRun.Settings)) {
 				s_Held.fill(0.0F);
 			}
@@ -2447,7 +2458,62 @@ namespace SandboxDetail {
 			for (int side = 0; side < c_Sides; ++side) {
 				RecentreDefenders(side, post.DefendPos, false, static_cast<float>(post.DefendRadius));
 			}
-			Say("The hill moves: hill " + std::to_string(next + 1) + "!");
+			Say(spot.empty() ? "The hill moves: hill " + std::to_string(next + 1) + "!" : "The hill moves!");
+		}
+
+		/// A new spot for the hill, on ground every team in the game gets to as evenly as the map allows, away from the hill it leaves and the
+		/// bases. Empty if the map has none.
+		std::vector<Vector> NewHillSpot() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			std::vector<int> sides;
+			std::array<Vector, c_Sides> bases{};
+			std::vector<Vector> avoid = {ZoneMiddle(HillZone())};
+			for (int side = 0; side < c_Sides; ++side) {
+				const std::vector<std::vector<Vector>>& zones = s_BattleTeams[side].Settings.SpawnZones;
+				if (TeamIn(settings, side) && !zones.empty() && zones.front().size() >= 3) {
+					sides.push_back(side);
+					bases[side] = ZoneMiddle(zones.front());
+					avoid.push_back(bases[side]);
+				}
+			}
+			if (sides.empty()) {
+				return {};
+			}
+			return NewHillZone(sides, bases, avoid, 500.0F, static_cast<unsigned>(Random01() * 16777216.0F));
+		}
+
+		/// The hill taken (or its time up), moving on as the mode's settings say: moving when taken, to the spot NextHill picks; otherwise to
+		/// the next hill drawn, in order. False if it has nowhere to go (one hill drawn and no new spot): it stays.
+		bool MoveHillOn() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const int count = static_cast<int>(settings.Zones.size());
+			const int pick = settings.HillMovesWhenTaken ? settings.NextHill : 0;
+			if (pick == 2 || count < 2) {
+				if (pick == 2 || settings.HillMovesWhenTaken) {
+					if (std::vector<Vector> spot = NewHillSpot(); !spot.empty()) {
+						MoveHill(s_Hill, spot);
+						return true;
+					}
+				}
+				if (count < 2) {
+					return false;
+				}
+			}
+			int next = (s_Hill + 1) % count;
+			if (pick == 1) {
+				// (Another than the one in play, or on a new spot, any of them.)
+				next = std::min(static_cast<int>(Random01() * static_cast<float>(count - (s_SpotZone.empty() ? 1 : 0))), count - 1);
+				if (s_SpotZone.empty() && next >= s_Hill) {
+					++next;
+				}
+			}
+			MoveHill(next);
+			return true;
+		}
+
+		/// Whether the hill moves on by the clock: with more than one drawn, or moving to new spots.
+		bool HillMovesOnTime(const BattleModeSettings& settings) {
+			return settings.HillMoveSeconds > 0 && (settings.Zones.size() > 1 || (settings.HillMovesWhenTaken && settings.NextHill == 2));
 		}
 
 		/// Twice a second or so (every six updates): who is on the hill, and the seconds it scores them.
@@ -2461,7 +2527,7 @@ namespace SandboxDetail {
 			if (s_ModeRun.Over || settings.Zones.empty() || now % 6 != 0) {
 				return;
 			}
-			std::array<int, c_Sides> on = CountIn(settings.Zones[s_Hill], Fighters());
+			std::array<int, c_Sides> on = CountIn(HillZone(), Fighters());
 			int holder = -1;
 			int most = 0;
 			int teams = 0;
@@ -2499,19 +2565,28 @@ namespace SandboxDetail {
 						EndGame(holder, SideName(holder) + " is king of the hill!");
 						return;
 					}
+					// Moving when taken: held alone long enough, it's taken, and moves on (the seconds held still count to the win).
+					if (settings.HillMovesWhenTaken) {
+						s_Taking[holder] += 6.0F / UpdatesPerSecond();
+						if (s_Taking[holder] >= static_cast<float>(std::max(settings.HillTakeSeconds, 1))) {
+							Say(SideName(holder) + " takes the hill");
+							if (!MoveHillOn()) {
+								s_Taking.fill(0.0F);
+							}
+							return;
+						}
+					}
 				} else if (s_Held[holder] >= static_cast<float>(hold)) {
 					// Taken: a hill to its name, and the next comes into play (one hill: the same one, everyone's time on it started again).
 					const int taken = ++s_ModeRun.Score[holder];
 					PostBattleEvent("score " + std::to_string(holder) + " " + std::to_string(taken));
-					const std::string hillName = settings.Zones.size() > 1 ? "hill " + std::to_string(s_Hill + 1) : "the hill";
+					const std::string hillName = settings.Zones.size() > 1 && s_SpotZone.empty() ? "hill " + std::to_string(s_Hill + 1) : "the hill";
 					if (taken >= settings.HillsToWin) {
 						EndGame(holder, SideName(holder) + " is king of the hill, " + std::to_string(taken) + (taken == 1 ? " hill" : " hills") + " taken!");
 						return;
 					}
 					Say(SideName(holder) + " takes " + hillName + " (" + std::to_string(taken) + " of " + std::to_string(settings.HillsToWin) + ")");
-					if (settings.Zones.size() > 1) {
-						MoveHill((s_Hill + 1) % static_cast<int>(settings.Zones.size()));
-					} else {
+					if (!MoveHillOn()) {
 						s_HillSince = now;
 						s_Held.fill(0.0F);
 						s_Holder = -1;
@@ -2519,8 +2594,10 @@ namespace SandboxDetail {
 					return;
 				}
 			}
-			if (settings.Zones.size() > 1 && settings.HillMoveSeconds > 0 && static_cast<float>(now - s_HillSince) >= static_cast<float>(settings.HillMoveSeconds) * UpdatesPerSecond()) {
-				MoveHill((s_Hill + 1) % static_cast<int>(settings.Zones.size()));
+			if (HillMovesOnTime(settings) && static_cast<float>(now - s_HillSince) >= static_cast<float>(settings.HillMoveSeconds) * UpdatesPerSecond()) {
+				if (!MoveHillOn()) {
+					s_HillSince = now;
+				}
 			}
 		}
 
@@ -2539,8 +2616,22 @@ namespace SandboxDetail {
 				changed |= ImGui::SliderInt("Hold to win", &setup.HoldToWin, 0, 600, setup.HoldToWin > 0 ? "%d s" : "play on");
 				ImGui::SetItemTooltip("Seconds a team has to hold the hill, all told, to win. It scores only while it alone has units on it. 0: it goes on till you stop it.");
 			}
+			changed |= ToolUI::Checkbox("Hill moves when taken", &setup.HillMovesWhenTaken);
+			ImGui::SetItemTooltip("Each time a team takes the hill, it moves somewhere else and everyone has to run for it. Playing for hills, taking it is holding it for the seconds above; "
+			                      "playing for seconds held, it's holding it alone for the seconds below, and the seconds held still count to the win.");
+			if (setup.HillMovesWhenTaken) {
+				if (!ForHills(setup)) {
+					changed |= ImGui::SliderInt("Hold to take", &setup.HillTakeSeconds, 1, 300, "%d s");
+					ImGui::SetItemTooltip("Seconds a team has to hold the hill alone to take it, and send it on to the next spot.");
+				}
+				ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
+				changed |= ImGui::Combo("Next hill", &setup.NextHill, "In order\0Random drawn hill\0New spot\0");
+				ImGui::SetItemTooltip("Where the hill goes. In order: the next hill drawn. Random drawn hill: another of the hills drawn, never the same one twice running. "
+				                      "New spot: fresh ground every team can get to, picked as the battle goes, away from the last hill and the bases; it needs only the first hill drawn. "
+				                      "With one hill drawn, the first two pick a new spot too.");
+			}
 			changed |= ImGui::SliderInt("Hill moves every", &setup.HillMoveSeconds, 0, 300, setup.HillMoveSeconds > 0 ? "%d s" : "never");
-			ImGui::SetItemTooltip("With more than one hill drawn: seconds before the next one comes into play, and everyone has to run for it. Never: the first one stays.");
+			ImGui::SetItemTooltip("With more than one hill drawn (or moving to new spots): seconds before the hill moves on, and everyone has to run for it. Never: it moves only when taken, if at all.");
 			changed |= ToolUI::Checkbox("Most units on it scores", &setup.MajorityScores);
 			ImGui::SetItemTooltip("A hill with more than one team on it scores for the team with the most units there. Off: a contested hill scores for nobody.");
 		}
@@ -2553,14 +2644,16 @@ namespace SandboxDetail {
 				const std::string name = settings.Zones.size() > 1 ? "HILL " + std::to_string(i + 1) : "HILL";
 				if (!running) {
 					DrawModeZone(drawList, settings.Zones[i], IM_COL32(255, 255, 255, 255), 30, 200, 2.0F, name);
-				} else if (i != s_Hill) {
+				} else if (i != s_Hill || !s_SpotZone.empty()) {
 					DrawModeZone(drawList, settings.Zones[i], IM_COL32(160, 160, 160, 255), 0, 70, 1.0F, "");
-				} else {
-					// In play: in the colour of whoever holds it, pulsing; orange while fought over.
-					const ImU32 color = s_Holder >= 0 ? c_SideColors[s_Holder] : (s_Holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255));
-					const float pulse = Pulse();
-					DrawModeZone(drawList, settings.Zones[i], color, static_cast<int>(40.0F + 40.0F * pulse), 230, 2.0F + pulse * 2.0F, s_Holder == -2 ? name + ": CONTESTED" : name);
 				}
+			}
+			if (running && !settings.Zones.empty()) {
+				// In play: in the colour of whoever holds it, pulsing; orange while fought over.
+				const std::string name = settings.Zones.size() > 1 && s_SpotZone.empty() ? "HILL " + std::to_string(s_Hill + 1) : "HILL";
+				const ImU32 color = s_Holder >= 0 ? c_SideColors[s_Holder] : (s_Holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255));
+				const float pulse = Pulse();
+				DrawModeZone(drawList, HillZone(), color, static_cast<int>(40.0F + 40.0F * pulse), 230, 2.0F + pulse * 2.0F, s_Holder == -2 ? name + ": CONTESTED" : name);
 			}
 			if (running) {
 				std::string line;
@@ -2581,8 +2674,11 @@ namespace SandboxDetail {
 					if (settings.HoldToWin > 0) {
 						line += "    (" + std::to_string(settings.HoldToWin) + " s wins)";
 					}
+					if (settings.HillMovesWhenTaken && s_Holder >= 0 && s_Taking[s_Holder] >= 1.0F && !s_ModeRun.Over) {
+						line += "    " + SideName(s_Holder) + " taking it: " + std::to_string(static_cast<int>(s_Taking[s_Holder])) + "/" + std::to_string(std::max(settings.HillTakeSeconds, 1)) + " s";
+					}
 				}
-				if (settings.Zones.size() > 1 && settings.HillMoveSeconds > 0 && !s_ModeRun.Over) {
+				if (HillMovesOnTime(settings) && !s_ModeRun.Over) {
 					line += "    hill moves in " + Clock(static_cast<float>(settings.HillMoveSeconds) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_HillSince) / UpdatesPerSecond());
 				}
 				DrawScore(line);
@@ -2596,7 +2692,7 @@ namespace SandboxDetail {
 					continue;
 				}
 				BattleObjective hill{.Name = settings.Zones.size() > 1 ? "Hill " + std::to_string(i + 1) : "Hill", .Pos = ZoneMiddle(settings.Zones[i]), .Zone = settings.Zones[i], .Look = ObjectiveLook::Ground};
-				hill.Live = !running || i == s_Hill;
+				hill.Live = !running || (i == s_Hill && s_SpotZone.empty());
 				if (running && hill.Live) {
 					hill.Color = s_Holder >= 0 ? c_SideColors[s_Holder] : (s_Holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255));
 					hill.Defenders = s_Holder >= 0 ? Bit(s_Holder) : 0u;
@@ -2604,6 +2700,13 @@ namespace SandboxDetail {
 				} else if (running) {
 					hill.Color = IM_COL32(160, 160, 160, 255);
 				}
+				out.push_back(hill);
+			}
+			if (running && !s_SpotZone.empty()) {
+				BattleObjective hill{.Name = "Hill", .Pos = ZoneMiddle(s_SpotZone), .Zone = s_SpotZone, .Look = ObjectiveLook::Ground};
+				hill.Color = s_Holder >= 0 ? c_SideColors[s_Holder] : (s_Holder == -2 ? IM_COL32(255, 150, 40, 255) : IM_COL32(255, 255, 255, 255));
+				hill.Defenders = s_Holder >= 0 ? Bit(s_Holder) : 0u;
+				hill.Attackers = teams & ~hill.Defenders;
 				out.push_back(hill);
 			}
 		}
@@ -4542,8 +4645,15 @@ namespace SandboxDetail {
 				share = commander.FellBack ? 100 : settings.CommanderReserve;
 				return true;
 			}
-			// King of the hill: with the hill moving on, some go ahead to the next one before it does, to be there first.
+			// King of the hill: with the hill moving on, some go ahead to the next one before it does, to be there first. (Not with the next
+			// unknown till it moves, at random or to a new spot; nor while it is on a new spot, which isn't one of the zones the plan is by.)
+			if (!s_SpotZone.empty()) {
+				return false;
+			}
 			now = s_Hill;
+			if (settings.HillMovesWhenTaken && settings.NextHill != 0) {
+				return true;
+			}
 			if (count > 1 && settings.HillMoveSeconds > 0) {
 				const float left = static_cast<float>(settings.HillMoveSeconds) - static_cast<float>(g_TimerMan.GetSimUpdateCount() - s_HillSince) / UpdatesPerSecond();
 				if (left <= std::max(15.0F, static_cast<float>(settings.HillMoveSeconds) * 0.25F)) {
@@ -4551,11 +4661,12 @@ namespace SandboxDetail {
 					share = settings.CommanderReserve;
 				}
 			}
-			// Playing for hills: once a team is most of the way to taking this one, the next is about to come into play.
-			if (count > 1 && next < 0 && ForHills(settings)) {
-				const float hold = static_cast<float>(HoldSeconds(settings));
+			// Playing for hills, or moving when taken: once a team is most of the way to taking this one, the next is about to come into play.
+			if (count > 1 && next < 0 && (ForHills(settings) || settings.HillMovesWhenTaken)) {
+				const bool forHills = ForHills(settings);
+				const float hold = static_cast<float>(forHills ? HoldSeconds(settings) : std::max(settings.HillTakeSeconds, 1));
 				for (int team = 0; team < c_Sides; ++team) {
-					if (s_Held[team] >= hold * 0.75F) {
+					if ((forHills ? s_Held[team] : s_Taking[team]) >= hold * 0.75F) {
 						next = (now + 1) % count;
 						share = settings.CommanderReserve;
 						break;
@@ -6240,6 +6351,14 @@ namespace SandboxDetail {
 		for (int side = 0; side < c_Sides; ++side) {
 			out << ' ' << s_RushMade[side] << ' ' << s_RushChosen[side];
 		}
+		// King of the hill's new spot and the taking of it (last, so games saved before them still load).
+		out << ' ' << s_SpotZone.size();
+		for (const Vector& corner: s_SpotZone) {
+			out << ' ' << corner.m_X << ' ' << corner.m_Y;
+		}
+		for (float taking: s_Taking) {
+			out << ' ' << taking;
+		}
 	}
 
 	void LoadBattleModes(std::istream& in, const LoadedIDs& ids) {
@@ -6358,6 +6477,22 @@ namespace SandboxDetail {
 		s_Rushers = LoadIDs(in, ids);
 		for (int side = 0; side < c_Sides; ++side) {
 			in >> s_RushMade[side] >> s_RushChosen[side];
+		}
+		s_SpotZone.clear();
+		s_Taking.fill(0.0F);
+		size_t corners = 0;
+		if (in >> corners) {
+			for (size_t i = 0; i < corners && in; ++i) {
+				Vector corner;
+				in >> corner.m_X >> corner.m_Y;
+				s_SpotZone.push_back(corner);
+			}
+			for (float& taking: s_Taking) {
+				in >> taking;
+			}
+			if (!in || s_SpotZone.size() < 3) {
+				s_SpotZone.clear();
+			}
 		}
 		// The VIPs glow again, as they did (a unit's glow isn't kept in a saved game).
 		for (const Vip& vip: s_Vips) {
