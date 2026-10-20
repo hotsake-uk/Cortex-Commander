@@ -419,9 +419,11 @@ namespace SandboxDetail {
 		std::array<std::deque<long long>, c_Sides> s_FellAt; //!< When each team's fallen units fell, the oldest first, till they are replaced.
 		std::array<int, c_Sides> s_Released{}; //!< Units each team may have sent so far: its team size, and one for each fallen unit whose time is up.
 		std::array<int, c_Sides> s_SizeReleased{}; //!< The team size each team's s_Released was given for.
+		std::array<ReserveCall, c_Sides> s_ReserveCalls; //!< Each team's call for its reserves, till its next look at its spawns.
 
 		void StartRespawns() {
 			for (int side = 0; side < c_Sides; ++side) {
+				s_ReserveCalls[side] = ReserveCall();
 				s_Alive[side].clear();
 				s_FellAt[side].clear();
 				s_Released[side] = s_ModeRun.Settings.TeamSize[side];
@@ -6162,6 +6164,54 @@ namespace SandboxDetail {
 		return mode.Room ? mode.Room(side, room) : room;
 	}
 
+	bool BattleHoldsReserves(int side) { return s_ModeRun.Running && !s_ModeRun.Over && s_ModeRun.Settings.CommanderCallsIn && BattlePlayerCommands(side); }
+
+	int HeldRoom(int side, int room, int called) {
+		if (!BattleHoldsReserves(side)) {
+			return room;
+		}
+		// (The first team size comes in by itself, as without: only those after it wait to be called.)
+		return std::min(room, std::max(s_ModeRun.Settings.TeamSize[side] - s_BattleTeams[side].Sent, 0) + std::max(called, 0));
+	}
+
+	int BattleReservesReady(int side) {
+		if (!BattleHoldsReserves(side)) {
+			return 0;
+		}
+		const BattleSettings& settings = s_BattleTeams[side].Settings;
+		const int room = ModeRoom(side, settings.UnitLimit > 0 ? settings.UnitLimit - Sandbox::CountUnits(side) : std::numeric_limits<int>::max());
+		return std::max(room - std::max(s_ModeRun.Settings.TeamSize[side] - s_BattleTeams[side].Sent, 0), 0);
+	}
+
+	float BattleNextReserveIn(int side) { return side >= 0 && side < c_Sides && BattleHoldsReserves(side) ? NextRespawnIn(side) : -1.0F; }
+
+	void ApplyCallReserves(const Stroke& stroke) {
+		const int side = stroke.Team;
+		if (side < 0 || side >= c_Sides || !BattleHoldsReserves(side)) {
+			return;
+		}
+		const int ready = BattleReservesReady(side);
+		if (ready <= 0) {
+			Say(SideName(side) + ": no reserves ready yet");
+			return;
+		}
+		ReserveCall& call = s_ReserveCalls[side];
+		call.Count = stroke.Radius > 0 ? std::min(stroke.Radius, ready) : ready;
+		call.By = stroke.Craft >= 0 ? std::min(stroke.Craft, static_cast<int>(std::size(c_Crafts)) - 1) : -1;
+		call.HasAt = stroke.Choice != 0;
+		call.At = stroke.Position;
+		g_SceneMan.WrapPosition(call.At);
+	}
+
+	ReserveCall TakeReserveCall(int side) {
+		if (side < 0 || side >= c_Sides) {
+			return ReserveCall();
+		}
+		ReserveCall call = s_ReserveCalls[side];
+		s_ReserveCalls[side] = ReserveCall();
+		return call;
+	}
+
 	void UpdateBattleMode(bool aiPaused) {
 		if (!s_ModeRun.Running) {
 			return;
@@ -6604,6 +6654,10 @@ namespace SandboxDetail {
 		ImGui::SetItemTooltip("Seconds after one of a team's units falls before another comes in its place.");
 		changed |= ImGui::SliderInt("Most respawns", &setup.MaxRespawns, 0, 500, setup.MaxRespawns > 0 ? "%d a team" : "no limit");
 		ImGui::SetItemTooltip("How many fallen units each team gets back in all, after its first team size. A team with none left and no units in is out, and the last team in wins. 0: no limit. (A unit respawned for being stuck isn't counted.)");
+		changed |= ImGui::Checkbox("Commander calls in reinforcements", &setup.CommanderCallsIn);
+		ImGui::SetItemTooltip("A team you command doesn't respawn by itself: each fallen unit goes into its reserves once its respawn time is up (within the same limits), and they come in only when you call them, "
+		                      "from the Reserves tile on the Commander Toolbar (or Alt+R): all at once or a few, in your spawn zones or by ship over your landing spot. Your first team size still comes in by itself. "
+		                      "Teams the AI commands respawn as before.");
 		changed |= ImGui::SliderInt("Respawn if stuck", &setup.StuckSeconds, 0, 120, setup.StuckSeconds > 0 ? "after %d s" : "never");
 		ImGui::SetItemTooltip("A unit that gets no nearer to its objective for this long (stuck in a hole or on a ledge, or with no way there) is taken away and another comes in its place at once. Not while it is fighting, nor a VIP.");
 		changed |= ImGui::SliderInt("Route variety", &setup.RouteVariety, 0, 100, setup.RouteVariety > 0 ? "%d%% go their own way" : "all take the shortest way");

@@ -443,6 +443,72 @@ namespace SandboxDetail {
 		}
 	}
 
+	namespace {
+		/// Calls in the reserves of the team you command, as many and by what the reserves tiles say: applied in the next sim update.
+		void CallReserves() {
+			Stroke stroke;
+			stroke.Kind = Tool::BattleTeam;
+			stroke.Team = CommandedTeam();
+			stroke.Count = BattleCallReserves;
+			stroke.Radius = s_ReserveSize;
+			stroke.Craft = s_ReserveBy;
+			stroke.Choice = s_ReserveBy >= 0 && s_HasLandingSpot ? 1 : 0;
+			stroke.Position = s_LandingSpot;
+			s_Queue.push_back(stroke);
+		}
+	} // namespace
+
+	void ReserveTiles() {
+		const int side = std::clamp(CommandedTeam(), 0, c_Sides - 1);
+		const int ready = BattleReservesReady(side);
+		const float next = BattleNextReserveIn(side);
+		const int craftCount = static_cast<int>(std::size(c_Crafts));
+		s_ReserveBy = std::clamp(s_ReserveBy, -1, craftCount - 1);
+		const char* by = s_ReserveBy < 0 ? "Spawn zone" : c_Crafts[s_ReserveBy].Label;
+		// How many are ready, and the call.
+		{
+			const std::string shown = std::to_string(ready);
+			char nextText[64] = "";
+			if (next >= 0.0F) {
+				std::snprintf(nextText, sizeof(nextText), "\nThe next is ready in %.0f s.", std::ceil(next));
+			}
+			const std::string many = s_ReserveSize > 0 ? std::to_string(s_ReserveSize) : std::string("all");
+			const std::string where = s_ReserveBy < 0 ? std::string("in your spawn zones") : std::string("by ") + by + (s_HasLandingSpot ? " over the landing spot" : " over your base");
+			const std::string tip = "Reserves: " + shown + " ready to call in." + nextText +
+			                        "\nEach of your fallen units joins them once its respawn time is up; they come in only when you call them.\n\nClick: call in " + many + ", " + where + ".\nKey: Alt+R, as a click.";
+			int clicked = BarTile("##reserves", "Reserves", tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, ready > 0 ? IM_COL32(255, 220, 120, 255) : IM_COL32(200, 200, 200, 120), shown.c_str()); });
+			const ImGuiIO& io = ImGui::GetIO();
+			if (clicked == 0 && io.KeyAlt && !io.KeyCtrl && !io.KeyShift && !io.WantTextInput && !s_Possessed && ImGui::IsKeyPressed(ImGuiKey_R, false)) {
+				clicked = 1;
+			}
+			if (clicked == 1) {
+				CallReserves();
+			}
+		}
+		ImGui::SameLine();
+		// By what they come: in the spawn zones, or a craft over the landing spot (the reinforcements' Land at).
+		{
+			const std::string tip = std::string("How your reserves come in: ") + by + ".\nClick: spawn zone, or one of the craft (over the landing spot, else over your base; a ship can be shot down on the way in, with them aboard). Right click: back to spawn zone.";
+			const int clicked = BarTile("##reserveby", by, tip.c_str(), false, [&](ImDrawList* tileList, ImVec2 at, float room) { DrawIcon(tileList, s_ReserveBy < 0 ? Icon::Down : Icon::Rocket, at, room / 12.0F, IM_COL32(190, 190, 190, 255)); });
+			if (clicked == 1) {
+				s_ReserveBy = s_ReserveBy + 1 >= craftCount ? -1 : s_ReserveBy + 1;
+			} else if (clicked == 2) {
+				s_ReserveBy = -1;
+			}
+		}
+		ImGui::SameLine();
+		// How many a call brings.
+		{
+			const std::string shown = s_ReserveSize > 0 ? "x" + std::to_string(s_ReserveSize) : std::string("All");
+			const int clicked = BarTile("##reservesize", "Call", "How many of your reserves a call brings in. Click: all, 5 or 1. Right click: back to all.", false, [&](ImDrawList* tileList, ImVec2 at, float room) { PictureText(tileList, at, room, ToolTheme::Text, shown.c_str()); });
+			if (clicked == 1) {
+				s_ReserveSize = s_ReserveSize == 0 ? 5 : (s_ReserveSize == 5 ? 1 : 0);
+			} else if (clicked == 2) {
+				s_ReserveSize = 0;
+			}
+		}
+	}
+
 	void DrawLandingSpot() {
 		if (!s_HasLandingSpot && CurrentTool().Kind != Tool::LandingSpot && CurrentTool().Kind != Tool::BattleRally) {
 			return;
