@@ -11,7 +11,7 @@ namespace SandboxDetail {
 		constexpr const char* c_OtherKind = "Other";
 		constexpr float c_SampleSeconds = 5.0F;
 		constexpr long long c_HoldEvery = 30; //!< Sim updates between looks at who is on each objective.
-		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction", "The point"};
+		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction", "The point", "Territory Control"};
 		static_assert(std::size(c_ModeNames) == static_cast<size_t>(BattleMode::Count), "A name for each mode.");
 
 		/// One unit's record in the battle.

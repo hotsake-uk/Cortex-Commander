@@ -22,7 +22,7 @@ window.MS = window.MS || {};
 	// variable, { k: 'setting', name } a scenario setting, { k: 'difficulty' } the difficulty as a multiplier from 0.5 to 2, { k: 'time' } the
 	// seconds since it began; each with x: true to multiply it by the difficulty too). A plain number is read as a value of that number.
 
-	const BATTLE_MODES = [[1, 'Capture the flag'], [2, 'King of the hill'], [3, 'Assault'], [4, 'Last team standing'], [5, 'VIP hunt'], [6, 'One flag'], [7, 'Capture the ship'], [8, 'Wave defence'], [9, 'Escort'], [10, 'Extraction'], [11, 'The point']];
+	const BATTLE_MODES = [[1, 'Capture the flag'], [2, 'King of the hill'], [3, 'Assault'], [4, 'Last team standing'], [5, 'VIP hunt'], [6, 'One flag'], [7, 'Capture the ship'], [8, 'Wave defence'], [9, 'Escort'], [10, 'Extraction'], [11, 'The point'], [12, 'Territory Control']];
 	const OPS = [['>=', 'is at least'], ['<=', 'is at most'], ['==', 'is exactly'], ['>', 'is more than'], ['<', 'is less than']];
 	const V = (n) => ({ k: 'num', n });
 	const VAR_OPS = [['set', 'set it to'], ['add', 'add'], ['sub', 'take away'], ['mul', 'multiply it by']];

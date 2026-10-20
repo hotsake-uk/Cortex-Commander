@@ -91,6 +91,14 @@ window.MS = window.MS || {};
 		{ name: 'The point', icon: '◎', blurb: 'One point with rings round it, each worth its own points a second to the team alone in it.',
 			spots: { label: 'The point', max: 1, note: 'The bullseye. Its rings are drawn round it.' },
 			rules: [['PointsToWin', 'Points to win (0: play on)', 0, 100000, 300], ['PointRings', 'Rings round the bullseye', 0, 4, 2], ['MajorityScores', 'A shared band scores for the team with most there', 'bool', false]] },
+		{ name: 'Territory Control', icon: '▬', blurb: 'The whole map\'s ground is the zone. Each unit claims the ground under it, and every team scores its share of the line each second.',
+			look: 'ground', zones: { label: 'Territory zone', min: 0, note: 'None: the ground all the way across the map counts. Drawn: only the ground in them (straight below, where a zone has no floor).' },
+			rules: [['TerritoryToWin', 'Points to win (0: play on)', 0, 100000, 1000], ['TerritoryRate', 'Points a second for holding all of it', 1, 100, 10],
+				['TerritoryKeep', 'Ground counts', 'choice', 0, [[0, 'While a unit stands on it'], [1, 'Taken till an enemy takes it']],
+					'Taken: a unit walking over ground takes it for its team, and it stays theirs till an enemy unit walks over it.'],
+				['TerritoryScale', 'Claim width (% of the unit\'s width)', 25, 300, 100], ['TerritoryPadding', 'Claim padding (px each side)', 0, 60, 6],
+				['TerritoryAirCounts', 'Flying units count', 'bool', false], ['TerritoryUnderCounts', 'Units underground count', 'bool', false],
+				['TerritorySectors', 'Sectors (objectives along the line)', 1, 16, 8]] },
 	];
 	// Every mode's own, as the Battle tab's "Respawns and routes" has them.
 	const SHARED_RULES = [['RespawnSeconds', 'Seconds before a fallen unit is replaced (0: at once)', 0, 60, 5], ['MaxRespawns', 'Units each team gets back in all (0: no limit)', 0, 500, 0],
@@ -523,6 +531,8 @@ window.MS = window.MS || {};
 		if (spec && setup.mode === 11) {
 			out.rings = rings(setup);
 		}
+		// Territory control with no zones drawn: the whole map's ground is the line.
+		out.wholeLine = !!spec && setup.mode === 12 && setup.shapes('Mode.Zones').length === 0 && showing(setup, 'ShowObjectives');
 		return out;
 	}
 
@@ -934,6 +944,10 @@ window.MS = window.MS || {};
 				const top = t.pts.reduce((a, b) => (b.y < a.y || (b.y === a.y && b.x < a.x) ? b : a));
 				const s = this.toScreen(top.x, top.y);
 				this.tag(ctx, s.x, s.y - 4, t.label, t.colour);
+			}
+			// territory control's line along the ground all the way across
+			if (list.wholeLine) {
+				this.drawLook(ctx, { colour: NEUTRAL, look: 'ground', pts: [{ x: 0, y: 0 }, { x: w.w - 1, y: 0 }, { x: w.w - 1, y: w.h - 1 }, { x: 0, y: w.h - 1 }] });
 			}
 			// the point's rings
 			if (list.rings) {
