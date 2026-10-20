@@ -2736,6 +2736,11 @@ void AHuman::AvoidRouteLadder() {
 				continue;
 			}
 			if (!onLadder) {
+				// (Only stuck at its foot: stuck two nodes or more short of the ladder, the unit was held up by something else, a teammate or
+				// a door, and the ladder was avoided, by the team too the second time, for what had nothing to do with it.)
+				if (g_SceneMan.ShortestDistance(m_Pos, routePoint, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(static_cast<float>(g_SettingsMan.GetPathFinderGridNodeSize()) * 2.0F)) {
+					break;
+				}
 				onLadder = true;
 				team = NoteLadderStall(routePoint.m_X, routePoint.m_Y);
 				MoverTrace(std::string("stuck getting onto the route's ladder; avoiding it") + (team ? " (the team avoids it now)" : ""));

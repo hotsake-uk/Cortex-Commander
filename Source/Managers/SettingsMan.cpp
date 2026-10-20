@@ -1223,6 +1223,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AILadderTeamStalls", { int stalls = 2; reader >> stalls; SetAILadderTeamStalls(stalls); });
 	MatchProperty("AIGrabsLaddersOnPurpose", { reader >> m_AIGrabsLaddersOnPurpose; });
 	MatchProperty("AIGrabsLaddersMidJet", { reader >> m_AIGrabsLaddersMidJet; });
+	MatchProperty("AIJetUnitsClimbLadders", { reader >> m_AIJetUnitsClimbLadders; });
 	MatchProperty("UnitsGrabRopes", { reader >> m_UnitsGrabRopes; });
 	MatchProperty("AICatchesRopes", { reader >> m_AICatchesRopes; });
 	MatchProperty("RopeClimbSpeed", { float speed; reader >> speed; SetRopeClimbSpeed(speed); });
@@ -1996,6 +1997,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AILadderTeamStalls", m_AILadderTeamStalls);
 	writer.NewPropertyWithValue("AIGrabsLaddersOnPurpose", m_AIGrabsLaddersOnPurpose);
 	writer.NewPropertyWithValue("AIGrabsLaddersMidJet", m_AIGrabsLaddersMidJet);
+	writer.NewPropertyWithValue("AIJetUnitsClimbLadders", m_AIJetUnitsClimbLadders);
 	writer.NewPropertyWithValue("UnitsGrabRopes", m_UnitsGrabRopes);
 	writer.NewPropertyWithValue("AICatchesRopes", m_AICatchesRopes);
 	writer.NewPropertyWithValue("RopeClimbSpeed", m_RopeClimbSpeed);
