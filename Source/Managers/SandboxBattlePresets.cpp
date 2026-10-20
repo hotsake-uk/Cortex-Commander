@@ -95,6 +95,7 @@ namespace SandboxDetail {
 			visit("ReturnSeconds", mode.ReturnSeconds);
 			visit("RespawnSeconds", mode.RespawnSeconds);
 			visit("MaxRespawns", mode.MaxRespawns);
+			visit("CommanderCallsIn", mode.CommanderCallsIn);
 			visit("StuckSeconds", mode.StuckSeconds);
 			visit("RushPercent", mode.RushPercent);
 			visit("RiskMin", mode.RiskMin);

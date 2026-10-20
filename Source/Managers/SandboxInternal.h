@@ -735,7 +735,9 @@ namespace SandboxDetail {
 		BattleModeStop, //!< The mode's game stopped, and every team with it.
 		BattlePower, //!< Battle Command: a commander power used by the team you command (Choice the CommanderPower, Position where).
 		BattleReinforce, //!< Battle Command: reinforcements bought for the team you command (Choice the card, Radius how many, Craft, Position where they land).
-		BattleSurrender //!< The mode's game given up by Team (SurrenderBattleGame).
+		BattleSurrender, //!< The mode's game given up by Team (SurrenderBattleGame).
+		BattleCallReserves //!< Every mode, with CommanderCallsIn: the reserves of the team you command called in (Radius how many, 0 all; Craft how,
+		                   //!< -1 in its spawn zones, else of c_Crafts; Choice 1 with Position where they land).
 	};
 
 	/// The Battle Director's preset modes: a game with rules of its own, set up from a few choices (how big, which teams, and a point for
@@ -844,6 +846,8 @@ namespace SandboxDetail {
 		int ReturnSeconds = 30; //!< Capture the flag: how long a dropped flag lies before it goes back home by itself.
 		int RespawnSeconds = 5; //!< Every mode: seconds after one of a team's units falls before another comes in its place.
 		int MaxRespawns = 0; //!< Every mode: fallen units each team gets back in all, after its first team size. 0: no limit.
+		bool CommanderCallsIn = false; //!< Every mode: a team the player commands keeps its respawns in reserve (each ready at the respawn time,
+		                               //!< within the same limits) and they come in only when called, as many at once and by what the player says.
 		int StuckSeconds = 20; //!< Every mode: seconds a unit can get no nearer its objective before it is respawned. 0: never.
 		std::array<int, c_Sides> RiskMin = {0, 0, 0, 0}; //!< Every mode: the least risk each team's units take with the mode's orders, -100 (cautious) to 100 (suicide), 0 normal, the default (Actor::StandingOrder::Direct). (The default was cautious, and most units sent to the objective walked round jumps and waited for fuel as a single-clicked order does.)
 		std::array<int, c_Sides> RiskMax = {0, 0, 0, 0}; //!< And the most: each unit is given a risk in between as it comes in, the strongest (the biggest jetpack, the priciest kit) toward the top.
@@ -3310,6 +3314,25 @@ namespace SandboxDetail {
 	/// The places new units coming in anywhere keep clear of while a mode's game is on, besides enemy units and spawn zones: its flags.
 	void ModeKeepClearSpots(std::vector<Vector>& spots);
 	int ModeRoom(int side, int room);
+	/// A call for a team's reserves (Tool::BattleTeam, BattleCallReserves), waiting for the team's next look at its spawns.
+	struct ReserveCall {
+		int Count = 0; //!< Units called in; 0 for none waiting.
+		int By = -1; //!< -1 in its spawn zones, else of c_Crafts.
+		Vector At; //!< Where a craft comes down over, with HasAt.
+		bool HasAt = false;
+	};
+	/// Whether a team keeps its respawns in reserve for the player to call in (CommanderCallsIn, a team the player commands, the game on).
+	bool BattleHoldsReserves(int side);
+	/// Units a team holding its reserves has ready to call in: fallen units whose respawn time is up, within the team size and respawns left.
+	int BattleReservesReady(int side);
+	/// Seconds till a team's next fallen unit is ready, or -1 with none waiting.
+	float BattleNextReserveIn(int side);
+	/// A call for reserves (BattleCallReserves), in the sim: kept for the team's next look at its spawns.
+	void ApplyCallReserves(const Stroke& stroke);
+	/// The call waiting for a team, taken (none waiting after).
+	ReserveCall TakeReserveCall(int side);
+	/// A team's room for new units held to its first team size still to come and the units called in (with BattleHoldsReserves).
+	int HeldRoom(int side, int room, int called);
 	void UpdateBattleMode(bool aiPaused);
 	void ForgetBattleMode();
 	void BattleModeTab();
@@ -3555,6 +3578,8 @@ namespace SandboxDetail {
 	inline int s_PendingCard = -1; //!< A card clicked with no landing spot marked: called in once one is (Tool::LandingSpot).
 	inline int s_CallCraft = 0; //!< Index into c_Crafts.
 	inline int s_CallSize = 1; //!< Units a card calls in at a time: 1, 3 or 5.
+	inline int s_ReserveBy = -1; //!< How reserves come when called: -1 in your spawn zones, else an index into c_Crafts over the landing spot.
+	inline int s_ReserveSize = 0; //!< Reserves called at a time: 0 all of them, else 5 or 1.
 
 	/// Every team's points back to the start, and the kills, scores and gold they're earned from forgotten. At a mode's start and a new game.
 	void ForgetReinforcements();
@@ -3581,6 +3606,10 @@ namespace SandboxDetail {
 
 	/// The Commander Toolbar's reinforcements group: the points, the cards, the landing spot, the craft and how many at a time.
 	void ReinforcementTiles();
+
+	/// The Commander Toolbar's reserves group, while the team you command holds its reserves: how many are ready, how they come and how
+	/// many at a time. Alt+R calls them in.
+	void ReserveTiles();
 
 	/// A click on the world with the landing spot tool: marks the spot, and calls in the card waiting for one.
 	void LandingSpotClicked(const Vector& position);

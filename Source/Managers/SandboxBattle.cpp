@@ -571,6 +571,13 @@ namespace SandboxDetail {
 			return spot;
 		}
 
+		/// Reserves called in by the team you command, said over the game for a few seconds and in the console.
+		void NoteReservesCalled(int side, int count, const std::string& how) {
+			s_ModeRun.Note = std::string(c_SideNames[side]) + ": " + std::to_string(count) + (count == 1 ? " reinforcement " : " reinforcements ") + how;
+			s_ModeRun.NoteAt = g_TimerMan.GetSimUpdateCount();
+			g_ConsoleMan.PrintString("BATTLE: " + s_ModeRun.Note);
+		}
+
 		/// Where across the scene one ship of a burst comes in, as DropX, but for ships that come in anywhere, of a few picks in its stretch the
 		/// first whose ground below is at least the team's KeepClear from enemies and objectives (else the clearest).
 		float ClearDropX(const BattleSettings& settings, int side, int ship, int ships) {
@@ -898,8 +905,17 @@ namespace SandboxDetail {
 				continue;
 			}
 			// Ships and spawn zones each on a clock of their own.
-			const bool shipsDue = settings.ShipsPerBurst > 0 && now >= team.NextWave;
-			const bool zonesDue = (!settings.SpawnZones.empty() || settings.AppearAnywhere) && now >= team.NextZoneWave;
+			bool shipsDue = settings.ShipsPerBurst > 0 && now >= team.NextWave;
+			const bool hasZones = !settings.SpawnZones.empty() || settings.AppearAnywhere;
+			bool zonesDue = hasZones && now >= team.NextZoneWave;
+			// A team you command holding its reserves: the ones called in come now, in its spawn zones or by the craft asked for (any other
+			// look at its spawns only brings in what's left of its first team size).
+			const bool holds = s_ModeRun.Running && BattleHoldsReserves(side);
+			const ReserveCall call = holds ? TakeReserveCall(side) : ReserveCall();
+			if (call.Count > 0) {
+				zonesDue = call.By < 0 && hasZones;
+				shipsDue = !zonesDue;
+			}
 			if (!shipsDue && !zonesDue) {
 				continue;
 			}
@@ -915,6 +931,7 @@ namespace SandboxDetail {
 			if (s_ModeRun.Running) {
 				// (A mode may hold it to fewer: last team standing's units left to send.)
 				room = ModeRoom(side, room);
+				room = HeldRoom(side, room, call.Count);
 			}
 			if (room <= 0) {
 				team.FillFirst = false;
@@ -1000,6 +1017,39 @@ namespace SandboxDetail {
 				return wave;
 			};
 			const int waveSize = std::clamp(settings.WaveSize, 1, 20);
+			if (shipsDue && call.Count > 0) {
+				// Called in by ship: all in the one ship (as many more as it takes past twenty), unprotected (they can be shot down), over the
+				// landing spot side by side, else over the team's drop line or base.
+				const int craft = call.By >= 0 ? call.By : settings.Craft;
+				const bool invincible = call.By >= 0 ? false : settings.Invincible;
+				const int ships = std::clamp((room + 19) / 20, 1, 10);
+				const int shipSize = std::clamp((room + ships - 1) / ships, 1, 20);
+				int called = 0;
+				for (int ship = 0; ship < ships && room > 0 && !team.Broke; ++ship) {
+					std::vector<Actor*> wave = buyWave(std::min(shipSize, room), true);
+					if (wave.empty()) {
+						break;
+					}
+					int count = static_cast<int>(wave.size());
+					float x = call.HasAt ? call.At.m_X + (static_cast<float>(ship) - static_cast<float>(ships - 1) * 0.5F) * 80.0F : ClearDropX(settings, side, ship, ships);
+					if (call.HasAt) {
+						Vector wrapped(x, 0.0F);
+						g_SceneMan.WrapPosition(wrapped);
+						x = wrapped.m_X;
+					}
+					float paid = DropUnits(wave, side, x, craft, invincible);
+					if (paid > 0.0F) {
+						team.Sent += count;
+						team.Spent += paid;
+						room -= count;
+						called += count;
+					}
+				}
+				if (called > 0) {
+					NoteReservesCalled(side, called, std::string("on the way by ") + c_Crafts[std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)].Label);
+				}
+				shipsDue = false;
+			}
 			if (shipsDue) {
 				// (Filling the team at once: as many ships as it takes, up to ten, each as full as need be.)
 				const int ships = team.FillFirst && room < std::numeric_limits<int>::max() ? std::clamp((room + waveSize - 1) / waveSize, 1, 10) : std::clamp(settings.ShipsPerBurst, 1, 10);
@@ -1019,15 +1069,16 @@ namespace SandboxDetail {
 					}
 				}
 			}
+			const int sentBeforeZones = team.Sent;
 			if (zonesDue) {
 				// The zones in a fresh order each time, so a limit or a budget that runs short doesn't always leave out the same ones.
 				std::vector<std::vector<Vector>> zones = settings.SpawnZones;
 				for (size_t i = 0; i + 1 < zones.size(); ++i) {
 					std::swap(zones[i], zones[i + std::min(zones.size() - i - 1, static_cast<size_t>(Random01() * static_cast<float>(zones.size() - i)))]);
 				}
-				// (Filling the team at once: its whole limit shared between the zones.)
+				// (Filling the team at once, or reserves called in: all of them shared between the zones.)
 				const int usable = static_cast<int>(std::count_if(zones.begin(), zones.end(), [](const std::vector<Vector>& zone) { return zone.size() >= 3; }));
-				const int perZone = team.FillFirst && room < std::numeric_limits<int>::max() ? std::max((room + std::max(usable, 1) - 1) / std::max(usable, 1), 1) : std::clamp(settings.ZoneUnits, 1, 20);
+				const int perZone = (team.FillFirst || call.Count > 0) && room < std::numeric_limits<int>::max() ? std::max((room + std::max(usable, 1) - 1) / std::max(usable, 1), 1) : std::clamp(settings.ZoneUnits, 1, 20);
 				if (settings.AppearAnywhere && room > 0 && !team.Broke) {
 					// Anywhere on the map: as many as the zones would have put down between them, all in one lot.
 					std::vector<Actor*> wave = buyWave(std::min(perZone * std::max(usable, 1), room), true);
@@ -1065,6 +1116,9 @@ namespace SandboxDetail {
 					room -= static_cast<int>(wave.size());
 				}
 			}
+			if (call.Count > 0 && call.By < 0 && team.Sent > sentBeforeZones) {
+				NoteReservesCalled(side, team.Sent - sentBeforeZones, "in");
+			}
 			team.FillFirst = false;
 		}
 	}
@@ -1083,6 +1137,10 @@ namespace SandboxDetail {
 		}
 		if (stroke.Kind == Tool::BattleTeam && stroke.Count == BattlePower) {
 			ApplyPower(stroke);
+			return;
+		}
+		if (stroke.Kind == Tool::BattleTeam && stroke.Count == BattleCallReserves) {
+			ApplyCallReserves(stroke);
 			return;
 		}
 		if (stroke.Kind == Tool::BattleTeam && stroke.Count == BattleSurrender) {
