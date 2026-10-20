@@ -1275,22 +1275,27 @@ bool MOSRotating::ChunkMaySettleOn(const MovableObject* under) {
 }
 
 float MOSRotating::GetRagdollHoldScale() const {
-	if (!g_SettingsMan.RagdollDeaths()) {
+	if (!g_SettingsMan.RagdollDeaths() && !g_SettingsMan.NoDismemberment()) {
 		return 1.0F;
 	}
 	const AHuman* human = dynamic_cast<const AHuman*>(GetRootParent());
 	if (!human) {
 		return 1.0F;
 	}
-	if (this == human || this == human->GetHead()) {
-		return g_SettingsMan.RagdollBlowApartScale();
-	}
-	// The limbs (and a foot on its leg) hold only once the body is going limp: a soldier still alive loses them as before.
+	bool vital = this == human || this == human->GetHead();
 	const MOSRotating* limb = dynamic_cast<const Arm*>(this) || dynamic_cast<const Leg*>(this) ? this : nullptr;
 	if (!limb && !dynamic_cast<const HeldDevice*>(this) && GetParent() && dynamic_cast<const Leg*>(GetParent())) {
 		limb = this;
 	}
-	return limb && (human->GetStatus() == Actor::DYING || human->GetStatus() == Actor::DEAD) ? g_SettingsMan.RagdollBlowApartScale() : 1.0F;
+	if (!vital && !limb) {
+		return 1.0F;
+	}
+	// With no dismemberment, no hit is big enough.
+	if (g_SettingsMan.NoDismemberment()) {
+		return std::numeric_limits<float>::infinity();
+	}
+	// The limbs (and a foot on its leg) hold only once the body is going limp: a soldier still alive loses them as before.
+	return vital || human->GetStatus() == Actor::DYING || human->GetStatus() == Actor::DEAD ? g_SettingsMan.RagdollBlowApartScale() : 1.0F;
 }
 
 void MOSRotating::TakeBlowAsRagdoll() {
@@ -1366,7 +1371,7 @@ void MOSRotating::ApplyImpulses() {
 		if (m_WoundCountAffectsImpulseLimitRatio != 0 && m_GibWoundLimit > 0) {
 			impulseLimit *= 1.0F - (static_cast<float>(m_Wounds.size()) / static_cast<float>(m_GibWoundLimit)) * m_WoundCountAffectsImpulseLimitRatio;
 		}
-		if (totalImpulse.MagnitudeIsGreaterThan(impulseLimit) && !totalImpulse.MagnitudeIsGreaterThan(impulseLimit * GetRagdollHoldScale())) {
+		if (const float holdScale = GetRagdollHoldScale(); holdScale > 1.0F && totalImpulse.MagnitudeIsGreaterThan(impulseLimit) && !totalImpulse.MagnitudeIsGreaterThan(ToughenedGibLimit(m_GibImpulseLimit) * holdScale)) {
 			TakeBlowAsRagdoll();
 		} else if (totalImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
 			DetachAttachablesFromImpulse(totalImpulse);
@@ -1650,7 +1655,7 @@ void MOSRotating::PostTravel() {
 		if (m_WoundCountAffectsImpulseLimitRatio != 0 && m_GibWoundLimit > 0) {
 			impulseLimit *= 1.0F - (static_cast<float>(m_Wounds.size()) / static_cast<float>(m_GibWoundLimit)) * m_WoundCountAffectsImpulseLimitRatio;
 		}
-		if (m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit) && !m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit * GetRagdollHoldScale())) {
+		if (const float holdScale = GetRagdollHoldScale(); holdScale > 1.0F && m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit) && !m_TravelImpulse.MagnitudeIsGreaterThan(ToughenedGibLimit(m_GibImpulseLimit) * holdScale)) {
 			TakeBlowAsRagdoll();
 		} else if (m_TravelImpulse.MagnitudeIsGreaterThan(impulseLimit)) {
 			Vector totalImpulse(m_TravelImpulse.GetX(), m_TravelImpulse.GetY());

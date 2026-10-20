@@ -1329,6 +1329,8 @@ void DebugMan::SettingsGUI() {
 		}
 		Toggle("Ragdoll deaths", g_SettingsMan.RagdollDeaths(), [](bool on) { g_SettingsMan.SetRagdollDeaths(on); });
 		Tip("Experimental. On: a soldier (any humanoid) killed by a hit or a wound that would have blown it apart dies whole instead, and the body keeps its head and limbs while it falls limp, its arms and legs swinging under their own weight, catching on ledges and dragging on the ground, until it all lies still and settles into the ground. Only a really big hit still blows it apart or tears a limb off (see below). Off, as the game comes: bodies burst when a hit or a wound passes their limit, and fall stiffly.");
+		Toggle("No dismemberment", g_SettingsMan.NoDismemberment(), [](bool on) { g_SettingsMan.SetNoDismemberment(on); });
+		Tip("On: soldiers (any humanoid) never lose a head, an arm or a leg and are never blown apart, alive or dead, whatever hits them: a hit or a wound that would have done it to the body or the head kills them instead, and the body stays whole until it settles. Guns, jetpacks and other gear can still be shot off or destroyed. Off, as the game comes.");
 		if (g_SettingsMan.RagdollDeaths()) {
 			float scale = g_SettingsMan.RagdollBlowApartScale();
 			if (Slider("Ragdoll: hit that still blows apart", &scale, Normal{3.0F}, 1.5F, 10.0F, "%.1fx limit")) {
