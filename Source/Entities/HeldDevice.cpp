@@ -1320,7 +1320,8 @@ bool HeldDevice::CutWithBlade(MOID hitMOID, const Vector& hitPos, const Vector& 
 		Attachable* limb = dynamic_cast<Attachable*>(hitMO);
 		const AHuman* human = dynamic_cast<const AHuman*>(hitRoot);
 		bool isHead = human && limb == human->GetHead();
-		if (limb && limb->IsAttached() && (dynamic_cast<Arm*>(limb) || dynamic_cast<Leg*>(limb) || isHead) && RandomNum() < (isHead ? 0.25F : 0.4F)) {
+		// (Not off a body holding together, with Ragdoll deaths or No dismemberment on: MOSRotating::GetRagdollHoldScale.)
+		if (limb && limb->IsAttached() && (dynamic_cast<Arm*>(limb) || dynamic_cast<Leg*>(limb) || isHead) && limb->GetRagdollHoldScale() <= 1.0F && RandomNum() < (isHead ? 0.25F : 0.4F)) {
 			if (MOSRotating* limbParent = dynamic_cast<MOSRotating*>(limb->GetParent())) {
 				limbParent->RemoveAttachable(limb, true, true);
 				if (m_BladeEnergy) {
