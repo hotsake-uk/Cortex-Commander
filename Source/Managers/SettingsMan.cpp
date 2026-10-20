@@ -243,6 +243,7 @@ void SettingsMan::Clear() {
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_RagdollDeaths = false;
+	m_RagdollHitPush = 3.0F;
 	m_RagdollBodySeconds = 30;
 	m_NoDismemberment = false;
 	m_RagdollBlowApartScale = 3.0F;
@@ -929,6 +930,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitBloodStains", { g_PostProcessMan.GetLightingSettings().UnitBloodStains = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitBloodStainStrength", { g_PostProcessMan.GetLightingSettings().UnitBloodStainStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("WetnessMap", { g_PostProcessMan.GetLightingSettings().WetnessMap = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WetDrySeconds", { g_PostProcessMan.GetLightingSettings().WetDrySeconds = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 600.0F); });
 	MatchProperty("Puddles", { g_PostProcessMan.GetLightingSettings().Puddles = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -1143,6 +1146,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("RagdollDeaths", { reader >> m_RagdollDeaths; });
+	MatchProperty("RagdollHitPush", { float push = 3.0F; reader >> push; SetRagdollHitPush(push); });
 	MatchProperty("RagdollBodySeconds", { int seconds = 30; reader >> seconds; SetRagdollBodySeconds(seconds); });
 	MatchProperty("NoDismemberment", { reader >> m_NoDismemberment; });
 	MatchProperty("RagdollBlowApartScale", { float scale = 3.0F; reader >> scale; SetRagdollBlowApartScale(scale); });
@@ -1691,6 +1695,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);
 	writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
 	writer.NewPropertyWithValue("Stains", lighting.Stains);
+	writer.NewPropertyWithValue("UnitBloodStains", lighting.UnitBloodStains);
+	writer.NewPropertyWithValue("UnitBloodStainStrength", lighting.UnitBloodStainStrength);
 	writer.NewPropertyWithValue("StainSurface", lighting.StainSurface);
 	writer.NewPropertyWithValue("StainShine", lighting.StainShine);
 	writer.NewPropertyWithValue("DecalsFade", lighting.DecalsFade);
@@ -1936,6 +1942,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("RagdollDeaths", m_RagdollDeaths);
+	writer.NewPropertyWithValue("RagdollHitPush", m_RagdollHitPush);
 	writer.NewPropertyWithValue("RagdollBodySeconds", m_RagdollBodySeconds);
 	writer.NewPropertyWithValue("NoDismemberment", m_NoDismemberment);
 	writer.NewPropertyWithValue("RagdollBlowApartScale", m_RagdollBlowApartScale);

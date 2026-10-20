@@ -248,6 +248,11 @@ namespace SandboxDetail {
 				// Reinforcements: the points, the cards to call in, and where and how they come.
 				BarDivider();
 				ReinforcementTiles();
+				// Reserves, while the team you command keeps its respawns for you to call in.
+				if (BattleHoldsReserves(CommandedTeam())) {
+					BarDivider();
+					ReserveTiles();
+				}
 				// Commander powers, each with its cooldown.
 				BarDivider();
 				PowerTiles();

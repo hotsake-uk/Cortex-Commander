@@ -30,6 +30,10 @@ uniform vec4 rteTeamColor; // RGB the colour, A 1 when anything is recoloured, 0
 uniform vec4 rteTeamColorIndices[2]; // Up to 8 palette indices recoloured wherever they're drawn, -1 for none.
 uniform bool rteHasTeamColorMap; // How much each pixel is recoloured: the brightest of RGB, times alpha. True colour, one image per frame, the size of the frame.
 uniform sampler2D rteTeamColorMap;
+// Blood on the sprite (MOSprite's blood stains): spots in the frame's own pixels, so they turn, flip and animate with it, and only colour what's drawn.
+uniform int rteStainCount; // 0 for none.
+uniform vec4 rteStains[8]; // xy the centre in the frame's pixels, z the radius in pixels, w how much, 0 to 1.
+uniform vec4 rteStainColors[8]; // rgb the colour, a how wet it still is, 0 to 1.
 
 vec4 textureAA(sampler2D tex, vec2 uv) {
 	vec2 texsize = vec2(textureSize(tex, 0));
@@ -97,6 +101,11 @@ vec2 ReliefTilt(vec2 uvDx, vec2 uvDy) {
 	return -(transpose(uvPerPixel) * gradient) * 2.2;
 }
 
+// A steady random number for a pixel, 0 to 1.
+float PixelHash(vec2 cell) {
+	return fract(sin(dot(cell, vec2(12.9898, 78.233))) * 43758.5453);
+}
+
 // The frame's pixel in its authored maps.
 ivec2 MapTexel(sampler2D map) {
 	ivec2 size = textureSize(map, 0);
@@ -148,6 +157,34 @@ void main() {
 			FragColor.rgb = mix(FragColor.rgb, recolored, recolor);
 		}
 	}
+	float stainShine = 0.0;
+	if (rteStainCount > 0 && !rteReplaceColor) {
+		// Whole art pixels, with ragged edges, so a stain reads as pixel art rather than a soft blur.
+		vec2 cell = floor((textureUV - rteMapUVRect.xy) * vec2(textureSize(rteTexture, 0)));
+		float covered = 0.0;
+		vec4 stainColor = vec4(0.0);
+		for (int i = 0; i < 8; ++i) {
+			if (i >= rteStainCount) {
+				break;
+			}
+			vec4 spot = rteStains[i];
+			float distance = length(cell + 0.5 - spot.xy) / max(spot.z, 0.5);
+			float ragged = PixelHash(cell + floor(spot.xy) * 7.0) - 0.5;
+			float cover = clamp((1.0 - distance) * 2.5 + ragged * 1.4, 0.0, 1.0) * spot.w;
+			if (cover > covered) {
+				covered = cover;
+				stainColor = rteStainColors[i];
+			}
+		}
+		if (covered > 0.0) {
+			// Fresh blood is its own bright colour; dried, it goes dark and brown. The art's shading shows through either way.
+			vec3 dried = mix(stainColor.rgb, vec3(dot(stainColor.rgb, vec3(0.299, 0.587, 0.114))), 0.3) * vec3(0.5, 0.42, 0.38);
+			vec3 blood = mix(dried, stainColor.rgb, stainColor.a);
+			float brightness = dot(FragColor.rgb, vec3(0.299, 0.587, 0.114));
+			FragColor.rgb = mix(FragColor.rgb, clamp(blood * (0.55 + 0.9 * brightness), 0.0, 1.0), clamp(covered, 0.0, 0.92));
+			stainShine = stainColor.a * covered * 0.6;
+		}
+	}
 	// RG: normal x and y (z is worked out from them). B: 1 - shininess. Alpha: 0 means nothing drawn, 0.5..1 is drawn with emissive strength 0..1.
 	// What has happened to the object, packed into the surface's last value: heat in the high half, snow in the low.
 	// A shining thing with no surface of its own (a tracer and its trail) is marked by a half value where solid objects say whether they cast shadows; its last value is then how strongly it shines.
@@ -193,6 +230,8 @@ void main() {
 	if (hasSurface) {
 		shine = max(shine * 0.5, vertexSurface.g);
 	}
+	// Wet blood glistens, whatever it's on.
+	shine = max(shine, stainShine);
 	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
 	SurfaceOut = vec4(vertexSurface.rg, shining ? 0.0 : vertexSurface.b, 1.0);
 }

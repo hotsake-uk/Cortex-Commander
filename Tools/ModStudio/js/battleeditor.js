@@ -91,6 +91,14 @@ window.MS = window.MS || {};
 		{ name: 'The point', icon: '◎', blurb: 'One point with rings round it, each worth its own points a second to the team alone in it.',
 			spots: { label: 'The point', max: 1, note: 'The bullseye. Its rings are drawn round it.' },
 			rules: [['PointsToWin', 'Points to win (0: play on)', 0, 100000, 300], ['PointRings', 'Rings round the bullseye', 0, 4, 2], ['MajorityScores', 'A shared band scores for the team with most there', 'bool', false]] },
+		{ name: 'Territory Control', icon: '▬', blurb: 'The whole map\'s ground is the zone. Each unit claims the ground under it, and every team scores its share of the line each second.',
+			look: 'ground', zones: { label: 'Territory zone', min: 0, note: 'None: the ground all the way across the map counts. Drawn: only the ground in them (straight below, where a zone has no floor).' },
+			rules: [['TerritoryToWin', 'Points to win (0: play on)', 0, 100000, 1000], ['TerritoryRate', 'Points a second for holding all of it', 1, 100, 10],
+				['TerritoryKeep', 'Ground counts', 'choice', 0, [[0, 'While a unit stands on it'], [1, 'Taken till an enemy takes it']],
+					'Taken: a unit walking over ground takes it for its team, and it stays theirs till an enemy unit walks over it.'],
+				['TerritoryScale', 'Claim width (% of the unit\'s width)', 25, 300, 100], ['TerritoryPadding', 'Claim padding (px each side)', 0, 60, 6],
+				['TerritoryAirCounts', 'Flying units count', 'bool', false], ['TerritoryUnderCounts', 'Units underground count', 'bool', false],
+				['TerritorySectors', 'Sectors (objectives along the line)', 1, 16, 8]] },
 	];
 	// Every mode's own, as the Battle tab's "Respawns and routes" has them.
 	const SHARED_RULES = [['RespawnSeconds', 'Seconds before a fallen unit is replaced (0: at once)', 0, 60, 5], ['MaxRespawns', 'Units each team gets back in all (0: no limit)', 0, 500, 0],
@@ -523,6 +531,8 @@ window.MS = window.MS || {};
 		if (spec && setup.mode === 11) {
 			out.rings = rings(setup);
 		}
+		// Territory control with no zones drawn: the whole map's ground is the line.
+		out.wholeLine = !!spec && setup.mode === 12 && setup.shapes('Mode.Zones').length === 0 && showing(setup, 'ShowObjectives');
 		return out;
 	}
 
@@ -934,6 +944,10 @@ window.MS = window.MS || {};
 				const top = t.pts.reduce((a, b) => (b.y < a.y || (b.y === a.y && b.x < a.x) ? b : a));
 				const s = this.toScreen(top.x, top.y);
 				this.tag(ctx, s.x, s.y - 4, t.label, t.colour);
+			}
+			// territory control's line along the ground all the way across
+			if (list.wholeLine) {
+				this.drawLook(ctx, { colour: NEUTRAL, look: 'ground', pts: [{ x: 0, y: 0 }, { x: w.w - 1, y: 0 }, { x: w.w - 1, y: w.h - 1 }, { x: 0, y: w.h - 1 }] });
 			}
 			// the point's rings
 			if (list.rings) {
@@ -1568,7 +1582,7 @@ window.MS = window.MS || {};
 							// (the most never under the least, as the game keeps them)
 							if (k === 'RiskMin' && x.num('Mode.RiskMax.' + side, 0) < v) {
 								x.set('Mode.RiskMax.' + side, v);
-							} else if (k === 'RiskMax' && x.num('Mode.RiskMin.' + side, -100) > v) {
+							} else if (k === 'RiskMax' && x.num('Mode.RiskMin.' + side, 0) > v) {
 								x.set('Mode.RiskMin.' + side, v);
 							}
 						});
@@ -1588,7 +1602,7 @@ window.MS = window.MS || {};
 							flag(team + 'Crabs', 'Spawn crabs', false, 'Crabs among its units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.'),
 							flag(team + 'JetpackOnly', 'Jetpacks only', false, 'Only units with a jetpack.'),
 							choice(team + 'Craft', 'Craft, coming in by ship or drop crate', 2, CRAFTS.map((c, i) => [i, c])),
-							risk('RiskMin', 'Least risk', -100), risk('RiskMax', 'Most risk', 0),
+							risk('RiskMin', 'Least risk', 0), risk('RiskMax', 'Most risk', 0),
 							number('RushPercent.' + side, 'Rush the objective (% of its units)', 0, 100, 30, 'Its units that make a beeline for the objective, shooting as they go, not taking cover or stopping to fight. Guards never rush.'),
 							flag('PlayerCommands.' + side, 'You command this team', false, 'Its units come in with no job from the mode, for the player to command (Battle Command). Tick two teams for hot-seat.'),
 							...(yours ? [el('div', { className: 'be-label', textContent: 'Spawn order: what each new unit does as it comes in' }), ...orderEditor(st, 'Mode.SpawnOrders.' + side, SIDE_NAMES[side] + '\'s spawn order'), ...zoneOrders] : [])));

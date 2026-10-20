@@ -631,6 +631,14 @@ namespace RTE {
 		/// Whether this is going limp as a whole ragdoll (SettingsMan::RagdollDeaths): dying or dead with the setting on.
 		bool IsRagdolling() const;
 
+		/// Notes a hit from something flying (a shot, a piece of a blast, a thrown thing) on this body or one of its parts, with Ragdoll deaths on,
+		/// so the body and the limb it struck are knocked about by it as a ragdoll (SettingsMan::RagdollHitPush): at once once it is dying or dead,
+		/// or when it dies of it a moment later.
+		/// @param part The part struck: this, its head, an arm, a leg or a foot.
+		/// @param impulse The hit's impulse on it, in kg * m/s.
+		/// @param offset Where it struck, from the part's centre, in metres.
+		void NoteRagdollHit(const MOSRotating* part, const Vector& impulse, const Vector& offset);
+
 		/// Draws this AHuman's current graphical representation to a
 		/// BITMAP of choice.
 		/// @param pTargetBitmap A pointer to a BITMAP to draw on.
@@ -872,6 +880,9 @@ namespace RTE {
 		bool m_RagdollStarted; //!< Whether the limbs have been let go limp yet, once this started to die as a ragdoll (see IsRagdolling).
 		Vector m_RagdollLimbVel[4]; //!< The velocities, in m/s, of the ends of the FG arm, BG arm, FG leg and BG leg as they swing limp (see AtomGroup::RagdollAsLimb).
 		float m_RagdollHeadSpin; //!< The head's own angular velocity, in rad/s, as it lolls about the neck on a ragdoll.
+		Vector m_RagdollBodyKick; //!< The impulse, in kg * m/s, of the hits on the body not yet thrown it as a ragdoll (see NoteRagdollHit).
+		float m_RagdollSpinKick; //!< The spin, in rad/s, the same hits give it.
+		Vector m_RagdollLimbKick[4]; //!< The impulses of the hits on the FG arm, BG arm, FG leg and BG leg not yet put into their swing.
 		Timer m_EquipHUDTimer; //!< Timer for showing the name of any newly equipped Device.
 		std::array<Matrix, 2> m_WalkAngle; //!< An array of rot angle targets for different movement states.
 		Vector m_WalkPathOffset;
