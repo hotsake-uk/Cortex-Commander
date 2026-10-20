@@ -111,6 +111,7 @@ namespace SandboxDetail {
 			visit("BonusSeconds", mode.BonusSeconds);
 			visit("BlockLastRespawns", mode.BlockLastRespawns);
 			visit("AttackerSpawn", mode.AttackerSpawn);
+			visit("DefenderSpawn", mode.DefenderSpawn);
 			visit("Tickets", mode.Tickets);
 			visit("KillsToWin", mode.KillsToWin);
 			visit("VipRespawnSeconds", mode.VipRespawnSeconds);
