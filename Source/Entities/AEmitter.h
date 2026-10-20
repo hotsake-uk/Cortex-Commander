@@ -341,6 +341,15 @@ namespace RTE {
 		/// @param newValue New number of emissions left
 		void SetEmitCountLimit(long newValue) { m_EmitCountLimit = newValue; }
 
+		/// Gets the colour of the blood (or oil) this gives off, for the stains a wound leaves on what it's in. 0 if it gives off nothing that stains.
+		/// @return The colour, 0xRRGGBB, or 0.
+		unsigned int GetBleedColor() const;
+
+		/// Gets the colour a particle stains things, if it's a drop of blood or oil.
+		/// @param particle The particle, or its preset.
+		/// @return The colour, 0xRRGGBB, or 0 if it doesn't stain.
+		static unsigned int StainColorOfParticle(const MovableObject* particle);
+
 		/// Gets this AEmitter's emission sound. Ownership is NOT transferred!
 		/// @return The SoundContainer for this AEmitter's emission sound.
 		SoundContainer* GetEmissionSound() const { return m_EmissionSound; }

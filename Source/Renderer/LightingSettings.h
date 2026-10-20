@@ -50,6 +50,7 @@ namespace RTE {
 			DistortionEnabled = preset.Distortion;
 			ScorchMarks = preset.Scorch;
 			Stains = preset.Scorch;
+			UnitBloodStains = preset.Scorch;
 			LivingWorld = preset.Distortion;
 			Embers = preset.Embers;
 			GodRays = preset.GodRays;
@@ -719,6 +720,8 @@ namespace RTE {
 
 		bool ScorchMarks = true; //!< Explosions leave soot on the terrain and glow while it cools.
 		bool Stains = true; //!< Blood, oil and water splashes stain the terrain.
+		bool UnitBloodStains = true; //!< Units get blood on them where they're wounded and where gore nearby splashes them, drying dark, and keep it as corpses. Healed away.
+		float UnitBloodStainStrength = 1.0F; //!< How strongly it shows, 0 to 1.
 		bool StainSurface = true; //!< Stains change how the ground shines: fresh blood a little, drying matte, oil glossy; soot dulls it. Off: stains and soot only tint, as before.
 		float StainShine = 1.0F; //!< How much they change it, 0 to 1.
 		bool DecalsFade = true; //!< Soot and stains weather away over time and wash off in the rain. Off: they stay until the scene is rebuilt, as before.

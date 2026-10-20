@@ -929,6 +929,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("NightAffectsAI", { g_PostProcessMan.GetLightingSettings().NightAffectsAI = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LivingWorld", { g_PostProcessMan.GetLightingSettings().LivingWorld = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("Stains", { g_PostProcessMan.GetLightingSettings().Stains = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitBloodStains", { g_PostProcessMan.GetLightingSettings().UnitBloodStains = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("UnitBloodStainStrength", { g_PostProcessMan.GetLightingSettings().UnitBloodStainStrength = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("WetnessMap", { g_PostProcessMan.GetLightingSettings().WetnessMap = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("WetDrySeconds", { g_PostProcessMan.GetLightingSettings().WetDrySeconds = std::clamp(std::stof(reader.ReadPropValue()), 10.0F, 600.0F); });
 	MatchProperty("Puddles", { g_PostProcessMan.GetLightingSettings().Puddles = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
@@ -1691,6 +1693,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("SmokeShadingStrength", lighting.SmokeShadingStrength);
 	writer.NewPropertyWithValue("ScorchMarks", lighting.ScorchMarks);
 	writer.NewPropertyWithValue("Stains", lighting.Stains);
+	writer.NewPropertyWithValue("UnitBloodStains", lighting.UnitBloodStains);
+	writer.NewPropertyWithValue("UnitBloodStainStrength", lighting.UnitBloodStainStrength);
 	writer.NewPropertyWithValue("StainSurface", lighting.StainSurface);
 	writer.NewPropertyWithValue("StainShine", lighting.StainShine);
 	writer.NewPropertyWithValue("DecalsFade", lighting.DecalsFade);

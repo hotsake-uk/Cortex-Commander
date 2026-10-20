@@ -464,6 +464,7 @@ void SettingsVideoGUI::HandleInputEvents(GUIEvent& guiEvent) {
 				lightingSettings.DistortionEnabled = enabled;
 				lightingSettings.ScorchMarks = enabled;
 				lightingSettings.Stains = enabled;
+				lightingSettings.UnitBloodStains = enabled;
 				lightingSettings.LivingWorld = enabled;
 				lightingSettings.Embers = enabled ? std::max(lightingSettings.Embers, 1.0F) : 0.0F;
 				lightingSettings.EffectsSparks = enabled ? std::max(lightingSettings.EffectsSparks, 1.0F) : 0.0F;

@@ -6,6 +6,9 @@
 #include "SoundContainer.h"
 #include "PostProcessMan.h"
 #include "Texture.h"
+#include "MOPixel.h"
+#include "Material.h"
+#include "EffectsParticles.h"
 
 using namespace RTE;
 
@@ -633,4 +636,22 @@ void AEmitter::Draw(const Camera& camera) const {
 		m_pFlash->Draw(camera);
 		g_RenderMan.SetShadowCasting(true);
 	}
+}
+
+unsigned int AEmitter::GetBleedColor() const {
+	for (Emission* emission: m_EmissionList) {
+		if (unsigned int rgb = StainColorOfParticle(emission->GetEmissionParticlePreset())) {
+			return rgb;
+		}
+	}
+	return 0;
+}
+
+unsigned int AEmitter::StainColorOfParticle(const MovableObject* particle) {
+	const MOPixel* pixel = dynamic_cast<const MOPixel*>(particle);
+	const Material* material = pixel ? pixel->GetMaterial() : nullptr;
+	if (!material || !EffectsParticles::IsStainingMaterial(material)) {
+		return 0;
+	}
+	return EffectsParticles::ColorToRGB(material->UsesOwnColor() ? pixel->GetColor() : material->GetColor());
 }
