@@ -2249,6 +2249,20 @@ bool Actor::BodyFitsShifted(const Vector& shift, MOSRotating* head) const {
 	return !head || !head->GetAtomGroup() || head->GetAtomGroup()->FitsAt(head->GetPos() + shift);
 }
 
+bool Actor::MantlePathFits(const Vector& up, const Vector& end, MOSRotating* head) const {
+	// (The pull was checked at its corners only: straight up, half way up, the end and half way across. A thin ceiling or floor between them
+	// was passed through, the body pulled up through it onto its top, and the curve between the corners cuts inside the ledge's own lip.)
+	const float length = up.GetMagnitude() + (end - up).GetMagnitude();
+	const int samples = std::max(2, static_cast<int>(std::ceil(length / 2.0F)));
+	for (int i = 1; i < samples; ++i) {
+		const float t = static_cast<float>(i) / static_cast<float>(samples);
+		if (!BodyFitsShifted(up * (2.0F * (1.0F - t) * t) + end * (t * t), head)) {
+			return false;
+		}
+	}
+	return true;
+}
+
 bool Actor::SensesPassTerrain(unsigned char id, int x, int y, bool passesRungs) {
 	if (id == MaterialColorKeys::g_MaterialAir || FluidSim::UnitsPassThrough(id)) {
 		return true;
@@ -2339,6 +2353,10 @@ bool Actor::TryStartMantle(MOSRotating* head, bool rising, float bodyWidth) {
 		if (!BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(0.0F, static_cast<float>(-lift / 2)), head) || !BodyFitsShifted(end, head) || !BodyFitsShifted(Vector(dir * over * 0.5F, static_cast<float>(-lift)), head)) {
 			continue;
 		}
+		// And all the way between (the dearest check, last).
+		if (!MantlePathFits(up, end, head)) {
+			continue;
+		}
 		m_Mantling = true;
 		m_MantleDir = dir;
 		m_MantleStart = m_Pos;
@@ -2420,6 +2438,11 @@ bool Actor::TryCatchLedge(MOSRotating* head, float bodyWidth, float wantDir, flo
 	}
 	// In the air (free to drop a little), and room all the way. (The fit checks last, being the dearest.)
 	if (!BodyFitsShifted(Vector(0.0F, 3.0F), head) || !BodyFitsShifted(up, head) || !BodyFitsShifted(Vector(end.m_X * 0.5F, up.m_Y), head) || !BodyFitsShifted(end, head)) {
+		return false;
+	}
+	// And all the way between: a lip found over a ceiling the body is under (the window for it reaches above the head) was caught, and the
+	// body pulled up through the ceiling onto its top.
+	if (!MantlePathFits(up, end, head)) {
 		return false;
 	}
 	// Caught: from the hang, the mantle's pull up and over (UpdateMantle puts the body where it should be each frame, so the fall stops at
