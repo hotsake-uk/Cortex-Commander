@@ -130,6 +130,11 @@ void AHuman::Clear() {
 		limbVel.Reset();
 	}
 	m_RagdollHeadSpin = 0.0F;
+	m_RagdollBodyKick.Reset();
+	m_RagdollSpinKick = 0.0F;
+	for (Vector& limbKick: m_RagdollLimbKick) {
+		limbKick.Reset();
+	}
 	m_EquipHUDTimer.Reset();
 	m_WalkAngle.fill(Matrix());
 	m_WalkPathOffset.Reset();
@@ -2828,6 +2833,16 @@ void AHuman::PreControllerUpdate() {
 		pathOffset = m_WalkPathOffset;
 	}
 
+	// Hits noted for a ragdoll (NoteRagdollHit) count only for the moment after them while this lives: the one that kills it throws it.
+	if (!IsRagdolling() && !m_RagdollBodyKick.IsZero()) {
+		float fade = std::max(0.0F, 1.0F - 6.0F * deltaTime);
+		m_RagdollBodyKick *= fade;
+		m_RagdollSpinKick *= fade;
+		for (Vector& limbKick: m_RagdollLimbKick) {
+			limbKick *= fade;
+		}
+	}
+
 	if (m_Ladder.active) {
 		// On a ladder: hands and feet on the rungs (see UpdateLadderLimbs), not the walk's paths.
 		UpdateLadderLimbs();
@@ -3081,11 +3096,30 @@ void AHuman::PreControllerUpdate() {
 			}
 			m_RagdollHeadSpin = 0.0F;
 		}
+		// The hits on it throw it harder than the game's own physics did (that part it has had already), and swing the limbs they struck.
+		const float hitPush = g_SettingsMan.RagdollHitPush();
+		if (!m_RagdollBodyKick.IsZero() || m_RagdollSpinKick != 0.0F) {
+			m_Vel += m_RagdollBodyKick * ((hitPush - 1.0F) / std::max(GetMass(), 1.0F));
+			m_AngularVel += m_RagdollSpinKick * (hitPush - 1.0F);
+			m_RagdollBodyKick.Reset();
+			m_RagdollSpinKick = 0.0F;
+		}
 		const std::array<std::pair<Attachable*, AtomGroup*>, 4> limbs{{{m_pFGArm, m_pFGHandGroup}, {m_pBGArm, m_pBGHandGroup}, {m_pFGLeg, m_pFGFootGroup}, {m_pBGLeg, m_pBGFootGroup}}};
 		for (int index = 0; index < 4; ++index) {
 			auto [limb, limbGroup] = limbs[index];
 			if (!limb || !limbGroup) {
+				m_RagdollLimbKick[index].Reset();
 				continue;
+			}
+			if (!m_RagdollLimbKick[index].IsZero()) {
+				m_RagdollLimbVel[index] += m_RagdollLimbKick[index] * (hitPush / std::max(limb->GetMass(), 0.5F));
+				m_RagdollLimbKick[index].Reset();
+			}
+			// The limb's sprite sits where its end swings, at once, rather than easing after it.
+			if (index < 2) {
+				static_cast<Arm*>(limb)->SetMoveSpeed(1.0F);
+			} else {
+				static_cast<Leg*>(limb)->SetMoveSpeed(1.0F);
 			}
 			float reach = index < 2 ? static_cast<Arm*>(limb)->GetMaxLength() : static_cast<Leg*>(limb)->GetMaxLength();
 			Vector jointOffset = RotateOffset(limb->GetParentOffset());
@@ -3549,6 +3583,8 @@ void AHuman::Update() {
 		if (std::abs(rotDiff) > 0.1F && std::abs(rotDiff) < c_PI) {
 			m_AngularVel += rotDiff * 3.0F * g_TimerMan.GetDeltaTimeSecs();
 		}
+	} else if (m_Status == DYING && IsRagdolling()) {
+		// A ragdoll falls as it was hit and as its limbs drag it, not with the scripted death throw.
 	} else if (m_Status == DYING) {
 		float rotTarget = m_Vel.m_X - (rot + m_AngularVel) > 0 ? -c_HalfPI : c_HalfPI;
 		float rotDiff = rotTarget - rot;
@@ -3602,6 +3638,35 @@ void AHuman::Update() {
 
 bool AHuman::IsRagdolling() const {
 	return (m_Status == DYING || m_Status == DEAD) && g_SettingsMan.RagdollDeaths();
+}
+
+void AHuman::NoteRagdollHit(const MOSRotating* part, const Vector& impulse, const Vector& offset) {
+	if (!g_SettingsMan.RagdollDeaths() || impulse.IsZero()) {
+		return;
+	}
+	int limbIndex = -1;
+	const MOSRotating* limb = part;
+	if (limb && limb != this && limb->GetParent() && (limb->GetParent() == m_pFGLeg || limb->GetParent() == m_pBGLeg)) {
+		limb = static_cast<const MOSRotating*>(limb->GetParent()); // A foot swings its leg.
+	}
+	if (limb == m_pFGArm) {
+		limbIndex = 0;
+	} else if (limb == m_pBGArm) {
+		limbIndex = 1;
+	} else if (limb == m_pFGLeg) {
+		limbIndex = 2;
+	} else if (limb == m_pBGLeg) {
+		limbIndex = 3;
+	}
+	if (limbIndex >= 0) {
+		m_RagdollLimbKick[limbIndex] += impulse;
+	}
+	// The body is thrown by every hit, a limb's too, and spun by one off its middle (a part's offset taken from the body's centre).
+	m_RagdollBodyKick += impulse;
+	Vector fromCentre = part == this ? offset : g_SceneMan.ShortestDistance(m_Pos, part->GetPos(), g_SceneMan.SceneWrapsX()) * c_MPP + offset;
+	if (m_pAtomGroup && m_pAtomGroup->GetMomentOfInertia() > 0.0F) {
+		m_RagdollSpinKick += fromCentre.GetPerpendicular().Dot(impulse) / m_pAtomGroup->GetMomentOfInertia();
+	}
 }
 
 void AHuman::RestDetection() {
