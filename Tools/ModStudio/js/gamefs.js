@@ -230,7 +230,11 @@ window.MS = window.MS || {};
 		}
 
 		async readFile(modulePath) {
-			const disk = this.toDiskPath(modulePath);
+			return this.readDiskFile(this.toDiskPath(modulePath));
+		}
+
+		// A file by its path from the game folder ("Userdata/BattlePresets/Ketanot Hills.txt"), as readFile.
+		async readDiskFile(disk) {
 			const pending = this.pendingWrites.get(lower(disk));
 			if (pending) {
 				return new Blob([pending.bytes]);
@@ -267,6 +271,10 @@ window.MS = window.MS || {};
 			}
 			const file = await this.readFile(modulePath);
 			return await file.text();
+		}
+
+		async readDiskText(disk) {
+			return await (await this.readDiskFile(disk)).text();
 		}
 
 		async readBytes(modulePath) {

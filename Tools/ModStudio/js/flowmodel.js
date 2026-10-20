@@ -270,7 +270,9 @@ window.MS = window.MS || {};
 		['color', 'choice', 'colour', '147', SHADES],
 		['text', 'text', 'text on it', ''],
 	], STEP, { optional: ['text'], relevant: (p, key) => (key === 'color' || key === 'text' ? p.do !== 'hide' : true) });
-	kind('battle', 'action', 'Start a battle', [['mode', 'mode', 'mode', 2], ['size', 'number', 'units a side', 12], ['byShip', 'bool', 'they arrive by ship', false], ['layout', 'bool', 'lay the map out for me', true], ['seed', 'number', 'layout seed', 1]], STEP);
+	// saved: a battle laid out by hand (the Battle Editor's, or one saved on the map from the game's Battle tab), by its name, in place of the rest
+	kind('battle', 'action', 'Start a battle', [['saved', 'text', 'a battle saved for this map (its name; empty: the settings below)', ''], ['mode', 'mode', 'mode', 2], ['size', 'number', 'units a side', 12], ['byShip', 'bool', 'they arrive by ship', false], ['layout', 'bool', 'lay the map out for me', true], ['seed', 'number', 'layout seed', 1]], STEP,
+		{ optional: ['saved'], relevant: (p, key) => key === 'saved' || !String(p.saved || '').trim() });
 	kind('battleStop', 'action', 'Stop the battle', [], STEP);
 
 	// conditions: not nodes, but the lines inside a branch

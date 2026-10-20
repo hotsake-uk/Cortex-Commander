@@ -279,7 +279,14 @@ window.MS = window.MS || {};
 				const k = luaStr(String(a.area || '') + '|' + luaNum(a.team));
 				return a.do === 'hide' ? ['st.overlays[' + k + '] = nil'] : ['st.overlays[' + k + '] = { area = ' + luaStr(a.area) + ', team = ' + luaNum(a.team) + ', color = ' + luaNum(a.color === undefined ? 147 : a.color) + ', text = ' + luaStr(a.text || '') + ' }'];
 			}
-			case 'battle': return [
+			case 'battle': return String(a.saved || '').trim() ? [
+				'st.battle = { started = false, ended = false, winner = -1, scores = {} }',
+				'if SandboxBattleSetup then',
+				'\tSandboxBattleSetup("", ' + luaStr(String(a.saved).trim()) + ', true)',
+				'else',
+				'\tConsoleMan:PrintString("Studio: this game build cannot start a saved battle (SandboxBattleSetup).")',
+				'end',
+			] : [
 				'st.battle = { started = false, ended = false, winner = -1, scores = {} }',
 				'if SandboxBattleMode then',
 				...(a.layout ? ['\tSandboxBattleLayout(' + luaNum(a.mode) + ', ' + luaNum(a.seed) + ', 1)'] : []),

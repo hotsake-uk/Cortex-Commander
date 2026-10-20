@@ -146,7 +146,8 @@ window.MS = window.MS || {};
 			const readOnly = module && a.lib.modules.find((m) => m.name === module) && a.fs.isOfficial(module);
 			host.replaceChildren(el('div', { className: 'ed ed-split' },
 				el('div', { className: 'ed-head' }, el('h2', { textContent: 'Scenarios · ' + module }), el('span', { className: 'spacer' }),
-					el('button', { className: 'tb primary', textContent: '+ New scenario…', disabled: !!readOnly, title: readOnly ? 'Pick one of your mods in the list above' : 'Start one from nothing, or as a copy of one that works', onclick: () => newScenario(module, s) })),
+					el('button', { className: 'tb primary', textContent: '+ New scenario…', disabled: !!readOnly, title: readOnly ? 'Pick one of your mods in the list above' : 'Start one from nothing, or as a copy of one that works', onclick: () => newScenario(module, s) }),
+					MS.battleEditor && !MS.target.classic() ? el('button', { className: 'tb', textContent: '+ New battle…', disabled: !!readOnly, title: 'One of the game\'s battle modes laid out on a map: spawn zones, flags and objectives placed by hand', onclick: () => MS.battleEditor.newBattle(module) }) : null),
 				all[0] && locked(all[0].doc) ? el('div', { className: 'ed-banner', textContent: module + ' is read only: its scenarios can be looked at. Make a copy in your mod with + New scenario (as a copy of one of these).' }) : null,
 				el('div', { className: 'ed-panes' },
 					el('div', { className: 'ed-list' }, filter, ...(items.length ? items : [el('p', { className: 'ed-empty', textContent: 'No scenarios' + (q ? ' match.' : ' in this mod yet.') })])),
@@ -254,7 +255,9 @@ window.MS = window.MS || {};
 		const classic = MS.target.classic();
 		return el('div', { className: 'sc' },
 			el('div', { className: 'sc-head' }, el('h3', { textContent: p.name }), el('span', { className: 'spacer' }),
-				classic ? null : el('button', { className: 'tb primary', textContent: '⚑ Mission Editor', title: 'Draw the areas on the map and build what happens, side by side', onclick: () => MS.missionEditor.open(p) }), classic ? null : play,
+				classic ? null : MS.battleEditor && MS.battleEditor.isBattle(p)
+					? el('button', { className: 'tb primary', textContent: '⚔ Battle Editor', title: 'Its mode, teams, and the spawn zones, flags and objectives on its map', onclick: () => MS.battleEditor.open(p) })
+					: el('button', { className: 'tb primary', textContent: '⚑ Mission Editor', title: 'Draw the areas on the map and build what happens, side by side', onclick: () => MS.missionEditor.open(p) }), classic ? null : play,
 				scriptPath ? el('button', { className: 'tb', textContent: 'Open the script', onclick: () => MS.ide.openFile(scriptPath, 1) }) : null,
 				el('button', { className: 'tb', textContent: 'Its lines', onclick: () => MS.ide.openFile(p.doc.path, p.node.line) })),
 			ro ? el('div', { className: 'ed-banner', textContent: p.module + ' is read only here. Make a copy in your mod with + New scenario (as a copy of this one) to change it.' }) : null,

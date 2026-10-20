@@ -32,6 +32,7 @@ import './flowview.js';
 import './missionlogic.js';
 import './scenarios.js';
 import './missioneditor.js';
+import './battleeditor.js';
 import './lua-intel.js';
 import './ini-intel.js';
 import './navigation.js';

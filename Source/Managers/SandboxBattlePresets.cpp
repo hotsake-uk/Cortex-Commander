@@ -2,9 +2,13 @@
 // kept in Userdata/BattlePresets/<map>.txt. One of a map's setups can be marked to load with it, so it is there again whenever the map
 // starts: after a reset, or in a fresh game. The setup each battle was last started with is kept too (B-11), in a file of its own under
 // Userdata/BattlePresets/LastSetup, and offered first in the list as "Last setup".
+// Mods can bring battles too, in the same form, in <mod>.rte/Battles/*.txt (Cortex Studio's Battle editor writes them), each setup with a
+// "Scene = " line naming its map. They're listed with the map's own (in the Battle tab and the map browser), to load and play but not to change,
+// and a scenario built on Battle Command (a copy of it under the battle's name) sets up and starts the battle of its name when it starts.
 
 #include "SandboxInternal.h"
 #include "Notices.h"
+#include "DataModule.h"
 
 namespace SandboxDetail {
 	namespace {
@@ -354,6 +358,9 @@ namespace SandboxDetail {
 		BattlePreset ReadPreset(const std::string& name, const std::map<std::string, std::string>& lines) {
 			BattlePreset preset;
 			preset.Name = name;
+			if (auto scene = lines.find("Scene"); scene != lines.end()) {
+				preset.Scene = scene->second;
+			}
 			auto withMap = lines.find("WithMap");
 			preset.WithMap = withMap != lines.end() && withMap->second == "1";
 			auto linked = lines.find("Linked");
@@ -369,10 +376,10 @@ namespace SandboxDetail {
 			return preset;
 		}
 
-		/// Reads the setups saved for a map from its file (or another file in the same form).
-		std::vector<BattlePreset> ReadPresetsFile(const std::string& scene, bool lastSetup = false) {
+		/// Reads the setups in a file in the saved form.
+		std::vector<BattlePreset> ReadPresetsFrom(const std::string& path) {
 			std::vector<BattlePreset> presets;
-			std::ifstream file(lastSetup ? LastSetupFile(scene) : PresetsFile(scene));
+			std::ifstream file(path);
 			std::string line;
 			std::string name;
 			std::map<std::string, std::string> lines;
@@ -397,6 +404,71 @@ namespace SandboxDetail {
 			return presets;
 		}
 
+		/// Reads the setups saved for a map from its file (or its last setup's).
+		std::vector<BattlePreset> ReadPresetsFile(const std::string& scene, bool lastSetup = false) { return ReadPresetsFrom(lastSetup ? LastSetupFile(scene) : PresetsFile(scene)); }
+
+		std::vector<BattlePreset> s_ModBattles; //!< Every loaded mod's battles, for any map.
+		bool s_ModBattlesRead = false;
+		std::vector<BattlePreset> s_ModPresets; //!< The mods' battles for s_PresetsScene.
+
+		/// Every loaded mod's battles (<mod>.rte/Battles/*.txt, its files in name order), read once until ForgetModBattles.
+		const std::vector<BattlePreset>& ModBattles() {
+			if (s_ModBattlesRead) {
+				return s_ModBattles;
+			}
+			s_ModBattlesRead = true;
+			s_ModBattles.clear();
+			for (int i = 0; i < g_PresetMan.GetTotalModuleCount(); ++i) {
+				const DataModule* module = g_PresetMan.GetDataModule(i);
+				if (!module) {
+					continue;
+				}
+				std::error_code error;
+				const std::filesystem::path folder = g_PresetMan.GetFullModulePath(module->GetFileName() + "/Battles");
+				if (!std::filesystem::is_directory(folder, error)) {
+					continue;
+				}
+				std::vector<std::filesystem::path> files;
+				for (const std::filesystem::directory_entry& entry: std::filesystem::directory_iterator(folder, error)) {
+					std::string extension = entry.path().extension().string();
+					std::transform(extension.begin(), extension.end(), extension.begin(), [](unsigned char c) { return static_cast<char>(std::tolower(c)); });
+					if (entry.is_regular_file(error) && extension == ".txt") {
+						files.push_back(entry.path());
+					}
+				}
+				std::sort(files.begin(), files.end());
+				for (const std::filesystem::path& path: files) {
+					for (BattlePreset& preset: ReadPresetsFrom(path.generic_string())) {
+						if (preset.Scene.empty()) {
+							continue;
+						}
+						// (The player's own say which of a map's setups loads with it, and which are linked: not a mod's.)
+						preset.Mod = module->GetFileName();
+						preset.WithMap = false;
+						preset.Linked = false;
+						s_ModBattles.push_back(std::move(preset));
+					}
+				}
+			}
+			return s_ModBattles;
+		}
+
+		std::vector<BattlePreset> ModBattlesFor(const std::string& scene) {
+			std::vector<BattlePreset> found;
+			for (const BattlePreset& preset: ModBattles()) {
+				if (preset.Scene == scene) {
+					found.push_back(preset);
+				}
+			}
+			return found;
+		}
+
+		/// The mod a battle came from, as the lists show it.
+		std::string ModLabel(const BattlePreset& preset) {
+			const DataModule* module = g_PresetMan.GetDataModule(g_PresetMan.GetModuleID(preset.Mod));
+			return module && !module->GetFriendlyName().empty() ? module->GetFriendlyName() : preset.Mod;
+		}
+
 		/// Reads the setups saved for the map now in play, unless they were read for it already.
 		void ReadPresets() {
 			std::string scene = SceneName();
@@ -406,11 +478,13 @@ namespace SandboxDetail {
 			s_PresetsRead = true;
 			s_PresetsScene = scene;
 			s_Presets.clear();
+			s_ModPresets.clear();
 			s_PresetNote.clear();
 			if (scene.empty()) {
 				return;
 			}
 			s_Presets = ReadPresetsFile(scene);
+			s_ModPresets = ModBattlesFor(scene);
 			s_LastSetup = ReadPresetsFile(scene, true);
 			s_LastSetup.resize(std::min<size_t>(s_LastSetup.size(), 1));
 		}
@@ -508,7 +582,20 @@ namespace SandboxDetail {
 	} // namespace
 
 	std::vector<SavedBattle> ReadSavedBattles(const std::string& scene) {
-		return scene.empty() ? std::vector<SavedBattle>() : ReadPresetsFile(scene);
+		if (scene.empty()) {
+			return {};
+		}
+		std::vector<SavedBattle> battles = ReadPresetsFile(scene);
+		for (SavedBattle& battle: ModBattlesFor(scene)) {
+			battles.push_back(std::move(battle));
+		}
+		return battles;
+	}
+
+	void ForgetModBattles() {
+		s_ModBattlesRead = false;
+		s_ModBattles.clear();
+		s_PresetsRead = false;
 	}
 
 	void LoadBattleOnStart(const std::string& name, bool none) {
@@ -566,6 +653,7 @@ namespace SandboxDetail {
 	}
 
 	void BattlePresetsNewGame() {
+		ForgetModBattles();
 		s_PresetPending = true;
 		s_PresetResumed = false;
 		s_Linked = LinkedRun();
@@ -664,20 +752,31 @@ namespace SandboxDetail {
 		// The map browser's pick, if it made one, for this game only.
 		std::string picked = s_PresetOnStart;
 		bool none = s_NoPresetOnStart;
-		const bool start = s_StartOnStart;
+		const bool startPicked = s_StartOnStart;
 		LoadBattleOnStart("", false);
 		StartBattleOnStart(false);
 		if (none || s_PresetResumed) {
 			s_PresetResumed = false;
 			return;
 		}
+		bool start = startPicked;
+		// A scenario built on Battle Command under a mod battle's name (made in Cortex Studio): that battle, started at once.
+		if (const Activity* activity = g_ActivityMan.GetActivity(); picked.empty() && activity && Sandbox::IsBattleCommand() && activity->GetPresetName() != "Battle Command") {
+			const std::string& own = activity->GetPresetName();
+			if (std::any_of(s_ModPresets.begin(), s_ModPresets.end(), [&own](const BattlePreset& preset) { return preset.Name == own; })) {
+				picked = own;
+				start = true;
+			}
+		}
 		auto withMap = std::find_if(s_Presets.begin(), s_Presets.end(), [&picked](const BattlePreset& preset) { return picked.empty() ? preset.WithMap : preset.Name == picked; });
+		// (A mod's battle when picked by its name and none of the player's own has it.)
+		auto fromMod = withMap != s_Presets.end() || picked.empty() ? s_ModPresets.end() : std::find_if(s_ModPresets.begin(), s_ModPresets.end(), [&picked](const BattlePreset& preset) { return preset.Name == picked; });
 		// (The last setup only when picked by its name, and no saved setup has that name.)
-		const bool last = withMap == s_Presets.end() && !s_LastSetup.empty() && picked == c_LastSetupName;
-		if (withMap == s_Presets.end() && !last) {
+		const bool last = withMap == s_Presets.end() && fromMod == s_ModPresets.end() && !s_LastSetup.empty() && picked == c_LastSetupName;
+		if (withMap == s_Presets.end() && fromMod == s_ModPresets.end() && !last) {
 			return;
 		}
-		const BattlePreset& preset = last ? s_LastSetup.front() : *withMap;
+		const BattlePreset& preset = last ? s_LastSetup.front() : withMap != s_Presets.end() ? *withMap : *fromMod;
 		UsePreset(preset);
 		g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + preset.Name + "\" loaded with the map.");
 		Notices::Post("Battle setup \"" + preset.Name + "\" loaded with the map");
@@ -694,7 +793,8 @@ namespace SandboxDetail {
 
 	void BattlePresetsPanel() {
 		ReadPresets();
-		std::string header = "Saved setups for this map" + (s_Presets.empty() ? std::string() : " (" + std::to_string(s_Presets.size()) + ")") + "###battlePresets";
+		const size_t count = s_Presets.size() + s_ModPresets.size();
+		std::string header = "Saved setups for this map" + (count == 0 ? std::string() : " (" + std::to_string(count) + ")") + "###battlePresets";
 		if (!ImGui::CollapsingHeader(header.c_str())) {
 			return;
 		}
@@ -798,6 +898,22 @@ namespace SandboxDetail {
 			ImGui::TextUnformatted(preset.Name.c_str());
 			ImGui::PopID();
 		}
+		// The mods' battles for this map: to load, not to change.
+		for (int i = 0; i < static_cast<int>(s_ModPresets.size()); ++i) {
+			const BattlePreset& preset = s_ModPresets[i];
+			ImGui::PushID(("mod" + std::to_string(i)).c_str());
+			if (ImGui::SmallButton("Load")) {
+				UsePreset(preset);
+				s_PresetNote = "\"" + preset.Name + "\" loaded, from " + ModLabel(preset) + ".";
+				Notices::Post("Battle setup \"" + preset.Name + "\" loaded");
+			}
+			ImGui::SetItemTooltip("Puts this battle on the Battle tab. It comes with a mod: save it under a name of your own to change it.\nA battle that's on keeps going: start it again to play the setup.");
+			ImGui::SameLine();
+			ImGui::TextUnformatted(preset.Name.c_str());
+			ImGui::SameLine();
+			ImGui::TextDisabled("(from %s)", ModLabel(preset).c_str());
+			ImGui::PopID();
+		}
 		const int linked = static_cast<int>(std::count_if(s_Presets.begin(), s_Presets.end(), [](const BattlePreset& preset) { return preset.Linked; }));
 		if (linked > 0) {
 			const std::string label = "Play the linked battles (" + std::to_string(linked) + ")";
@@ -820,3 +936,28 @@ namespace SandboxDetail {
 		ImGui::Separator();
 	}
 } // namespace SandboxDetail
+
+bool Sandbox::LoadBattleSetup(const std::string& file, const std::string& name, bool start) {
+	using namespace SandboxDetail;
+	if (!InGame()) {
+		return false;
+	}
+	// (No file: the setups of the map in play, the player's own and the mods' (ReadSavedBattles).)
+	std::vector<BattlePreset> presets = file.empty() ? ReadSavedBattles(SceneName()) : ReadPresetsFrom(g_PresetMan.GetFullModulePath(file));
+	auto found = std::find_if(presets.begin(), presets.end(), [&name](const BattlePreset& preset) { return name.empty() || preset.Name == name; });
+	if (found == presets.end()) {
+		g_ConsoleMan.PrintString("SANDBOX: No battle setup " + (name.empty() ? std::string() : "\"" + name + "\" ") + (file.empty() ? "saved for " + SceneName() : "in " + file) + ".");
+		return false;
+	}
+	UsePreset(*found);
+	if (!start) {
+		return true;
+	}
+	std::string why;
+	if (!BattleModeReady(why)) {
+		g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + found->Name + "\" can't be started as it is: " + why);
+		return false;
+	}
+	SendBattleMode(BattleModeStart);
+	return true;
+}

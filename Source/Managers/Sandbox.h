@@ -188,6 +188,15 @@ namespace RTE {
 		/// @return Whether it was laid out.
 		static bool LayoutBattleMode(int mode, int seed, int zonesPerTeam);
 
+		/// Lua (SandboxBattleSetup): a battle setup read from a file in the Battle tab's saved form (a mod's Battles/*.txt, as Cortex Studio's
+		/// Battle editor writes it), put on the Battle tab as loading a saved setup does, and started if asked and it is ready to.
+		/// @param file The file, by its module path ("MyMod.rte/Battles/Hilltop.txt"). Empty for the setups saved for the map in play: the
+		/// player's own (from the Battle tab) and those the loaded mods bring for it.
+		/// @param name The setup in it, by its name. Empty for its first.
+		/// @param start Start the battle as well.
+		/// @return Whether the setup was found and put in (and, with start, started).
+		static bool LoadBattleSetup(const std::string& file, const std::string& name, bool start);
+
 		/// The next thing that happened in a battle mode's game that a script may react to (Lua: SandboxBattleEvent), or an empty string when
 		/// nothing new has: "started MODE", "score SIDE TOTAL" (a capture, goal, landing or hill taken), "objective SIDE TAKEN" (assault: an
 		/// objective taken), "ended WINNER" (the side that won, -1 for nobody). Each is given once, oldest first.

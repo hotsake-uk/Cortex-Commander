@@ -1152,8 +1152,11 @@ window.MS = window.MS || {};
 		};
 	}
 
-	// part: 'both' (default), 'map' or 'logic', each its own tab (so each can go in a window of its own)
+	// part: 'both' (default), 'map' or 'logic', each its own tab (so each can go in a window of its own). A battle opens in the Battle Editor.
 	function open(scenario, part) {
+		if (MS.battleEditor && MS.battleEditor.isBattle(scenario)) {
+			return MS.battleEditor.open(scenario);
+		}
 		const key = keyOf(scenario);
 		const p = part === 'map' || part === 'logic' ? part : 'both';
 		const id = p === 'map' ? 'missionMap' : p === 'logic' ? 'missionGraph' : 'mission';
@@ -1161,7 +1164,7 @@ window.MS = window.MS || {};
 		return MS.ide.openForm(id + ':' + key, title, p === 'map' ? '▦' : '⚑', render(key, p), { id, module: key });
 	}
 
-	// The Missions button: your scenarios to pick from, or a new one.
+	// The Scenarios button: your missions and battles to pick from, or a new one.
 	function choose() {
 		const a = app();
 		if (!a.lib) {
@@ -1169,13 +1172,19 @@ window.MS = window.MS || {};
 		}
 		const project = a.project;
 		const mine = a.lib.presets.filter((p) => p.topLevel && p.node.key === 'AddActivity' && (project ? p.module === project : !a.fs.isOfficial(p.module))).sort((x, y) => x.name.localeCompare(y.name));
+		const battle = (p) => !!(MS.battleEditor && MS.battleEditor.isBattle(p));
 		const list = el('div', { className: 'me-pick' }, ...(mine.length ? mine.map((p) => el('button', { className: 'ed-menu-item', onclick: () => {
 			MS.dialogs.close();
 			open(p);
-		} }, el('b', { textContent: p.name }), el('small', { textContent: p.module + ' · ' + (a.lib.resolve(p.node).str('SceneName', '') || 'no scene yet') })))
+		} }, el('b', { textContent: (battle(p) ? '⚔ ' : '⚑ ') + p.name }), el('small', { textContent: (battle(p) ? 'Battle' : 'Mission') + ' · ' + p.module + ' · ' + (a.lib.resolve(p.node).str('SceneName', '') || 'no scene yet') })))
 			: [el('p', { className: 'ed-note', textContent: project ? project + ' has no scenarios yet.' : 'Your mods have no scenarios yet.' })]));
-		MS.dialogs.open('Missions', el('div', {}, el('p', { className: 'ed-note', textContent: 'Pick a mission to edit: its map, where you draw the areas, and its logic.' }), list), [
+		MS.dialogs.open('Scenarios', el('div', {}, el('p', { className: 'ed-note', textContent: 'Pick one to edit. A mission (⚑): its map, where you draw the areas, and its logic. A battle (⚔): one of the game\'s battle modes laid out on its map, with spawn zones, flags and objectives placed by hand.' }), list), [
 			{ text: 'Close' },
+			...(MS.battleEditor ? [{ text: '+ New battle…', action: () => {
+				MS.dialogs.close();
+				MS.battleEditor.newBattle(project);
+				return false;
+			} }] : []),
 			{ text: '+ New mission…', primary: true, action: () => {
 				const module = project || (a.lib.modules.find((m) => !m.official) || {}).name;
 				if (!module) {

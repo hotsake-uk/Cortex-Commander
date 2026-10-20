@@ -5,6 +5,7 @@
 #include "Weather.h"
 #include "TerrainCandle.h"
 #include "ZeroGravity.h"
+#include "GAScripted.h"
 #include <functional>
 #include <iomanip>
 #include <sstream>
@@ -732,14 +733,25 @@ bool Sandbox::WantsWorldPaused() {
 	return IsGodMode() && s_Open && s_PauseInMenus && g_TimerMan.GetSimUpdateCount() > s_GodStartUpdate + 90;
 }
 
+namespace {
+	/// Battle Command, or a scenario built on it (a mod's battle made in Cortex Studio: a copy of it, under its own name, running its script).
+	bool IsBattleCommandActivity(const Activity* activity) {
+		if (activity->GetPresetName() == "Battle Command") {
+			return true;
+		}
+		const GAScripted* scripted = dynamic_cast<const GAScripted*>(activity);
+		return scripted && scripted->GetLuaClassName() == "BattleCommandActivity";
+	}
+} // namespace
+
 bool Sandbox::IsGodMode() {
 	const Activity* activity = g_ActivityMan.GetActivity();
-	return activity && InGame() && (activity->GetPresetName() == "Sandbox" || activity->GetPresetName() == "Battle Command");
+	return activity && InGame() && (activity->GetPresetName() == "Sandbox" || IsBattleCommandActivity(activity));
 }
 
 bool Sandbox::IsBattleCommand() {
 	const Activity* activity = g_ActivityMan.GetActivity();
-	return activity && InGame() && activity->GetPresetName() == "Battle Command";
+	return activity && InGame() && IsBattleCommandActivity(activity);
 }
 
 void Sandbox::ToggleCommanderBar() {

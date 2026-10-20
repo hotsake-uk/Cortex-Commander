@@ -601,6 +601,7 @@ namespace SandboxDetail {
 			}
 			s_Browser.Maps.clear();
 			s_Browser.ToDraw.clear();
+			ForgetModBattles(); // (Battles a mod brings may have been saved from Studio since.)
 			std::list<Entity*> scenes;
 			g_PresetMan.GetAllOfType(scenes, "Scene");
 			for (Entity* entity: scenes) {
@@ -1394,7 +1395,7 @@ namespace SandboxDetail {
 			ImGui::Spacing();
 			ImGui::SeparatorText(map.Battles.empty() ? "No saved battles" : "Saved battles");
 			if (map.Battles.empty()) {
-				ImGui::TextWrapped("Battles saved on this map from the Battle tab (in the Sandbox) or the battle panel (in Battle Command) show here.");
+				ImGui::TextWrapped("Battles saved on this map from the Battle tab (in the Sandbox) or the battle panel (in Battle Command), and those mods bring for it (made in Cortex Studio's Battle editor), show here.");
 			} else {
 				if (ImGui::Selectable("Map only, no battle set up", s_Browser.PickedBattle < 0)) {
 					s_Browser.PickedBattle = -1;
@@ -1402,7 +1403,7 @@ namespace SandboxDetail {
 				for (int i = 0; i < static_cast<int>(map.Battles.size()); ++i) {
 					const SavedBattle& battle = map.Battles[i];
 					ImGui::PushID(i);
-					std::string label = battle.Name + (battle.WithMap ? "  (loads with the map)" : "") + (battle.Linked ? "  (linked)" : "");
+					std::string label = battle.Name + (battle.WithMap ? "  (loads with the map)" : "") + (battle.Linked ? "  (linked)" : "") + (battle.Mod.empty() ? "" : "  (from " + battle.Mod + ")");
 					if (ImGui::Selectable(label.c_str(), s_Browser.PickedBattle == i)) {
 						s_Browser.PickedBattle = i;
 					}
