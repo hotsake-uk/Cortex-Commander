@@ -128,6 +128,14 @@ namespace SandboxDetail {
 			visit("RingRadius", mode.RingRadius);
 			visit("RingPoints", mode.RingPoints);
 			visit("PointsToWin", mode.PointsToWin);
+			visit("TerritoryKeep", mode.TerritoryKeep);
+			visit("TerritoryScale", mode.TerritoryScale);
+			visit("TerritoryPadding", mode.TerritoryPadding);
+			visit("TerritoryAirCounts", mode.TerritoryAirCounts);
+			visit("TerritoryUnderCounts", mode.TerritoryUnderCounts);
+			visit("TerritoryRate", mode.TerritoryRate);
+			visit("TerritoryToWin", mode.TerritoryToWin);
+			visit("TerritorySectors", mode.TerritorySectors);
 			visit("ExtractSide", mode.ExtractSide);
 			visit("ExtractToWin", mode.ExtractToWin);
 			visit("ExtractSeconds", mode.ExtractSeconds);

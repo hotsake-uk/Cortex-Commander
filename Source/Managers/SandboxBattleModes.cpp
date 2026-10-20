@@ -3989,6 +3989,499 @@ namespace SandboxDetail {
 			return std::to_string(s_ModeRun.Score[side]) + " points" + holds + ", " + std::to_string(Sandbox::CountUnits(side)) + " in";
 		}
 
+		// ---- Territory control ----
+		// The whole map's ground is the zone: the top of the terrain all the way across (or, with territory zones drawn, the ground's top in them,
+		// traced down where they have no floor, as a hill's glowing line is), cut into cells a few pixels across. Each unit on it claims the
+		// cells under it, as wide as it is; a cell one team alone claims is that team's (with "taken till an enemy takes it", it stays so after
+		// the unit moves on), one claimed by more than one team counts for nobody, and every team scores its share of the line each second.
+
+		constexpr float c_TerritoryCell = 4.0F; //!< Pixels across each cell of the line.
+		constexpr float c_TerritorySpacing = 60.0F; //!< How far apart a team's units are posted along the line, so their claims don't overlap.
+		constexpr float c_TerritoryPost = 30.0F; //!< How far round its post on the line a unit stands.
+
+		/// The line of ground the teams fight over: each cell's ground top, or -1 for a cell not in the territory.
+		struct TerritoryLine {
+			std::vector<std::vector<Vector>> Zones; //!< The territory zones it was traced for (none: the whole map).
+			long long At = -1; //!< The sim update it was traced on.
+			std::vector<float> Ground;
+			int Cells = 0; //!< How many cells are in the territory.
+		};
+
+		TerritoryLine s_TerritoryLine;
+		std::vector<int> s_TerritoryOwner; //!< Each cell's team, -1 nobody.
+		std::vector<bool> s_TerritoryContested; //!< Each cell claimed by more than one team at the last count.
+		std::array<float, c_Sides> s_TerritoryScore{}; //!< Each team's points, to the fraction (the score shows the whole points).
+		std::array<float, c_Sides> s_TerritoryShare{}; //!< Each team's share of the line now, 0 to 1.
+		int s_TerritoryLeader = -1; //!< The team holding the most of it, -1 none (or tied).
+		long long s_TerritorySpreadAt = -1; //!< The sim update the teams' units were last spread along the line.
+
+		/// The line for a game's settings, traced again every two seconds or so (it changes as the ground is dug and blown away), or afresh when
+		/// its zones change or a new game starts.
+		const TerritoryLine& TraceTerritory(const BattleModeSettings& settings) {
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			TerritoryLine& line = s_TerritoryLine;
+			const int columns = std::max(static_cast<int>(std::ceil(static_cast<float>(g_SceneMan.GetSceneWidth()) / c_TerritoryCell)), 1);
+			if (line.At >= 0 && now >= line.At && now - line.At < static_cast<long long>(2.0F * UpdatesPerSecond()) && line.Zones == settings.Zones && static_cast<int>(line.Ground.size()) == columns) {
+				return line;
+			}
+			line.At = now;
+			line.Zones = settings.Zones;
+			line.Ground.assign(columns, -1.0F);
+			if (settings.Zones.empty()) {
+				// The whole map: in each column, the first solid point from the top.
+				const float bottom = static_cast<float>(g_SceneMan.GetSceneHeight());
+				for (int cell = 0; cell < columns; ++cell) {
+					const float x = (static_cast<float>(cell) + 0.5F) * c_TerritoryCell;
+					for (float y = 0.0F; y < bottom; y += 2.0F) {
+						if (SolidAt(x, y)) {
+							line.Ground[cell] = y;
+							break;
+						}
+					}
+				}
+			} else {
+				// The ground's top in each zone drawn, as a hill's line is found (where zones overlap, the higher ground).
+				for (const std::vector<Vector>& zone: settings.Zones) {
+					if (zone.size() < 3) {
+						continue;
+					}
+					for (const std::vector<Vector>& run: TerrainOf(zone).Crest) {
+						for (Vector point: run) {
+							g_SceneMan.WrapPosition(point);
+							const int cell = std::clamp(static_cast<int>(point.m_X / c_TerritoryCell), 0, columns - 1);
+							if (line.Ground[cell] < 0.0F || point.m_Y < line.Ground[cell]) {
+								line.Ground[cell] = point.m_Y;
+							}
+						}
+					}
+				}
+			}
+			line.Cells = static_cast<int>(std::count_if(line.Ground.begin(), line.Ground.end(), [](float ground) { return ground >= 0.0F; }));
+			return line;
+		}
+
+		/// Where on the line a cell is: its middle, on the ground's top.
+		Vector TerritoryCellAt(const TerritoryLine& line, int cell) { return Vector((static_cast<float>(cell) + 0.5F) * c_TerritoryCell, line.Ground[cell]); }
+
+		/// The cell under a place across the map (wrapped onto it, or clamped to it on a map that doesn't wrap).
+		int TerritoryCellOf(const TerritoryLine& line, float x) {
+			const int columns = static_cast<int>(line.Ground.size());
+			int cell = static_cast<int>(std::floor(x / c_TerritoryCell));
+			return g_SceneMan.SceneWrapsX() ? ((cell % columns) + columns) % columns : std::clamp(cell, 0, columns - 1);
+		}
+
+		/// How far either side of its middle a unit claims the line: half as wide as it is (its own picture, so a soldier claims a soldier's width
+		/// and a tank a tank's), scaled as set, and the padding.
+		float TerritoryClaimHalf(const BattleModeSettings& settings, const Actor* unit) {
+			const float wide = static_cast<float>(std::max(unit->GetSpriteWidth(), 8));
+			return wide * 0.5F * static_cast<float>(std::clamp(settings.TerritoryScale, 10, 400)) / 100.0F + static_cast<float>(std::max(settings.TerritoryPadding, 0));
+		}
+
+		/// Whether a unit counts on a cell of the line whose ground's top is at ground: on it, or not much further above it than it is tall. One
+		/// flying high over it, or under its ground, only if those are set to count.
+		bool TerritoryOnLine(const BattleModeSettings& settings, const Actor* unit, float ground) {
+			const float above = ground - unit->GetPos().m_Y; // How far its middle is over the ground's top.
+			if (above > std::max(unit->GetHeight(), 24.0F) + 30.0F) {
+				return settings.TerritoryAirCounts;
+			}
+			if (above < -30.0F) {
+				return settings.TerritoryUnderCounts;
+			}
+			return true;
+		}
+
+		/// Who holds each cell now, from the cells each team's units claim, and each team's share of the line.
+		void CountTerritory(const BattleModeSettings& settings, const TerritoryLine& line) {
+			const int columns = static_cast<int>(line.Ground.size());
+			s_TerritoryOwner.resize(columns, -1);
+			s_TerritoryContested.assign(columns, false);
+			std::vector<unsigned> claims(columns, 0u);
+			const bool wraps = g_SceneMan.SceneWrapsX();
+			for (const Actor* unit: Fighters()) {
+				const int team = unit->GetTeam();
+				if (team < 0 || team >= c_Sides) {
+					continue;
+				}
+				const float half = TerritoryClaimHalf(settings, unit);
+				const float x = unit->GetPos().m_X;
+				const int from = static_cast<int>(std::floor((x - half) / c_TerritoryCell));
+				const int to = static_cast<int>(std::floor((x + half) / c_TerritoryCell));
+				for (int i = from; i <= to; ++i) {
+					if (!wraps && (i < 0 || i >= columns)) {
+						continue;
+					}
+					const int cell = wraps ? ((i % columns) + columns) % columns : i;
+					if (line.Ground[cell] >= 0.0F && TerritoryOnLine(settings, unit, line.Ground[cell])) {
+						claims[cell] |= Bit(team);
+					}
+				}
+			}
+			std::array<int, c_Sides> held{};
+			for (int cell = 0; cell < columns; ++cell) {
+				const unsigned claim = claims[cell];
+				int& owner = s_TerritoryOwner[cell];
+				if (line.Ground[cell] < 0.0F) {
+					owner = -1;
+					continue;
+				}
+				if (claim != 0 && (claim & (claim - 1)) == 0) {
+					// (One team alone: its.)
+					for (int side = 0; side < c_Sides; ++side) {
+						if (claim == Bit(side)) {
+							owner = side;
+						}
+					}
+				} else if (claim != 0) {
+					s_TerritoryContested[cell] = true;
+					if (!settings.TerritoryKeep) {
+						owner = -1;
+					}
+				} else if (!settings.TerritoryKeep) {
+					owner = -1;
+				}
+				if (owner >= 0 && !s_TerritoryContested[cell]) {
+					++held[owner];
+				}
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				s_TerritoryShare[side] = line.Cells > 0 && TeamIn(settings, side) ? static_cast<float>(held[side]) / static_cast<float>(line.Cells) : 0.0F;
+			}
+		}
+
+		/// The x of each post on the line a team's units hold (the mode's, not those a player has given an order of their own).
+		std::vector<float> TerritoryPosts(int side) {
+			std::vector<float> posts;
+			for (const auto& [id, defender]: s_BattleDefenders) {
+				if (!defender.Commanded && defender.Team == side) {
+					posts.push_back(defender.Center.m_X);
+				}
+			}
+			return posts;
+		}
+
+		/// How far apart two places are across the map (the short way round, on a map that wraps).
+		float TerritoryApart(float a, float b) {
+			const float apart = std::abs(a - b);
+			const float width = static_cast<float>(g_SceneMan.GetSceneWidth());
+			return g_SceneMan.SceneWrapsX() ? std::min(apart, width - apart) : apart;
+		}
+
+		/// A post on the line for one of a team's units, from where it is: the nearest ground its team doesn't hold (an enemy's sooner than
+		/// nobody's), away from the posts its team-mates have (taken). False with nowhere left.
+		bool TerritorySpot(const BattleModeSettings& settings, int side, const Vector& from, const std::vector<float>& taken, Vector& spot) {
+			const TerritoryLine& line = TraceTerritory(settings);
+			float best = 0.0F;
+			int bestCell = -1;
+			for (int cell = 0; cell < static_cast<int>(line.Ground.size()); cell += 4) {
+				if (line.Ground[cell] < 0.0F) {
+					continue;
+				}
+				const Vector at = TerritoryCellAt(line, cell);
+				if (std::any_of(taken.begin(), taken.end(), [&at](float other) { return TerritoryApart(at.m_X, other) < c_TerritorySpacing; })) {
+					continue;
+				}
+				float score = DistanceBetween(from, at);
+				const int owner = cell < static_cast<int>(s_TerritoryOwner.size()) ? s_TerritoryOwner[cell] : -1;
+				if (owner == side) {
+					score += 3000.0F;
+				} else if (owner >= 0) {
+					score -= 300.0F;
+				}
+				if (bestCell < 0 || score < best) {
+					best = score;
+					bestCell = cell;
+				}
+			}
+			if (bestCell < 0) {
+				return false;
+			}
+			spot = TerritoryCellAt(line, bestCell) - Vector(0.0F, 20.0F);
+			return true;
+		}
+
+		bool TerritoryHeldAround(const TerritoryLine& line, float x, int side) {
+			const int from = static_cast<int>(std::floor((x - c_TerritorySpacing * 0.5F) / c_TerritoryCell));
+			const int to = static_cast<int>(std::floor((x + c_TerritorySpacing * 0.5F) / c_TerritoryCell));
+			for (int i = from; i <= to; ++i) {
+				const int cell = TerritoryCellOf(line, static_cast<float>(i) * c_TerritoryCell);
+				if (line.Ground[cell] >= 0.0F && (cell >= static_cast<int>(s_TerritoryOwner.size()) || s_TerritoryOwner[cell] != side)) {
+					return false;
+				}
+			}
+			return true;
+		}
+
+		/// Every couple of seconds: each team's units (not those of a team you command) spread out along the line. A unit whose post is off the
+		/// line now (dug away), or crowded by a team-mate's, gets a new one; with taken ground kept, so does one whose stretch its team holds
+		/// already, so the team sweeps on over more of the line.
+		void SpreadTerritoryTeams() {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const TerritoryLine& line = TraceTerritory(settings);
+			if (line.Cells == 0) {
+				return;
+			}
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || BattlePlayerCommands(side)) {
+					continue;
+				}
+				std::vector<std::pair<long, BattleDefender*>> units;
+				for (auto& [id, defender]: s_BattleDefenders) {
+					if (!defender.Commanded && defender.Team == side) {
+						units.emplace_back(id, &defender);
+					}
+				}
+				std::sort(units.begin(), units.end(), [](const auto& a, const auto& b) { return a.first < b.first; });
+				std::vector<float> kept;
+				std::vector<BattleDefender*> moving;
+				for (auto& [id, defender]: units) {
+					const float x = defender->Center.m_X;
+					const int cell = TerritoryCellOf(line, x);
+					bool move = line.Ground[cell] < 0.0F || std::any_of(kept.begin(), kept.end(), [x](float other) { return TerritoryApart(x, other) < c_TerritorySpacing; });
+					move = move || (settings.TerritoryKeep && TerritoryHeldAround(line, x, side));
+					if (move) {
+						moving.push_back(defender);
+					} else {
+						kept.push_back(x);
+					}
+				}
+				for (BattleDefender* defender: moving) {
+					Vector spot;
+					if (TerritorySpot(settings, side, defender->Center, kept, spot)) {
+						kept.push_back(spot.m_X);
+						MoveDefender(*defender, spot, true, c_TerritoryPost);
+					}
+				}
+			}
+		}
+
+		void TerritoryStart() {
+			s_TerritoryLine = TerritoryLine();
+			s_TerritoryOwner.clear();
+			s_TerritoryContested.clear();
+			s_TerritoryScore.fill(0.0F);
+			s_TerritoryShare.fill(0.0F);
+			s_TerritoryLeader = -1;
+			s_TerritorySpreadAt = -1;
+		}
+
+		/// New units each get a post of their own on the line, on ground their team doesn't hold, away from their team-mates'.
+		void TerritoryUnitsMade(int side, const std::vector<Actor*>& wave) {
+			std::vector<float> taken = TerritoryPosts(side);
+			for (Actor* unit: wave) {
+				Vector spot;
+				if (!TerritorySpot(s_ModeRun.Settings, side, unit->GetPos(), taken, spot)) {
+					spot = unit->GetPos();
+				}
+				taken.push_back(spot.m_X);
+				unit->SetOrderAttack(false);
+				MakeDefender(unit, PostAt(spot, c_TerritoryPost, c_TerritoryPost + 250.0F, 0));
+			}
+		}
+
+		/// Twice a second or so (every six updates): who holds the line, and the points each team scores for its share of it.
+		void TerritoryUpdate(bool aiPaused) {
+			const BattleModeSettings& settings = s_ModeRun.Settings;
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			if (aiPaused || s_ModeRun.Over || now % 6 != 0) {
+				return;
+			}
+			CountTerritory(settings, TraceTerritory(settings));
+			const float seconds = 6.0F / UpdatesPerSecond();
+			int leader = -1;
+			bool tied = false;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side)) {
+					continue;
+				}
+				s_TerritoryScore[side] += s_TerritoryShare[side] * static_cast<float>(std::max(settings.TerritoryRate, 0)) * seconds;
+				s_ModeRun.Score[side] = static_cast<int>(s_TerritoryScore[side]);
+				if (s_TerritoryShare[side] > 0.0F && (leader < 0 || s_TerritoryShare[side] > s_TerritoryShare[leader])) {
+					leader = side;
+					tied = false;
+				} else if (leader >= 0 && s_TerritoryShare[side] == s_TerritoryShare[leader]) {
+					tied = true;
+				}
+			}
+			leader = tied ? -1 : leader;
+			if (leader != s_TerritoryLeader) {
+				if (leader >= 0) {
+					Say(SideName(leader) + " holds the most ground");
+				}
+				s_TerritoryLeader = leader;
+			}
+			if (s_TerritorySpreadAt < 0 || now - s_TerritorySpreadAt >= static_cast<long long>(2.0F * UpdatesPerSecond())) {
+				s_TerritorySpreadAt = now;
+				SpreadTerritoryTeams();
+			}
+			if (settings.TerritoryToWin > 0) {
+				int winner = -1;
+				for (int side = 0; side < c_Sides; ++side) {
+					if (TeamIn(settings, side) && s_TerritoryScore[side] >= static_cast<float>(settings.TerritoryToWin) && (winner < 0 || s_TerritoryScore[side] > s_TerritoryScore[winner])) {
+						winner = side;
+					}
+				}
+				if (winner >= 0) {
+					EndGame(winner, SideName(winner) + " controls the territory!");
+				}
+			}
+		}
+
+		void TerritoryPanel(BattleModeSettings& setup, bool& changed) {
+			ImGui::PushID("territory");
+			ImGui::TextDisabled("%s", setup.Zones.empty() ? "The line: the ground's top all the way across the map." : "The line: the ground's top in the territory zones drawn.");
+			ImGui::SetItemTooltip("With no territory zones drawn (below), the whole map's ground is fought over. Draw some to make only the ground in them count: a long thin one across the map is a line, and where a zone has no floor the ground straight below it counts, as with a hill.");
+			int keep = setup.TerritoryKeep ? 1 : 0;
+			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 14.0F);
+			if (ImGui::Combo("Ground counts", &keep, "While a unit stands on it\0Taken till an enemy takes it\0")) {
+				setup.TerritoryKeep = keep == 1;
+				changed = true;
+			}
+			ImGui::SetItemTooltip("While stood on: ground counts for a team only while one of its units is on it. Taken: a unit walking over ground takes it for its team, and it stays theirs till an enemy unit walks over it.");
+			changed |= ImGui::SliderInt("Claim width", &setup.TerritoryScale, 25, 300, "%d%% of the unit's width");
+			ImGui::SetItemTooltip("How wide a stretch of the line each unit claims, by its own size: a soldier a soldier's width, a tank a tank's.");
+			changed |= ImGui::SliderInt("Claim padding", &setup.TerritoryPadding, 0, 60, "%d px each side");
+			ImGui::SetItemTooltip("A little more each side of a unit's width that it claims too.");
+			changed |= ToolUI::Checkbox("Flying units count", &setup.TerritoryAirCounts);
+			ImGui::SetItemTooltip("Units high over the line (on a jetpack, or flying craft) claim the ground under them. Off: only units on the ground, or a little over it, do.");
+			changed |= ToolUI::Checkbox("Units underground count", &setup.TerritoryUnderCounts);
+			ImGui::SetItemTooltip("Units under the line's ground (in a tunnel or a bunker) claim the ground over them. Off: they don't.");
+			changed |= ImGui::SliderInt("Points a second", &setup.TerritoryRate, 1, 100, "%d for all of it");
+			ImGui::SetItemTooltip("Every second, each team scores its share of this: holding 40% of the line at 10, it scores 4 a second. Ground claimed by more than one team counts for nobody.");
+			changed |= ImGui::SliderInt("Points to win", &setup.TerritoryToWin, 0, 20000, setup.TerritoryToWin > 0 ? "%d" : "play on");
+			ImGui::SetItemTooltip("The first team to this many points wins. 0: it goes on till you stop it.");
+			changed |= ImGui::SliderInt("Sectors", &setup.TerritorySectors, 1, 16, "%d");
+			ImGui::SetItemTooltip("Stretches the line is cut into, each a battle objective you can order your units onto (Battle objective sends them to the nearest their team doesn't hold).");
+			ImGui::PopID();
+		}
+
+		/// The colour a cell of the line shows in: its holder's, orange while contested, else white.
+		ImU32 TerritoryColor(int owner, bool contested) { return contested ? IM_COL32(255, 150, 40, 255) : (owner >= 0 ? c_SideColors[owner] : IM_COL32(230, 230, 230, 255)); }
+
+		void TerritoryDraw(bool running) {
+			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
+			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
+			DrawBases(drawList, settings);
+			const TerritoryLine& line = TraceTerritory(settings);
+			const int columns = static_cast<int>(line.Ground.size());
+			const bool counted = running && static_cast<int>(s_TerritoryOwner.size()) == columns && static_cast<int>(s_TerritoryContested.size()) == columns;
+			// The line glowing along the ground, a run at a time in its holder's colour (faint where nobody holds it).
+			const float pulse = running ? 0.8F + 0.2F * Pulse(3.0F) : 0.7F;
+			std::vector<ImVec2> points;
+			ImU32 runColor = 0;
+			bool runHeld = false;
+			int last = -10;
+			float lastGround = 0.0F;
+			auto flush = [&]() {
+				if (points.size() >= 2) {
+					GlowPolyline(drawList, points, runColor, false, runHeld ? pulse : pulse * 0.45F);
+				}
+				points.clear();
+			};
+			for (int cell = 0; cell < columns; ++cell) {
+				const float ground = line.Ground[cell];
+				if (ground < 0.0F) {
+					flush();
+					continue;
+				}
+				const int owner = counted ? s_TerritoryOwner[cell] : -1;
+				const bool contested = counted && s_TerritoryContested[cell];
+				const ImU32 color = TerritoryColor(owner, contested);
+				const ImVec2 at = ToScreen(TerritoryCellAt(line, cell));
+				const bool joins = cell == last + 1 && std::abs(ground - lastGround) <= 12.0F;
+				if (!points.empty() && (!joins || color != runColor)) {
+					if (joins) {
+						// (Run on to this cell so the line has no gap where the colour changes.)
+						points.push_back(at);
+					}
+					flush();
+				}
+				runColor = color;
+				runHeld = owner >= 0 || contested;
+				points.push_back(at);
+				last = cell;
+				lastGround = ground;
+			}
+			flush();
+			if (!running) {
+				return;
+			}
+			std::string score = Scores("TERRITORY CONTROL", "");
+			if (settings.TerritoryToWin > 0) {
+				score += "    (first to " + std::to_string(settings.TerritoryToWin) + ")";
+			}
+			DrawScore(score);
+			// Each team's share of the line as a bar over the score, the rest (nobody's) grey.
+			ImDrawList* top = ImGui::GetForegroundDrawList();
+			const GameViewRect view = g_DebugMan.GetUncoveredView();
+			const float wide = std::min(view.w * 0.5F, 480.0F);
+			const float high = ImGui::GetFontSize() + 4.0F;
+			const float left = view.x + (view.w - wide) * 0.5F;
+			const float y = view.y + 64.0F - high - 10.0F;
+			top->AddRectFilled(ImVec2(left - 2.0F, y - 2.0F), ImVec2(left + wide + 2.0F, y + high + 2.0F), IM_COL32(0, 0, 0, 160), 3.0F);
+			top->AddRectFilled(ImVec2(left, y), ImVec2(left + wide, y + high), IM_COL32(90, 90, 90, 200));
+			float x = left;
+			for (int side = 0; side < c_Sides; ++side) {
+				if (!TeamIn(settings, side) || s_TerritoryShare[side] <= 0.0F) {
+					continue;
+				}
+				const float part = wide * std::clamp(s_TerritoryShare[side], 0.0F, 1.0F);
+				top->AddRectFilled(ImVec2(x, y), ImVec2(x + part, y + high), (c_SideColors[side] & 0x00FFFFFF) | (230u << 24));
+				const std::string percent = std::to_string(static_cast<int>(std::lround(s_TerritoryShare[side] * 100.0F))) + "%";
+				if (const ImVec2 size = ImGui::CalcTextSize(percent.c_str()); size.x + 4.0F < part) {
+					top->AddText(ImVec2(x + (part - size.x) * 0.5F, y + 2.0F), IM_COL32(255, 255, 255, 255), percent.c_str());
+				}
+				x += part;
+			}
+		}
+
+		/// The line cut into sectors, each an objective (not lit up: the line itself shows who holds what): held by the team with more than half
+		/// of its ground, for the rest to take.
+		void TerritoryObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out) {
+			const TerritoryLine& line = TraceTerritory(settings);
+			const int columns = static_cast<int>(line.Ground.size());
+			const int sectors = std::clamp(settings.TerritorySectors, 1, 32);
+			const bool counted = running && static_cast<int>(s_TerritoryOwner.size()) == columns;
+			const unsigned teams = TeamsIn(settings);
+			for (int sector = 0; sector < sectors; ++sector) {
+				const int from = columns * sector / sectors;
+				const int to = columns * (sector + 1) / sectors;
+				std::array<int, c_Sides> held{};
+				int cells = 0;
+				int middle = -1;
+				for (int cell = from; cell < to; ++cell) {
+					if (line.Ground[cell] < 0.0F) {
+						continue;
+					}
+					++cells;
+					if (middle < 0 || std::abs(cell - (from + to) / 2) < std::abs(middle - (from + to) / 2)) {
+						middle = cell;
+					}
+					if (counted && s_TerritoryOwner[cell] >= 0) {
+						++held[s_TerritoryOwner[cell]];
+					}
+				}
+				if (cells == 0) {
+					continue;
+				}
+				int holder = -1;
+				for (int side = 0; side < c_Sides; ++side) {
+					if (held[side] * 2 > cells) {
+						holder = side;
+					}
+				}
+				BattleObjective objective{.Name = "Sector " + std::to_string(sector + 1), .Pos = TerritoryCellAt(line, middle) - Vector(0.0F, 20.0F),
+				                          .Radius = static_cast<float>(to - from) * c_TerritoryCell * 0.5F, .Color = TerritoryColor(holder, false)};
+				objective.Defenders = Bit(holder);
+				objective.Attackers = teams & ~objective.Defenders;
+				objective.Shown = false;
+				out.push_back(objective);
+			}
+		}
+
+		std::string TerritoryStatus(int side) {
+			return std::to_string(static_cast<int>(std::lround(s_TerritoryShare[side] * 100.0F))) + "% of the ground, " + std::to_string(s_ModeRun.Score[side]) + " points, " + std::to_string(Sandbox::CountUnits(side)) + " in";
+		}
+
 		// ---- Team commanders ----
 
 		/// What a team's AI commander is doing (UpdateCommanders). On assault and king of the hill it splits its units between the objective in
@@ -4766,7 +5259,7 @@ namespace SandboxDetail {
 			ImGui::SetNextItemWidth(ImGui::GetFontSize() * 12.0F);
 			changed |= ImGui::Combo("Difficulty", &setup.CommanderLevel, "Easy\0Normal\0Hard\0");
 			ImGui::SetItemTooltip("How well the AI commanders play. Easy looks at the battle every 3 s and sends few units when something calls for it; normal every second; hard twice a second, sending the most, and shifting more of its team onto guard while ahead or onto the attack while behind. Point values don't change.");
-			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill && setup.Mode != BattleMode::CaptureTheShip && setup.Mode != BattleMode::ThePoint) {
+			if (setup.Mode != BattleMode::Assault && setup.Mode != BattleMode::KingOfTheHill && setup.Mode != BattleMode::CaptureTheShip && setup.Mode != BattleMode::ThePoint && setup.Mode != BattleMode::TerritoryControl) {
 				changed |= ImGui::Checkbox("Squads", &setup.CommanderSquads);
 				ImGui::SetItemTooltip("Teams with a commander, on normal and hard: its attackers (not its guards) go in squads, which follow a leader, keep together and fire where it fires. Squads grow with the team: two of two in four, two of three in six, two of four in eight, up to six in a squad. On hard a leader waits for those who fall behind. On easy they go one by one.");
 			}
@@ -5309,6 +5802,19 @@ namespace SandboxDetail {
 		     .Draw = PointDraw,
 		     .Status = PointStatus,
 		     .Objectives = PointObjectives},
+		    {.Name = "Territory Control",
+		     .Blurb = "The whole map's ground is the zone: the top of the terrain all the way across (or the ground in the territory zones drawn). "
+		              "Each unit on it claims the ground under it, as wide as it is, and every team scores its share of the line each second, so "
+		              "spread out and hold as much as you can. Ground claimed by more than one team counts for nobody. Ground counts while a unit "
+		              "stands on it, or (as set) stays taken till an enemy walks over it. The first to the points set wins.",
+		     .ZoneName = "territory zone",
+		     .Start = TerritoryStart,
+		     .UnitsMade = TerritoryUnitsMade,
+		     .Update = TerritoryUpdate,
+		     .Panel = TerritoryPanel,
+		     .Draw = TerritoryDraw,
+		     .Status = TerritoryStatus,
+		     .Objectives = TerritoryObjectives},
 		};
 		static_assert(std::size(c_Modes) == static_cast<size_t>(BattleMode::Count), "c_Modes must describe each BattleMode.");
 

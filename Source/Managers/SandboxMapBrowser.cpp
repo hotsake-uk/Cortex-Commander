@@ -31,7 +31,7 @@ namespace SandboxDetail {
 		constexpr int c_PictureVersion = 1; //!< Kept in the cached pictures' names: raise it when the way they're drawn changes, so they're drawn again.
 		constexpr const char* c_PictureFolder = "Userdata/MapPreviews/";
 
-		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction", "The point"};
+		constexpr const char* c_ModeNames[] = {"Custom", "Capture the flag", "King of the hill", "Assault", "Last team standing", "VIP hunt", "One flag", "Capture the ship", "Wave defence", "Escort", "Extraction", "The point", "Territory Control"};
 		static_assert(std::size(c_ModeNames) == static_cast<size_t>(BattleMode::Count), "c_ModeNames must name each BattleMode.");
 
 		/// Where a map comes from.
@@ -778,6 +778,7 @@ namespace SandboxDetail {
 				case BattleMode::WaveDefence:
 				case BattleMode::Escort:
 				case BattleMode::Extraction:
+				case BattleMode::TerritoryControl:
 					return true;
 				case BattleMode::OneFlag:
 					return mode.FlagByZones;
@@ -801,6 +802,8 @@ namespace SandboxDetail {
 					return number == 1 ? "Destination" : "Zone " + std::to_string(number);
 				case BattleMode::Extraction:
 					return number == 1 ? "Extraction" : "Zone " + std::to_string(number);
+				case BattleMode::TerritoryControl:
+					return "Territory " + std::to_string(number);
 				default:
 					return "Zone " + std::to_string(number);
 			}

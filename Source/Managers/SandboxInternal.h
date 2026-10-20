@@ -754,6 +754,7 @@ namespace SandboxDetail {
 		Escort,
 		Extraction,
 		ThePoint,
+		TerritoryControl,
 		Count
 	};
 
@@ -887,6 +888,15 @@ namespace SandboxDetail {
 		std::array<int, c_MaxPointRings + 1> RingPoints = {5, 3, 1, 1, 1}; //!< The point: points a second for holding each band alone. Each is held,
 		                                                                   //!< scored and ordered onto (a battle objective) on its own.
 		int PointsToWin = 300; //!< The point: points that win. 0 plays on for good.
+		bool TerritoryKeep = false; //!< Territory control: ground a team's unit claims stays its team's after it moves on, till an enemy claims it.
+		                            //!< Off: ground counts for a team only while one of its units is on it.
+		int TerritoryScale = 100; //!< Territory control: how wide each unit claims the line, in percent of its own width (a soldier a soldier's, a tank a tank's).
+		int TerritoryPadding = 6; //!< Territory control: and pixels more each side of it.
+		bool TerritoryAirCounts = false; //!< Territory control: units flying high over the line (on a jetpack, a flying craft) claim the ground under them.
+		bool TerritoryUnderCounts = false; //!< Territory control: units under the line's ground (in a tunnel, a bunker) claim the ground over them.
+		int TerritoryRate = 10; //!< Territory control: points a second a team scores holding all of the line; each scores its share of it.
+		int TerritoryToWin = 1000; //!< Territory control: points that win. 0 plays on for good.
+		int TerritorySectors = 8; //!< Territory control: stretches the line is cut into, each an objective units can be ordered onto.
 		std::array<bool, c_Sides> Commander = {true, true, true, true}; //!< Every mode but custom: each team an AI commander leads (UpdateCommanders),
 		                                                               //!< as a player would: splitting its units between objectives, sending some
 		                                                               //!< after a flag or to a VIP, picking who to go for. Not a team you command.
