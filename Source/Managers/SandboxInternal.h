@@ -915,6 +915,15 @@ namespace SandboxDetail {
 		int PickupPlaces = PickupAnywhere; //!< Where they come in (PickupPlace bits).
 		std::vector<Vector> PickupSpots; //!< The places placed (up to c_MaxPickupSpots).
 		std::vector<std::vector<Vector>> PickupZones; //!< The pickup zones drawn (up to c_MaxPickupZones).
+		// How the battle shows on the map, its own (saved with it, so a made battle can show its objectives its way): -1 each the player's
+		// own setting (ShowBattleObjectives and the rest), else 0 off or 1 on; ObjectiveLook -1 the player's, else as BattleObjectiveLook
+		// (0 each mode's own look, else an ObjectiveLook plus one for all of them). Read through BattleShows*.
+		int ShowObjectives = -1;
+		int ObjectiveLook = -1;
+		int ShowSpawnZones = -1;
+		int ShowModeZones = -1;
+		int ShowInfo = -1;
+		bool OwnLooks() const { return ShowObjectives >= 0 || ObjectiveLook >= 0 || ShowSpawnZones >= 0 || ShowModeZones >= 0 || ShowInfo >= 0; }
 	};
 
 	/// One queued action, with the settings it was made with.
@@ -1341,6 +1350,13 @@ namespace SandboxDetail {
 		s_BattleEvents.push_back(what);
 	}
 	inline BattleModeSettings s_ModeSetup; //!< The Battle tab's mode panel, the window's copy (sent to the sim as it changes).
+	/// What the battle shows on the map now: the battle's own (BattleModeSettings::ShowObjectives and the rest; the game's while it's on, else the
+	/// setup's), or the player's settings where it has none.
+	bool BattleShowsObjectives();
+	int BattleObjectiveLookNow();
+	bool BattleShowsSpawnZones();
+	bool BattleShowsModeZones();
+	bool BattleShowsInfo();
 	// What the battle shows on the map, kept between launches in the settings (B-12): ShowBattleModeZones (a mode's own zones: hills, assault
 	// objectives, goal zones; always while one is being drawn), ShowBattleInfo (the panel under the score), ShowBattleObjectives (each mode's
 	// objectives lit up), BattleObjectiveLook (0 each mode's own look, else an ObjectiveLook plus one for all of them) and ShowBattleSpawnZones

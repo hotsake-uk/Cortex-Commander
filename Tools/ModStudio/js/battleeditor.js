@@ -44,14 +44,16 @@ window.MS = window.MS || {};
 			rules: [['ScoreToWin', 'Captures to win (0: play on)', 0, 50, 3], ['ReturnSeconds', 'A dropped flag goes home after (seconds)', 1, 300, 30], ['GuardPercent', 'Units guarding their flag (%)', 0, 100, 30],
 				['EscortPercent', 'Team-mates going all the way with a carrier (%)', 0, 100, 50], ['MoveStuckPoint', 'A flag nobody can reach moves', 'bool', true]] },
 		{ name: 'King of the hill', icon: '⛰', blurb: 'Every unit fights for the hill. A team alone on it scores; first to the time set wins.',
-			zones: { label: 'Hill', min: 1, ordered: true, note: 'With more than one, they come into play in this order.' },
+			look: 'ground', zones: { label: 'Hill', min: 1, ordered: true, note: 'With more than one, they come into play in this order.' },
 			rules: [['HoldToWin', 'Seconds held to win', 5, 3600, 120], ['HillMoveSeconds', 'The hill moves on after (seconds, 0: stays)', 0, 3600, 0], ['HillsToWin', 'Hills to take to win (0: seconds held win)', 0, 20, 0],
 				['MajorityScores', 'A shared hill scores for the team with most there', 'bool', false]] },
 		{ name: 'Assault', icon: '➤', blurb: 'One team attacks a line of objectives in order; the rest defend them. Each one taken buys the attackers time.',
-			zones: { label: 'Objective', min: 1, ordered: true, note: 'Taken in this order: drag them in the list to change it.' },
+			look: 'glow', zones: { label: 'Objective', min: 1, ordered: true, note: 'Taken in this order: drag them in the list to change it.' },
 			role: { key: 'Attacker', label: 'Attackers' },
 			rules: [['CaptureSeconds', 'Seconds to take an objective', 1, 300, 15], TIME_LIMIT, ['BonusSeconds', 'Seconds added for each one taken', 0, 600, 60],
-				['BlockLastRespawns', 'No defender respawns at the last objective under attack', 'bool', false], ['CommanderFallBack', 'Defenders fall back at (% taken)', 0, 100, 60]] },
+				['BlockLastRespawns', 'No defender respawns at the last objective under attack', 'bool', false],
+				['AttackerSpawn', 'Attackers come in, once objectives are taken', 'choice', 1, [[0, 'At their own spawn zones'], [1, 'At the last objective taken'], [2, 'One objective behind']],
+					'Own spawn zones: where they started, all game. Last taken: the objective they took last is their only spawn zone. One behind: the first taken, then always the one before the last taken.']] },
 		{ name: 'Last team standing', icon: '☠', blurb: 'Every team has so many units in all and hunts the nearest enemy. The last team in wins.',
 			rules: [['Tickets', 'Units each team gets in all', 1, 1000, 60]] },
 		{ name: 'VIP hunt', icon: '♛', blurb: 'One unit of each team is its VIP. Bring down the enemy VIPs to score.',
@@ -60,37 +62,46 @@ window.MS = window.MS || {};
 		{ name: 'One flag', icon: '⚐', blurb: 'One neutral flag, and every team after it. Bring it into your own goal zone to score.',
 			spots: { label: 'Flag position', max: 8, note: 'The flag comes in at each in turn, the next after every score.' },
 			zones: { label: 'Flag spawn zone', min: 0, note: 'With "Flag comes in a zone" ticked: somewhere in one of these, another each time.' },
-			goals: { label: 'goal zone' },
+			goals: { label: 'goal zone' }, look: 'outline',
 			rules: [['ScoreToWin', 'Scores to win (0: play on)', 0, 50, 3], ['ReturnSeconds', 'A dropped flag goes back after (seconds)', 1, 300, 30], ['EscortPercent', 'Team-mates going all the way with a carrier (%)', 0, 100, 50],
 				['FlagByZones', 'Flag comes in a zone (not at the positions)', 'bool', false]] },
 		{ name: 'Capture the ship', icon: '✈', blurb: 'One ship, and every team after it. Fly it down into your landing zone to score.',
 			spots: { label: 'Ship position', max: 8, note: 'Each ship comes in at the next of these.' },
-			goals: { label: 'landing zone' },
+			goals: { label: 'landing zone' }, look: 'outline',
 			rules: [['ScoreToWin', 'Landings to win (0: play on)', 0, 50, 3], ['ReturnSeconds', 'A ship shot down is replaced after (seconds)', 1, 300, 30], ['EscortPercent', 'Team-mates following the ship (%)', 0, 100, 50]] },
 		{ name: 'Wave defence', icon: '⛨', blurb: 'One team holds a defence zone against waves of attackers from the rest, each bigger than the last.',
-			zones: { label: 'Defence zone', min: 1, note: 'The first is the one held.' },
+			look: 'glow', zones: { label: 'Defence zone', min: 1, note: 'The first is the one held.' },
 			role: { key: 'Defender', label: 'Defenders' },
 			rules: [['Waves', 'Waves to beat (0: endless)', 0, 200, 10], ['FirstWave', 'Attackers in the first wave', 1, 200, 6], ['WaveGrowth', 'More each wave', 0, 100, 3],
 				['WaveBreak', 'Seconds between waves', 0, 600, 20], ['CaptureSeconds', 'Seconds attackers hold the zone to win', 1, 300, 15]] },
 		{ name: 'Escort', icon: '⛉', blurb: 'One team takes its VIP to a destination; every other team hunts it.',
-			zones: { label: 'Destination', min: 1, note: 'The first is where the VIP goes.' },
+			look: 'outline', zones: { label: 'Destination', min: 1, note: 'The first is where the VIP goes.' },
 			role: { key: 'EscortSide', label: 'Escort' },
 			rules: [TIME_LIMIT] },
 		{ name: 'Extraction', icon: '⇪', blurb: 'One team gets its units out through an extraction zone; the rest hold it against them.',
-			zones: { label: 'Extraction zone', min: 1, note: 'The first is the way out.' },
+			look: 'glow', zones: { label: 'Extraction zone', min: 1, note: 'The first is the way out.' },
 			role: { key: 'ExtractSide', label: 'Getting out' },
 			rules: [['Tickets', 'Units it has in all', 1, 1000, 60], ['ExtractToWin', 'Units out to win', 1, 500, 10], ['ExtractSeconds', 'Seconds in the zone to be lifted out', 0, 60, 3], TIME_LIMIT] },
 		{ name: 'The point', icon: '◎', blurb: 'One point with rings round it, each worth its own points a second to the team alone in it.',
 			spots: { label: 'The point', max: 1, note: 'The bullseye. Its rings are drawn round it.' },
 			rules: [['PointsToWin', 'Points to win (0: play on)', 0, 100000, 300], ['PointRings', 'Rings round the bullseye', 0, 4, 2], ['MajorityScores', 'A shared band scores for the team with most there', 'bool', false]] },
 	];
-	// Every mode's own: what each team's units do between the mode's rules.
-	const SHARED_RULES = [['RespawnSeconds', 'Seconds before a fallen unit is replaced', 0, 300, 5], ['MaxRespawns', 'Units each team gets back in all (0: no limit)', 0, 10000, 0],
-		['StuckSeconds', 'Respawn a unit stuck for (seconds, 0: never)', 0, 600, 20], ['RouteVariety', 'Units taking routes of their own (%)', 0, 100, 0],
-		['ByShip', 'Units come in by ship', 'bool', false], ['Anywhere', 'Units come in anywhere on the map', 'bool', false], ['KeepClear', 'Coming in anywhere: keep clear of enemies by (pixels)', 0, 2000, 300],
-		['MovingSpawns', 'You can move your spawn zones during the battle', 'bool', false], ['FogOfWar', 'Fog of war (Battle Command)', 'bool', false],
-		['CommanderSquads', 'AI commanders send squads', 'bool', true], ['CommanderReserve', 'AI commanders hold back (%)', 0, 100, 30]];
+	// Every mode's own, as the Battle tab's "Respawns and routes" has them.
+	const SHARED_RULES = [['RespawnSeconds', 'Seconds before a fallen unit is replaced (0: at once)', 0, 60, 5], ['MaxRespawns', 'Units each team gets back in all (0: no limit)', 0, 500, 0],
+		['StuckSeconds', 'Respawn a unit stuck for (seconds, 0: never)', 0, 120, 20], ['RouteVariety', 'Units taking routes of their own (%)', 0, 100, 0],
+		['MovingSpawns', 'You can move your spawn zones during the battle', 'bool', false, 'Teams you command: drag their spawn zones about behind the spawn line while it is on.']];
+	// Where units come in (ByShip, Anywhere).
+	const ARRIVALS = [['Appear in their spawn zones', false, false], ['Appear anywhere', false, true], ['Ships over their base', true, false], ['Ships anywhere', true, true]];
 	const PICKUP_RULES = [['PickupEvery', 'Seconds between pickups', 5, 600, 45], ['PickupMost', 'Most on the map at once', 1, 20, 3], ['PickupLasts', 'A pickup lies for (seconds, 0: till taken)', 0, 600, 90]];
+	const PICKUP_KINDS = ['Energy shield', 'Stim', 'Overcharge', 'Cloak', 'Medkit', 'Juggernaut', 'Spell scroll']; // bits of PickupKinds, by c_PickupKinds
+	const ARMY_CARDS = [['Rifleman', 8], ['Sniper', 2], ['Heavy', 2], ['Digger', 2], ['Crab', 0]]; // c_ReinforcementCards, with Army's defaults
+	const CRAFTS = ['Dropship', 'Rocket'];
+	// A spawn order's kinds (SpawnOrderKind) and the points each takes: none, one, a route, or one it can do without.
+	const ORDER_KINDS = [['Hold where they land', 'none'], ['Move', 'one'], ['Attack-move', 'one'], ['Defend at', 'one'], ['Patrol', 'route'], ['Jetpack here', 'one'], ['Battle objective', 'optional']];
+	// How the battle shows (the Battle tab's show settings, the battle's own when set): -1 the player's own setting.
+	const SHOWS = [['ShowObjectives', 'Battle objectives lit up'], ['ShowSpawnZones', 'Spawn zones'], ['ShowModeZones', 'The mode\'s own zones (hills, objectives, goals)'], ['ShowInfo', 'Battle info under the score']];
+	const LOOKS = ['Each mode\'s own', 'Glowing ring', 'Glowing outline', 'Glowing ground line', 'Glowing terrain'];
+	const LOOK_OF = [null, 'outline', 'outline', 'ground', 'glow']; // ObjectiveLook + 1 -> how a zone is drawn (a ring on a zone is an outline)
 	const RING_DEFAULTS = { radius: [60, 130, 200, 270, 340], points: [5, 3, 1, 1, 1] };
 	const LEVELS = [[0, 'Easy'], [1, 'Normal'], [2, 'Hard']];
 
@@ -139,8 +150,22 @@ window.MS = window.MS || {};
 	const fmtPoints = (ps) => ps.map(fmtPoint).join(' ');
 	const fmtZones = (zs) => zs.filter((z) => z.length >= 3).map(fmtPoints).join(' | ');
 
-	// What a key holds: a list of zones, one zone (a goal), a list of positions, or one point (a team's own, with its HasPoint).
+	// A spawn order: "set kind facing risk% backAndForth radius chase roam; x,y x,y", as SandboxBattlePresets.cpp writes it.
+	function parseOrder(t) {
+		const [head, pts] = String(t || '').split(';');
+		const n = String(head || '').trim().split(/\s+/).map(Number);
+		const at = (i, def) => (n[i] === undefined || isNaN(n[i]) ? def : n[i]);
+		return { set: at(0, 0) !== 0, kind: Math.max(0, Math.min(ORDER_KINDS.length - 1, at(1, 0))), facing: Math.max(-1, Math.min(1, at(2, 0))), risk: at(3, 0), back: at(4, 0) !== 0,
+			radius: at(5, 150), chase: at(6, 300), roam: at(7, 0), points: parsePoints(pts) };
+	}
+	const fmtOrder = (o) => [o.set ? 1 : 0, o.kind, o.facing, Math.round(o.risk), o.back ? 1 : 0, o.radius, o.chase, o.roam].join(' ') + '; ' + fmtPoints(o.points);
+
+	// What a key holds: a list of zones, one zone (a goal), a list of positions, one point (a team's own, with its HasPoint), or a spawn order's points
+	// (a team's, Mode.SpawnOrders.N, or one of its spawn zones', Mode.ZoneSpawnOrders.N.i).
 	function typeOf(key) {
+		if (/^Mode\.(SpawnOrders\.\d|ZoneSpawnOrders\.\d\.\d+)$/.test(key)) {
+			return 'order';
+		}
 		if (/^Mode\.(SpawnZones\.\d|Zones|PickupZones)$/.test(key)) {
 			return 'zones';
 		}
@@ -203,6 +228,9 @@ window.MS = window.MS || {};
 				const p = parsePoint(v);
 				return this.bool('Mode.HasPoint.' + side, false) && p ? [[p]] : [];
 			}
+			if (t === 'order') {
+				return this.order(key).points.map((p) => [p]);
+			}
 			return [];
 		}
 
@@ -218,7 +246,48 @@ window.MS = window.MS || {};
 				const side = key.split('.')[2];
 				this.set('Mode.HasPoint.' + side, shapes.length > 0);
 				this.set(key, shapes.length ? fmtPoint(shapes[0][0]) : '0,0');
+			} else if (t === 'order') {
+				this.setOrder(key, Object.assign(this.order(key), { points: shapes.map((x) => x[0]) }));
 			}
+		}
+
+		// A spawn order, by its key (as typeOf): a zone's, from its team's list of them.
+		order(key) {
+			const m = /^Mode\.ZoneSpawnOrders\.(\d)\.(\d+)$/.exec(key);
+			if (m) {
+				return parseOrder(String(this.raw('Mode.ZoneSpawnOrders.' + m[1]) || '').split('|')[Number(m[2])]);
+			}
+			const o = parseOrder(this.raw(key));
+			o.set = true; // (a team's own is always set)
+			return o;
+		}
+
+		setOrder(key, o) {
+			const m = /^Mode\.ZoneSpawnOrders\.(\d)\.(\d+)$/.exec(key);
+			if (!m) {
+				this.set(key, fmtOrder(Object.assign({}, o, { set: true })));
+				return;
+			}
+			const raw = this.raw('Mode.ZoneSpawnOrders.' + m[1]);
+			const list = raw ? raw.split('|').map((x) => x.trim()) : [];
+			while (list.length <= Number(m[2])) {
+				list.push(fmtOrder(parseOrder('')));
+			}
+			list[Number(m[2])] = fmtOrder(o);
+			this.set('Mode.ZoneSpawnOrders.' + m[1], list.join(' | '));
+		}
+
+		// A team's spawn zone taken out: its own order goes with it, so the rest keep theirs.
+		dropZoneOrder(side, i) {
+			const raw = this.raw('Mode.ZoneSpawnOrders.' + side);
+			if (raw) {
+				this.set('Mode.ZoneSpawnOrders.' + side, raw.split('|').map((x) => x.trim()).filter((_, j) => j !== i).join(' | '));
+			}
+		}
+
+		// The battle's own show setting, or -1: the player's.
+		show(key) {
+			return Math.max(-1, Math.min(key === 'ObjectiveLook' ? 4 : 1, this.num('Mode.' + key, -1)));
 		}
 
 		// The side a mode singles out (Attacker...), kept to one that plays as the game does (AttackerOf and the like clamp it).
@@ -377,6 +446,19 @@ window.MS = window.MS || {};
 		if (spec.zones && (setup.mode !== 6 || byZones)) {
 			out.push({ key: 'Mode.Zones', label: spec.zones.label, side: -1, required: (setup.mode === 6 ? 1 : spec.zones.min) > 0, many: true, ordered: spec.zones.ordered, note: spec.zones.note });
 		}
+		// the points of the spawn orders of the teams the player commands (the team's own, and each spawn zone's with one)
+		for (const side of playing.filter((x) => setup.bool('Mode.PlayerCommands.' + x, false))) {
+			const keys = [['Mode.SpawnOrders.' + side, SIDE_NAMES[side] + ' spawn order']];
+			setup.shapes('Mode.SpawnZones.' + side).forEach((_, i) => keys.push(['Mode.ZoneSpawnOrders.' + side + '.' + i, SIDE_NAMES[side] + ' spawn ' + (i + 1) + '\'s order']));
+			for (const [key, label] of keys) {
+				const o = setup.order(key);
+				const takes = ORDER_KINDS[o.kind][1];
+				if (o.set && takes !== 'none') {
+					out.push({ key, label: label + ': ' + ORDER_KINDS[o.kind][0].toLowerCase(), side, required: false, many: takes === 'route', max: takes === 'route' ? 16 : 1, order: true,
+						note: takes === 'route' ? 'The patrol\'s route, a point at a time.' : takes === 'optional' ? 'Near which objective. Without one: the nearest to each unit.' : 'Where its new units are sent.' });
+				}
+			}
+		}
 		if (setup.bool('Mode.Pickups', false)) {
 			const places = setup.num('Mode.PickupPlaces', 1);
 			if (places & 2) {
@@ -395,6 +477,8 @@ window.MS = window.MS || {};
 		return out;
 	}
 
+	const pointy = (type) => type === 'point' || type === 'points' || type === 'order';
+
 	// Why the game won't start it yet (as ModeReady says), or '' when it will.
 	function problem(setup) {
 		const spec = MODES[setup.mode];
@@ -407,7 +491,8 @@ window.MS = window.MS || {};
 		}
 		const missing = needs(setup).find((n) => n.required && !n.done);
 		if (missing) {
-			return (missing.type === 'point' || missing.type === 'points' ? 'Place ' : 'Draw ') + (missing.side >= 0 ? missing.label : 'a ' + missing.label.toLowerCase()) + ' on the map.';
+			const what = missing.label.toLowerCase();
+			return (pointy(missing.type) ? 'Place ' : 'Draw ') + (missing.side >= 0 ? missing.label : (/^[aeiou]/.test(what) ? 'an ' : 'a ') + what) + ' on the map.';
 		}
 		return '';
 	}
@@ -422,13 +507,40 @@ window.MS = window.MS || {};
 				if (n.many && (n.ordered || n.count > 1)) {
 					label += ' ' + (i + 1);
 				}
-				out.push({ key: n.key, i, type: n.type, pts, colour: n.colour, label, side: n.side, ring: n.key === 'Mode.FlagSpots' && setup.mode === 11 && i === 0 });
+				out.push({ key: n.key, i, type: n.type, pts, colour: n.colour, label, side: n.side, ring: n.key === 'Mode.FlagSpots' && setup.mode === 11 && i === 0, faint: faintOf(setup, n.key), look: lookOf(setup, n.key) });
 			});
+			// a patrol's route, joined up
+			if (n.order && n.many && n.count > 1) {
+				(out.routes || (out.routes = [])).push({ pts: setup.shapes(n.key).map((x) => x[0]), colour: n.colour, loop: !setup.order(n.key).back });
+			}
 		}
 		if (spec && setup.mode === 11) {
 			out.rings = rings(setup);
 		}
 		return out;
+	}
+
+	// Shown as the battle shows them in the game: the battle's own setting, else the game's (each on by default).
+	const showing = (setup, key) => setup.show(key) !== 0;
+
+	// A zone hidden in the game (spawn zones or the mode's own zones shown off): drawn faint here, to still be placed and moved.
+	function faintOf(setup, key) {
+		if (/^Mode\.SpawnZones\./.test(key)) {
+			return !showing(setup, 'ShowSpawnZones');
+		}
+		return /^Mode\.(Zones|Goals\.\d)$/.test(key) && !showing(setup, 'ShowModeZones');
+	}
+
+	// How a zone objective is lit up in the game (DrawObjective): the mode's own look, or the battle's (or nothing with objectives not shown).
+	// A flag spawn zone (one flag) isn't an objective.
+	function lookOf(setup, key) {
+		const spec = MODES[setup.mode];
+		const isObjective = (key === 'Mode.Zones' && spec.zones && setup.mode !== 6) || (/^Mode\.Goals\.\d$/.test(key) && spec.goals);
+		if (!isObjective || !showing(setup, 'ShowObjectives')) {
+			return null;
+		}
+		const look = setup.show('ObjectiveLook');
+		return look > 0 ? LOOK_OF[look] : spec.look || 'outline';
 	}
 
 	function rings(setup) {
@@ -495,6 +607,59 @@ window.MS = window.MS || {};
 	}
 
 	// ---- the map ----
+
+	// The ground in a zone, as the game finds it to light it up (ZoneTerrain): its solid cells (the edge ones, next to air, marked) and the crest,
+	// the top of the ground across it, in runs. Kept by the zone's corners.
+	const zoneTerrains = new Map();
+	function zoneTerrain(g, pts) {
+		if (!g || pts.length < 3) {
+			return null;
+		}
+		const key = g.w + 'x' + g.h + ':' + fmtPoints(pts);
+		if (zoneTerrains.has(key)) {
+			return zoneTerrains.get(key);
+		}
+		const xs = pts.map((p) => p.x);
+		const ys = pts.map((p) => p.y);
+		const left = Math.max(0, Math.floor(Math.min(...xs)));
+		const right = Math.min(g.w - 1, Math.ceil(Math.max(...xs)));
+		const top = Math.max(0, Math.floor(Math.min(...ys)));
+		const bottom = Math.min(g.h - 1, Math.ceil(Math.max(...ys)));
+		const cell = Math.max(4, Math.ceil(Math.sqrt(((right - left) * (bottom - top)) / 40000)));
+		const solidCell = (x, y) => solid(g, x + cell / 2, y + cell / 2);
+		const inZone = (x, y) => insideZone(pts, { x: x + cell / 2, y: y + cell / 2 });
+		const out = { cell, cells: [], crest: [] };
+		let run = null;
+		for (let x = left; x <= right; x += cell) {
+			let crest = null;
+			for (let y = top; y <= bottom; y += cell) {
+				if (!inZone(x, y) || !solidCell(x, y)) {
+					continue;
+				}
+				const edge = !solidCell(x - cell, y) || !solidCell(x + cell, y) || !solidCell(x, y - cell) || !solidCell(x, y + cell);
+				out.cells.push([x, y, edge]);
+				if (!crest && !solidCell(x, y - cell)) {
+					crest = { x: x + cell / 2, y };
+				}
+			}
+			if (crest && run && Math.abs(crest.y - run[run.length - 1].y) <= cell * 4) {
+				run.push(crest);
+			} else if (crest) {
+				run = [crest];
+				out.crest.push(run);
+			} else {
+				run = null;
+			}
+		}
+		zoneTerrains.set(key, out);
+		if (zoneTerrains.size > 200) {
+			zoneTerrains.delete(zoneTerrains.keys().next().value);
+		}
+		return out;
+	}
+
+	// A colour halfway to white (the lit edge of glowing ground).
+	const mixWhite = (hex) => '#' + [1, 3, 5].map((i) => Math.round(128 + parseInt(hex.slice(i, i + 2), 16) / 2).toString(16).padStart(2, '0')).join('');
 
 	const insideZone = (pts, p) => {
 		let inside = false;
@@ -645,6 +810,60 @@ window.MS = window.MS || {};
 			this.tag(ctx, s.x + 4, s.y - 30, label, colour);
 		}
 
+		// A zone objective as the game lights it up (DrawObjective): a glowing line round it, along the top of the ground in it, or its ground glowing.
+		drawLook(ctx, t) {
+			const colour = t.colour === NEUTRAL ? '#ffffff' : t.colour;
+			const glowLine = (pts, closed) => {
+				if (pts.length < 2) {
+					return;
+				}
+				ctx.beginPath();
+				pts.forEach((c, i) => {
+					const s = this.toScreen(c.x, c.y);
+					if (i) {
+						ctx.lineTo(s.x, s.y);
+					} else {
+						ctx.moveTo(s.x, s.y);
+					}
+				});
+				if (closed) {
+					ctx.closePath();
+				}
+				ctx.lineJoin = 'round';
+				ctx.lineCap = 'round';
+				for (const [width, alpha] of [[7, '46'], [2.5, 'e6']]) {
+					ctx.strokeStyle = colour + alpha;
+					ctx.lineWidth = width;
+					ctx.stroke();
+				}
+				ctx.strokeStyle = 'rgba(255,255,255,.47)';
+				ctx.lineWidth = 1;
+				ctx.stroke();
+			};
+			const terrain = t.look === 'outline' ? null : zoneTerrain(this.hooks.groundData(), t.pts);
+			if (t.look === 'outline' || !terrain) {
+				glowLine(t.pts, true);
+			} else if (t.look === 'ground') {
+				for (const run of terrain.crest) {
+					glowLine(run, false);
+				}
+			} else {
+				const cell = terrain.cell;
+				for (const [x, y, edge] of terrain.cells) {
+					if (edge) {
+						const a = this.toScreen(x - cell * 1.5, y - cell * 1.5);
+						ctx.fillStyle = colour + '16';
+						ctx.fillRect(a.x, a.y, cell * 4 * this.zoom, cell * 4 * this.zoom);
+					}
+				}
+				for (const [x, y, edge] of terrain.cells) {
+					const a = this.toScreen(x, y);
+					ctx.fillStyle = edge ? mixWhite(colour) + 'c8' : colour + '3c';
+					ctx.fillRect(a.x, a.y, Math.max(cell * this.zoom, 1), Math.max(cell * this.zoom, 1));
+				}
+			}
+		}
+
 		tag(ctx, x, y, text, colour) {
 			const tw = ctx.measureText(text).width;
 			ctx.fillStyle = 'rgba(0,0,0,.7)';
@@ -692,17 +911,20 @@ window.MS = window.MS || {};
 			ctx.font = '12px system-ui, sans-serif';
 			const list = this.shown();
 			const sel = this.picked();
-			// zones under points: team spawns, goals (dashed), the mode's own
+			// zones under points: team spawns, goals (dashed), the mode's own; one the game hides, faint; then each objective lit up as in the game
 			for (const t of list.filter((x) => x.pts.length >= 3)) {
 				const picked = sel === t;
 				this.path(ctx, t.pts);
-				ctx.fillStyle = t.colour + (picked ? '55' : t.type === 'poly' ? '1c' : '33');
+				ctx.fillStyle = t.colour + (picked ? '55' : t.faint ? '0a' : t.type === 'poly' ? '1c' : '33');
 				ctx.fill();
-				ctx.strokeStyle = picked ? '#fff' : t.colour;
+				ctx.strokeStyle = picked ? '#fff' : t.colour + (t.faint ? '66' : '');
 				ctx.lineWidth = picked ? 2.5 : 1.5;
-				ctx.setLineDash(t.type === 'poly' ? [7, 4] : []);
+				ctx.setLineDash(t.type === 'poly' || t.faint ? [7, 4] : []);
 				ctx.stroke();
 				ctx.setLineDash([]);
+				if (t.look) {
+					this.drawLook(ctx, t);
+				}
 				const top = t.pts.reduce((a, b) => (b.y < a.y || (b.y === a.y && b.x < a.x) ? b : a));
 				const s = this.toScreen(top.x, top.y);
 				this.tag(ctx, s.x, s.y - 4, t.label, t.colour);
@@ -722,6 +944,23 @@ window.MS = window.MS || {};
 						ctx.setLineDash([]);
 					});
 				}
+			}
+			// a patrol's route
+			for (const route of list.routes || []) {
+				ctx.beginPath();
+				route.pts.concat(route.loop ? [route.pts[0]] : []).forEach((p, i) => {
+					const s = this.toScreen(p.x, p.y - 8);
+					if (i) {
+						ctx.lineTo(s.x, s.y);
+					} else {
+						ctx.moveTo(s.x, s.y);
+					}
+				});
+				ctx.strokeStyle = route.colour;
+				ctx.lineWidth = 1.5;
+				ctx.setLineDash([6, 4]);
+				ctx.stroke();
+				ctx.setLineDash([]);
 			}
 			for (const t of list.filter((x) => x.pts.length === 1)) {
 				this.drawFlag(ctx, t.pts[0], t.colour, t.label, sel === t);
@@ -768,7 +1007,7 @@ window.MS = window.MS || {};
 				}
 			}
 			if (placing) {
-				const text = 'Placing: ' + placing.label + (placing.type === 'point' || placing.type === 'points' ? ' (click on the map)' : this.state.shape === 'poly' ? ' (click its corners; double-click or Enter closes it)' : ' (drag a box)') + '. Esc stops.';
+				const text = 'Placing: ' + placing.label + (pointy(placing.type) ? ' (click on the map)' : this.state.shape === 'poly' ? ' (click its corners; double-click or Enter closes it)' : ' (drag a box)') + '. Esc stops.';
 				ctx.fillStyle = 'rgba(0,0,0,.75)';
 				ctx.fillRect(8, r.height - 28, ctx.measureText(text).width + 16, 20);
 				ctx.fillStyle = placing.colour;
@@ -831,7 +1070,7 @@ window.MS = window.MS || {};
 				}
 				const placing = this.hooks.placing();
 				if (placing) {
-					if (placing.type === 'point' || placing.type === 'points') {
+					if (pointy(placing.type)) {
 						const p = this.hooks.ground(world);
 						this.hooks.place(placing.key, [{ x: Math.round(p.x), y: Math.round(p.y) }]);
 						return;
@@ -1050,7 +1289,13 @@ window.MS = window.MS || {};
 					st.setShapes(k, shapes);
 				}
 			});
-			const remove = (k, i) => edit('Take out ' + ((listNow().find((x) => x.key === k) || {}).label || 'it'), (st) => st.setShapes(k, st.shapes(k).filter((_, j) => j !== i)));
+			const remove = (k, i) => edit('Take out ' + ((listNow().find((x) => x.key === k) || {}).label || 'it'), (st) => {
+				st.setShapes(k, st.shapes(k).filter((_, j) => j !== i));
+				const zone = /^Mode\.SpawnZones\.(\d)$/.exec(k);
+				if (zone) {
+					st.dropZoneOrder(Number(zone[1]), i);
+				}
+			});
 			const reorder = (k, i, by) => edit('Reorder', (st) => {
 				const shapes = st.shapes(k);
 				const j = i + by;
@@ -1076,8 +1321,8 @@ window.MS = window.MS || {};
 				}
 				// what can go here: a point at the spot, a zone as a box round it
 				const box = (w, h) => boxZone({ x: world.x - w / 2, y: world.y - h / 2 }, { x: world.x + w / 2, y: world.y + h / 2 }).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
-				const items = listNow().map((n) => [(n.type === 'point' || n.type === 'points' ? '' : '▭ ') + n.label + ' here', () => {
-					const pts = n.type === 'point' || n.type === 'points' ? [ground(world)].map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })) : box(n.key.startsWith('Mode.SpawnZones') ? 200 : 160, 120);
+				const items = listNow().map((n) => [(pointy(n.type) ? '' : '▭ ') + n.label + ' here', () => {
+					const pts = pointy(n.type) ? [ground(world)].map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })) : box(n.key.startsWith('Mode.SpawnZones') ? 200 : 160, 120);
 					place(n.key, pts);
 				}]);
 				menuAt(items, cx, cy);
@@ -1085,6 +1330,7 @@ window.MS = window.MS || {};
 			const hooks = {
 				things: () => (docs.get(key) && docs.get(key).setup ? things(docs.get(key).setup) : []),
 				terrain, place, move, remove, menu, ground,
+				groundData: () => groundOf(terrainFile),
 				placing: () => (ro ? null : placingOf()),
 				donePlacing: () => {
 					s.map.place = null;
@@ -1166,38 +1412,111 @@ window.MS = window.MS || {};
 				el('button', { className: 'tb', textContent: 'Open the file', title: doc.path, onclick: () => MS.ide.openFile(doc.path, 1) }),
 				playButton);
 
-			// ---- the panel: mode, teams, what to place, rules ----
+			// ---- the panel: mode, teams, what to place, rules, and the rest of the Battle tab's settings ----
 			const panel = el('div', { className: 'me-right be-panel' });
+			// (A key with no "Mode." or "TeamN." in front is the mode's.)
+			const full = (k) => (/^(Mode|Team\d)\./.test(k) ? k : 'Mode.' + k);
 			const number = (k, label, min, max, def, note) => {
-				const input = el('input', { type: 'number', className: 'ed-input be-num', min, max, value: setup.num('Mode.' + k, def), disabled: ro });
+				const input = el('input', { type: 'number', className: 'ed-input be-num', min, max, value: setup.num(full(k), def), disabled: ro });
 				input.onchange = () => {
 					const v = Math.max(min, Math.min(max, Math.round(Number(input.value) || 0)));
-					edit(label, (st) => st.set('Mode.' + k, v));
+					edit(label, (st) => st.set(full(k), v));
 				};
 				return el('label', { className: 'be-rule', title: note || '' }, el('span', { textContent: label }), input);
 			};
 			const flag = (k, label, def, note) => {
-				const input = el('input', { type: 'checkbox', checked: setup.bool('Mode.' + k, def), disabled: ro });
-				input.onchange = () => edit(label, (st) => st.set('Mode.' + k, input.checked));
+				const input = el('input', { type: 'checkbox', checked: setup.bool(full(k), def), disabled: ro });
+				input.onchange = () => edit(label, (st) => st.set(full(k), input.checked));
 				return el('label', { className: 'be-rule be-flag', title: note || '' }, input, el('span', { textContent: label }));
 			};
-			const rule = (r) => (r[2] === 'bool' ? flag(r[0], r[1], r[3], r[4]) : number(r[0], r[1], r[2], r[3], r[4], r[5]));
+			const choice = (k, label, def, options, note) => {
+				const now = setup.num(full(k), def);
+				const pick = el('select', { className: 'ed-input', disabled: ro }, ...options.map(([v, t]) => el('option', { value: String(v), textContent: t, selected: now === v })));
+				pick.onchange = () => edit(label + ': ' + pick.selectedOptions[0].textContent, (st) => st.set(full(k), Number(pick.value)));
+				return el('label', { className: 'be-rule', title: note || '' }, el('span', { textContent: label }), pick);
+			};
+			const rule = (r) => (r[2] === 'bool' ? flag(r[0], r[1], r[3], r[4]) : r[2] === 'choice' ? choice(r[0], r[1], r[3], r[4], r[5]) : number(r[0], r[1], r[2], r[3], r[4], r[5]));
 			const section = (title, ...body) => el('section', { className: 'be-sec' }, el('h3', { textContent: title }), ...body);
+			// A section that folds away, remembered on the tab.
+			const fold = (id, title, ...body) => {
+				const box = el('details', { className: 'be-sec be-fold', open: !!(s.open && s.open[id]) }, el('summary', {}, el('h3', { textContent: title })), ...body);
+				box.ontoggle = () => {
+					s.open = Object.assign(s.open || {}, { [id]: box.open });
+				};
+				return box;
+			};
+			const note = (text) => el('p', { className: 'ed-note', textContent: text });
+			const commands = (st, side) => st.bool('Mode.PlayerCommands.' + side, false);
+			// A spawn order: what it is, which way to face, how urgent, and the rest its kind takes; its points are placed on the map from the checklist.
+			const orderEditor = (st, k, label) => {
+				const o = st.order(k);
+				const takes = ORDER_KINDS[o.kind][1];
+				const set = (what, fn) => edit(label + ': ' + what, (x) => {
+					const now = x.order(k);
+					fn(now);
+					x.setOrder(k, now);
+				});
+				const kind = el('select', { className: 'ed-input', disabled: ro }, ...ORDER_KINDS.map(([t], i) => el('option', { value: String(i), textContent: t, selected: o.kind === i })));
+				kind.onchange = () => set(ORDER_KINDS[Number(kind.value)][0].toLowerCase(), (now) => {
+					now.kind = Number(kind.value);
+					const t = ORDER_KINDS[now.kind][1];
+					now.points = t === 'none' ? [] : t === 'route' ? now.points : now.points.slice(0, 1);
+				});
+				const rows = [el('label', { className: 'be-rule' }, el('span', { textContent: 'New units' }), kind)];
+				if (takes !== 'none') {
+					const facing = el('select', { className: 'ed-input', disabled: ro }, ...[[0, 'Either way'], [-1, 'Left'], [1, 'Right']].map(([v, t]) => el('option', { value: String(v), textContent: t, selected: o.facing === v })));
+					facing.onchange = () => set('facing', (now) => {
+						now.facing = Number(facing.value);
+					});
+					const risk = el('input', { type: 'number', className: 'ed-input be-num', min: -100, max: 100, value: o.risk, disabled: ro });
+					risk.onchange = () => set('risk', (now) => {
+						now.risk = Math.max(-100, Math.min(100, Math.round(Number(risk.value) || 0)));
+					});
+					rows.push(el('label', { className: 'be-rule' }, el('span', { textContent: 'Facing there' }), facing),
+						el('label', { className: 'be-rule', title: 'How urgent, as an order placed by clicks: -100 cautious, 0 normal, 100 the shortest way whatever it takes.' }, el('span', { textContent: 'Risk (-100 to 100)' }), risk));
+				}
+				if (takes === 'route') {
+					const back = el('input', { type: 'checkbox', checked: o.back, disabled: ro });
+					back.onchange = () => set('back and forth', (now) => {
+						now.back = back.checked;
+					});
+					rows.push(el('label', { className: 'be-rule be-flag' }, back, el('span', { textContent: 'Back and forth (not a loop)' })));
+				}
+				if (o.kind === 3) {
+					for (const [field, text, max] of [['radius', 'Zone reach (px)', 2000], ['chase', 'Chase out to (px)', 3000], ['roam', 'Roaming (%)', 100]]) {
+						const input = el('input', { type: 'number', className: 'ed-input be-num', min: 0, max, value: o[field], disabled: ro });
+						input.onchange = () => set(text.toLowerCase(), (now) => {
+							now[field] = Math.max(0, Math.min(max, Math.round(Number(input.value) || 0)));
+						});
+						rows.push(el('label', { className: 'be-rule' }, el('span', { textContent: text }), input));
+					}
+				}
+				if (takes !== 'none') {
+					const n = listNow().find((x) => x.key === k);
+					rows.push(el('div', { className: 'be-rule' }, el('span', { textContent: o.points.length ? (takes === 'route' ? o.points.length + ' points on its route' : 'Placed') : takes === 'optional' ? 'No point: the nearest objective' : 'Not placed yet' }),
+						ro || !n ? null : el('button', { className: 'tb', textContent: takes === 'route' ? '+ Add points' : o.points.length ? 'Move' : 'Place', onclick: () => startPlacing(n) })));
+				}
+				return rows;
+			};
 			const drawPanel = () => {
 				const st = docs.get(key).setup;
 				const sp = MODES[st.mode];
 				const items = needs(st);
 				const why = problem(st);
+				const sides = [...Array(SIDES).keys()];
 				// the mode
 				const modes = el('div', { className: 'be-modes' }, ...MODES.map((m, i) => (m ? el('button', { className: 'be-mode' + (i === st.mode ? ' sel' : ''), title: m.blurb, disabled: ro, onclick: () => {
 					s.map.place = null;
 					edit('Make it ' + m.name, (x) => x.set('Mode.Mode', i));
 				} }, el('span', { className: 'be-mode-icon', textContent: m.icon }), el('span', { textContent: m.name })) : null)));
 				// the teams
-				const who = el('select', { className: 'ed-input', disabled: ro, title: 'Who the player is in this battle: a team they command from above (Battle Command), or none, to watch' },
-					el('option', { value: '-1', textContent: 'Nobody: watch' }), ...[...Array(SIDES).keys()].map((side) => el('option', { value: String(side), textContent: 'Command ' + SIDE_NAMES[side], selected: st.bool('Mode.PlayerCommands.' + side, false) })));
-				if (![...Array(SIDES).keys()].some((side) => st.bool('Mode.PlayerCommands.' + side, false))) {
+				const who = el('select', { className: 'ed-input', disabled: ro, title: 'Who the player is in this battle: a team they command from above (Battle Command), or none, to watch. More than one (hot-seat): tick "You command this team" under each.' },
+					el('option', { value: '-1', textContent: 'Nobody: watch' }), ...sides.map((side) => el('option', { value: String(side), textContent: 'Command ' + SIDE_NAMES[side], selected: commands(st, side) })));
+				const commanded = sides.filter((side) => commands(st, side));
+				if (!commanded.length) {
 					who.value = '-1';
+				} else if (commanded.length > 1) {
+					who.prepend(el('option', { value: 'many', textContent: commanded.map((x) => SIDE_NAMES[x]).join(' and '), selected: true }));
 				}
 				who.onchange = () => edit('The player ' + (who.value === '-1' ? 'watches' : 'commands ' + SIDE_NAMES[Number(who.value)]), (x) => {
 					for (let side = 0; side < SIDES; side++) {
@@ -1206,28 +1525,77 @@ window.MS = window.MS || {};
 				});
 				const mods = factions();
 				const teamRow = (side) => {
-					const plays = el('input', { type: 'checkbox', checked: st.plays(side), disabled: ro });
+					const on = st.plays(side);
+					const off = ro || !on;
+					const plays = el('input', { type: 'checkbox', checked: on, disabled: ro });
 					plays.onchange = () => edit((plays.checked ? 'Add ' : 'Take out ') + SIDE_NAMES[side], (x) => x.set('Mode.Plays.' + side, plays.checked));
-					const size = el('input', { type: 'number', className: 'ed-input be-num', min: 1, max: 100, value: st.num('Mode.TeamSizes.' + side, 16), disabled: ro || !st.plays(side), title: 'Most units it has in at once' });
-					size.onchange = () => edit(SIDE_NAMES[side] + '\'s size', (x) => x.set('Mode.TeamSizes.' + side, Math.max(1, Math.min(100, Math.round(Number(size.value) || 16)))));
-					const now = String(st.raw('Team' + side + '.Factions') || '').split(';').filter(Boolean);
-					const fac = el('select', { className: 'ed-input be-fac', disabled: ro || !st.plays(side), title: 'The faction its units come from' },
-						el('option', { value: '', textContent: 'Any faction' }),
-						now.length > 1 ? el('option', { value: now.join(';'), textContent: now.length + ' factions', selected: true }) : null,
-						...mods.map((m) => el('option', { value: m, textContent: m.replace(/[.]rte$/i, ''), selected: now.length === 1 && now[0] === m })));
-					fac.onchange = () => edit(SIDE_NAMES[side] + '\'s faction', (x) => x.set('Team' + side + '.Factions', fac.value));
-					const ai = el('select', { className: 'ed-input', disabled: ro || !st.plays(side), title: 'Whether an AI commander leads it (not a team the player commands)' },
+					const size = el('input', { type: 'number', className: 'ed-input be-num', min: 2, max: 100, value: st.num('Mode.TeamSizes.' + side, 16), disabled: off, title: 'Most of its units alive at once' });
+					size.onchange = () => edit(SIDE_NAMES[side] + '\'s size', (x) => x.set('Mode.TeamSizes.' + side, Math.max(2, Math.min(100, Math.round(Number(size.value) || 16)))));
+					const yours = commands(st, side);
+					const ai = yours ? el('span', { className: 'be-dim', textContent: 'You command it' }) : el('select', { className: 'ed-input', disabled: off, title: 'Whether an AI commander leads it, splitting its units between the objectives as a player would' },
 						el('option', { value: '1', textContent: 'AI commander', selected: st.bool('Mode.Commander.' + side, true) }), el('option', { value: '0', textContent: 'No commander', selected: !st.bool('Mode.Commander.' + side, true) }));
 					ai.onchange = () => edit(SIDE_NAMES[side] + '\'s commander', (x) => x.set('Mode.Commander.' + side, ai.value === '1'));
-					return el('div', { className: 'be-team' + (st.plays(side) ? '' : ' off') }, el('label', { className: 'be-flag' }, plays, el('span', { className: 'me-swatch', style: 'background:' + SIDE_COLOURS[side] }), el('b', { textContent: SIDE_NAMES[side] })), size, fac, ai);
+					const now = String(st.raw('Team' + side + '.Factions') || '').split(';').filter(Boolean);
+					const facText = now.length ? now.map((m) => m.replace(/[.]rte$/i, '')).join(', ') : 'Any faction';
+					const row = el('div', { className: 'be-team' + (on ? '' : ' off') }, el('label', { className: 'be-flag' }, plays, el('span', { className: 'me-swatch', style: 'background:' + SIDE_COLOURS[side] }), el('b', { textContent: SIDE_NAMES[side] })), size,
+						el('span', { className: 'be-dim be-fac', textContent: facText, title: facText }), ai);
+					if (!on) {
+						return [row];
+					}
+					// its units, how they go about it, and (yours) what each new one is ordered to do
+					const any = el('input', { type: 'checkbox', checked: !now.length, disabled: ro });
+					any.onchange = () => any.checked && edit(SIDE_NAMES[side] + ': any faction', (x) => x.set('Team' + side + '.Factions', ''));
+					const facList = el('div', { className: 'be-facs' }, el('label', { className: 'be-flag' }, any, el('span', { textContent: 'Any faction' })), ...mods.map((m) => {
+						const tick = el('input', { type: 'checkbox', checked: now.includes(m), disabled: ro });
+						tick.onchange = () => edit(SIDE_NAMES[side] + (tick.checked ? ': add ' : ': take out ') + m, (x) => {
+							const list = String(x.raw('Team' + side + '.Factions') || '').split(';').filter(Boolean).filter((f) => f !== m);
+							x.set('Team' + side + '.Factions', (tick.checked ? list.concat([m]) : list).join(';'));
+						});
+						return el('label', { className: 'be-flag' }, tick, el('span', { textContent: m.replace(/[.]rte$/i, '') }));
+					}));
+					const team = 'Team' + side + '.';
+					const risk = (k, label, def) => {
+						const input = el('input', { type: 'number', className: 'ed-input be-num', min: -100, max: 100, value: st.num('Mode.' + k + '.' + side, def), disabled: ro });
+						input.onchange = () => edit(SIDE_NAMES[side] + ': ' + label.toLowerCase(), (x) => {
+							const v = Math.max(-100, Math.min(100, Math.round(Number(input.value) || 0)));
+							x.set('Mode.' + k + '.' + side, v);
+							// (the most never under the least, as the game keeps them)
+							if (k === 'RiskMin' && x.num('Mode.RiskMax.' + side, 0) < v) {
+								x.set('Mode.RiskMax.' + side, v);
+							} else if (k === 'RiskMax' && x.num('Mode.RiskMin.' + side, -100) > v) {
+								x.set('Mode.RiskMin.' + side, v);
+							}
+						});
+						return el('label', { className: 'be-rule', title: 'Recklessness with the mode\'s orders: -100 cautious (walking round jumps, waiting for a good shot), 0 normal, 100 a suicide mission. Each unit gets a risk between the least and the most, the strongest toward the most.' }, el('span', { textContent: label }), input);
+					};
+					const zoneOrders = yours ? st.shapes('Mode.SpawnZones.' + side).map((_, i) => {
+						const k = 'Mode.ZoneSpawnOrders.' + side + '.' + i;
+						const own = st.order(k).set;
+						const pick = el('select', { className: 'ed-input', disabled: ro }, el('option', { value: '0', textContent: 'The team\'s order', selected: !own }), el('option', { value: '1', textContent: 'Its own order', selected: own }));
+						pick.onchange = () => edit(SIDE_NAMES[side] + ' spawn ' + (i + 1) + (pick.value === '1' ? ': its own order' : ': the team\'s order'), (x) => x.setOrder(k, Object.assign(x.order(k), { set: pick.value === '1' })));
+						return [el('label', { className: 'be-rule' }, el('span', { textContent: 'Units from spawn zone ' + (i + 1) }), pick), ...(own ? [el('div', { className: 'be-sub' }, ...orderEditor(st, k, SIDE_NAMES[side] + ' spawn ' + (i + 1) + '\'s order'))] : [])];
+					}).flat() : [];
+					const details = el('details', { className: 'be-teamdet', open: !!(s.open && s.open['team' + side]) }, el('summary', { textContent: 'Units, risk' + (yours ? ', spawn orders' : '') }),
+						el('div', { className: 'be-sub' },
+							el('div', { className: 'be-label', textContent: 'Factions (tick as many as you like)' }), facList,
+							flag(team + 'FavouritesOnly', 'Favourites only', false, 'Only units marked as favourites, of those factions (any, when none are).'),
+							flag(team + 'Crabs', 'Spawn crabs', false, 'Crabs among its units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.'),
+							flag(team + 'JetpackOnly', 'Jetpacks only', false, 'Only units with a jetpack.'),
+							choice(team + 'Craft', 'Craft, coming in by ship', 0, CRAFTS.map((c, i) => [i, c])),
+							risk('RiskMin', 'Least risk', -100), risk('RiskMax', 'Most risk', 0),
+							number('RushPercent.' + side, 'Rush the objective (% of its units)', 0, 100, 30, 'Its units that make a beeline for the objective, shooting as they go, not taking cover or stopping to fight. Guards never rush.'),
+							flag('PlayerCommands.' + side, 'You command this team', false, 'Its units come in with no job from the mode, for the player to command (Battle Command). Tick two teams for hot-seat.'),
+							...(yours ? [el('div', { className: 'be-label', textContent: 'Spawn order: what each new unit does as it comes in' }), ...orderEditor(st, 'Mode.SpawnOrders.' + side, SIDE_NAMES[side] + '\'s spawn order'), ...zoneOrders] : [])));
+					details.ontoggle = () => {
+						s.open = Object.assign(s.open || {}, { ['team' + side]: details.open });
+					};
+					return [row, details];
 				};
 				const role = sp.role ? (() => {
-					const pick = el('select', { className: 'ed-input', disabled: ro }, ...[...Array(SIDES).keys()].map((side) => el('option', { value: String(side), textContent: SIDE_NAMES[side], selected: st.role(sp.role) === side })));
+					const pick = el('select', { className: 'ed-input', disabled: ro }, ...sides.map((side) => el('option', { value: String(side), textContent: SIDE_NAMES[side], selected: st.role(sp.role) === side })));
 					pick.onchange = () => edit(sp.role.label + ': ' + SIDE_NAMES[Number(pick.value)], (x) => x.set('Mode.' + sp.role.key, Number(pick.value)));
 					return el('label', { className: 'ed-check' }, sp.role.label, pick);
 				})() : null;
-				const level = el('select', { className: 'ed-input', disabled: ro, title: 'How hard the AI commanders play' }, ...LEVELS.map(([v, t]) => el('option', { value: String(v), textContent: t, selected: st.num('Mode.CommanderLevel', 1) === v })));
-				level.onchange = () => edit('AI commanders: ' + level.selectedOptions[0].textContent, (x) => x.set('Mode.CommanderLevel', Number(level.value)));
 				// what to place
 				const sel = s.map.sel;
 				const placeRows = items.map((n) => {
@@ -1239,7 +1607,7 @@ window.MS = window.MS || {};
 						el('span', { className: 'be-need-name', textContent: n.label + (n.many && n.count ? ' (' + n.count + (n.max ? ' of ' + n.max : '') + ')' : ''), title: n.note || '' }),
 						ro ? null : el('button', { className: 'tb' + (placing ? ' primary' : ''), textContent: placing ? 'Placing… (Esc)' : n.many && n.done ? '+ Add' : n.done ? 'Replace' : 'Place', onclick: () => (placing ? hooks.donePlacing() : startPlacing(n)) }));
 					const out = [row];
-					if (n.many && shapes.length > 1 || n.ordered && shapes.length) {
+					if ((n.many && shapes.length > 1) || (n.ordered && shapes.length)) {
 						out.push(el('div', { className: 'be-shapes' }, ...shapes.map((_, i) => el('div', { className: 'be-shape' + (sel && sel.key === n.key && sel.i === i ? ' sel' : '') },
 							el('button', { className: 'me-area', textContent: n.label + ' ' + (i + 1), onclick: () => {
 								s.map.sel = { key: n.key, i };
@@ -1252,8 +1620,8 @@ window.MS = window.MS || {};
 					return out;
 				}).flat();
 				// mirror: a team's spawn zones and point copied to another, flipped across the map
-				const mirrorFrom = el('select', { className: 'ed-input' }, ...[...Array(SIDES).keys()].filter((x) => st.plays(x)).map((x) => el('option', { value: String(x), textContent: SIDE_NAMES[x] })));
-				const mirrorTo = el('select', { className: 'ed-input' }, ...[...Array(SIDES).keys()].filter((x) => st.plays(x)).map((x, i) => el('option', { value: String(x), textContent: SIDE_NAMES[x], selected: i === 1 })));
+				const mirrorFrom = el('select', { className: 'ed-input' }, ...sides.filter((x) => st.plays(x)).map((x) => el('option', { value: String(x), textContent: SIDE_NAMES[x] })));
+				const mirrorTo = el('select', { className: 'ed-input' }, ...sides.filter((x) => st.plays(x)).map((x, i) => el('option', { value: String(x), textContent: SIDE_NAMES[x], selected: i === 1 })));
 				const mirror = el('button', { className: 'tb', textContent: 'Mirror', disabled: ro, title: 'Puts a copy of the first team\'s spawn zones (and its flag or goal) in place of the second\'s, flipped left to right across the map', onclick: () => {
 					const from = Number(mirrorFrom.value);
 					const to = Number(mirrorTo.value);
@@ -1272,6 +1640,33 @@ window.MS = window.MS || {};
 				const ringRules = st.mode === 11 ? [...Array(Math.max(0, Math.min(4, st.num('Mode.PointRings', 2))) + 1).keys()].map((i) => el('div', { className: 'be-ringrow' },
 					el('span', { textContent: i ? 'Ring ' + i : 'Bullseye' }),
 					number('RingRadius.' + i, 'reach (px)', 10, 2000, RING_DEFAULTS.radius[i]), number('RingPoints.' + i, 'points a second', 0, 100, RING_DEFAULTS.points[i]))) : [];
+				// where units come in
+				const byShip = st.bool('Mode.ByShip', false);
+				const anywhere = st.bool('Mode.Anywhere', false);
+				const arrive = el('select', { className: 'ed-input', disabled: ro }, ...ARRIVALS.map(([t, ship, wide], i) => el('option', { value: String(i), textContent: t, selected: byShip === ship && anywhere === wide })));
+				arrive.onchange = () => edit('Units: ' + ARRIVALS[Number(arrive.value)][0].toLowerCase(), (x) => {
+					x.set('Mode.ByShip', ARRIVALS[Number(arrive.value)][1]);
+					x.set('Mode.Anywhere', ARRIVALS[Number(arrive.value)][2]);
+				});
+				// AI commanders, as the Battle tab's CommanderPanel shows them for this mode
+				const anyAI = sides.some((side) => st.plays(side) && !commands(st, side) && st.bool('Mode.Commander.' + side, true));
+				const aiRules = [choice('CommanderLevel', 'Difficulty', 1, LEVELS, 'Easy looks at the battle every 3 s and sends few units; normal every second; hard twice a second, sending the most.')];
+				if (![2, 3, 7, 11].includes(st.mode)) {
+					aiRules.push(flag('CommanderSquads', 'Squads', true, 'On normal and hard: its attackers (not its guards) go in squads that follow a leader.'));
+				}
+				if ([2, 3].includes(st.mode)) {
+					aiRules.push(number('CommanderReserve', 'Held on the next objective (%)', 0, 60, 30, 'The share of its units put on the next objective (or sent ahead to the next hill), ready for when the one in play goes.'));
+				}
+				if (st.mode === 3) {
+					aiRules.push(number('CommanderFallBack', 'Defenders fall back when taken (%)', 10, 100, 60, 'Once the attackers have got this far taking the objective in play, every defender falls back to hold the next one.'));
+				}
+				// Battle Command: for the team the player commands
+				const fieldBrain = st.bool('Mode.FieldBrain', false);
+				const hotSeat = st.bool('Mode.HotSeat', false);
+				const pickArmy = st.bool('Mode.PickArmy', false);
+				const armyRows = pickArmy ? [number('ArmyPoints', 'Army points', 500, 20000, 3000, 'What the whole army may cost. Over it, the dearest units are left out.'),
+					...ARMY_CARDS.map(([name, def], i) => number('Army.' + i, name + 's', 0, 99, def))] : [];
+				// pickups
 				const pickups = st.bool('Mode.Pickups', false);
 				const places = st.num('Mode.PickupPlaces', 1);
 				const placeBox = (bit, label) => {
@@ -1279,25 +1674,53 @@ window.MS = window.MS || {};
 					input.onchange = () => edit('Pickups ' + label.toLowerCase(), (x) => x.set('Mode.PickupPlaces', (input.checked ? places | bit : places & ~bit) || 1));
 					return el('label', { className: 'be-rule be-flag' }, input, el('span', { textContent: label }));
 				};
-				const more = el('details', { className: 'be-more', open: !!s.moreOpen }, el('summary', { textContent: 'More: respawns, arrivals, AI, pickups' }),
-					...SHARED_RULES.map(rule), el('label', { className: 'be-rule' }, el('span', { textContent: 'AI commanders play' }), level),
-					flag('Pickups', 'Pickups come in on the map', false),
-					...(pickups ? [...PICKUP_RULES.map(rule), placeBox(1, 'Anywhere'), placeBox(2, 'At pickup spots'), placeBox(4, 'In pickup zones')] : []));
-				more.ontoggle = () => {
-					s.moreOpen = more.open;
+				const kinds = st.num('Mode.PickupKinds', 0x7f);
+				const kindBox = (bit, label) => {
+					const input = el('input', { type: 'checkbox', checked: !!(kinds & (1 << bit)), disabled: ro });
+					input.onchange = () => edit('Pickups: ' + (input.checked ? 'with ' : 'no ') + label.toLowerCase(), (x) => x.set('Mode.PickupKinds', input.checked ? kinds | (1 << bit) : kinds & ~(1 << bit)));
+					return el('label', { className: 'be-flag' }, input, el('span', { textContent: label }));
 				};
-				panel.replaceChildren(
+				// how it shows: the battle's own, or the player's
+				const showPick = (k, label) => {
+					const pick = el('select', { className: 'ed-input', disabled: ro }, ...[[-1, 'As the player has it'], [1, 'Shown'], [0, 'Hidden']].map(([v, t]) => el('option', { value: String(v), textContent: t, selected: st.show(k) === v })));
+					pick.onchange = () => edit(label + ': ' + pick.selectedOptions[0].textContent.toLowerCase(), (x) => x.set('Mode.' + k, Number(pick.value)));
+					return el('label', { className: 'be-rule' }, el('span', { textContent: label }), pick);
+				};
+				const lookPick = el('select', { className: 'ed-input', disabled: ro || st.show('ShowObjectives') === 0 }, el('option', { value: '-1', textContent: 'As the player has it', selected: st.show('ObjectiveLook') === -1 }),
+					...LOOKS.map((t, i) => el('option', { value: String(i), textContent: t, selected: st.show('ObjectiveLook') === i })));
+				lookPick.onchange = () => edit('Objective look: ' + lookPick.selectedOptions[0].textContent.toLowerCase(), (x) => x.set('Mode.ObjectiveLook', Number(lookPick.value)));
+				const ownLook = sp.look ? { ground: 'a glowing line along the top of the ground', glow: 'the ground and buildings in it glowing', outline: 'a glowing line round it' }[sp.look] : null;
+				panel.replaceChildren(...[
 					ro ? el('div', { className: 'ed-banner', textContent: scenario.module + ' is read only here. Make a battle of your own with + New battle to change it.' }) : null,
-					section('Mode', modes, el('p', { className: 'ed-note', textContent: sp.blurb })),
-					section('Teams', el('div', { className: 'be-teamhead' }, el('label', { className: 'ed-check' }, 'The player', who), role), ...[...Array(SIDES).keys()].map(teamRow)),
+					section('Mode', modes, note(sp.blurb)),
+					section('Teams', el('div', { className: 'be-teamhead' }, el('label', { className: 'ed-check' }, 'The player', who), role), ...sides.map(teamRow).flat()),
 					section('Place on the map', why ? el('div', { className: 'be-why', textContent: why }) : el('div', { className: 'be-ready', textContent: 'Ready to play.' }), ...placeRows,
 						el('div', { className: 'be-mirror' }, el('span', { textContent: 'Mirror' }), mirrorFrom, el('span', { textContent: 'onto' }), mirrorTo, mirror),
-						el('p', { className: 'ed-note', textContent: 'Place, then click (points) or drag a box (zones) on the map; right-click the map to place something there. Drag to move, drag a corner to reshape, Alt-click an edge to add a corner, Shift-click a corner to take it out, Delete takes out what is picked.' })),
-					section('Rules', ...sp.rules.map(rule), ...ringRules, more),
+						note('Place, then click (points) or drag a box (zones) on the map; right-click the map to place something there. Drag to move, drag a corner to reshape, Alt-click an edge to add a corner, Shift-click a corner to take it out, Delete takes out what is picked.')),
+					section('Rules', ...sp.rules.map(rule), ...ringRules),
+					fold('arrive', 'Where units come in', el('label', { className: 'be-rule' }, el('span', { textContent: 'Units' }), arrive),
+						anywhere ? number('KeepClear', 'Coming in anywhere: keep clear of enemies by (px)', 0, 2000, 300) : null,
+						byShip ? note('Each team\'s craft is under its Units, in Teams.') : null),
+					fold('respawn', 'Respawns and routes', ...SHARED_RULES.map(rule)),
+					anyAI ? fold('ai', 'AI commanders', ...aiRules) : null,
+					fold('command', 'Battle Command', commanded.length ? null : note('For a team the player commands (The player, above).'),
+						flag('FogOfWar', 'Fog of war', false, 'You see only the enemies your team\'s units can see.'),
+						flag('FieldBrain', 'Your brain on the field', false, 'Your brain is at your base: if it dies you lose, and orders only reach units within its range.'),
+						fieldBrain ? number('FieldBrainRange', 'Command range (px)', 300, 3000, 900) : null,
+						flag('HotSeat', 'Hot-seat: two players take turns', false, 'Two players on one screen, each commanding one of the teams ticked "You command this team", in turn.'),
+						hotSeat ? number('TurnSeconds', 'Seconds a turn', 5, 180, 30) : null,
+						hotSeat && commanded.length < 2 ? note('Tick "You command this team" under a second team (its Units, in Teams).') : null,
+						flag('PickArmy', 'Pick your army', false, 'The team you command fields the army picked here: its units come from that roster till it is used up.'), ...armyRows),
+					fold('pickups', 'Pickups', flag('Pickups', 'Pickups come in on the map', false, 'Powerups (an energy shield, a stim, a spell scroll...) now and then, for the first unit to reach each.'),
+						...(pickups ? [...PICKUP_RULES.map(rule), el('div', { className: 'be-label', textContent: 'Which kinds' }), el('div', { className: 'be-facs' }, ...PICKUP_KINDS.map((k, i) => kindBox(i, k))),
+							el('div', { className: 'be-label', textContent: 'Where they come in' }), placeBox(1, 'Anywhere'), placeBox(2, 'At pickup spots'), placeBox(4, 'In pickup zones')] : [])),
+					fold('looks', 'How it shows', ...SHOWS.map(([k, label]) => showPick(k, label)), el('label', { className: 'be-rule' }, el('span', { textContent: 'Objective look' }), lookPick),
+						note('Saved with the battle, so it shows its way whoever plays it; "As the player has it" leaves it to their own Battle tab settings. ' + (ownLook ? 'This mode\'s own look: ' + ownLook + '. ' : '') + 'The map here shows each look as the game will.')),
 					section('With the game', el('div', { className: 'be-io' },
 						el('button', { className: 'tb', textContent: 'Copy from the game\'s Battle tab…', disabled: ro || !scene, title: 'Brings in a setup saved on this map from the Battle tab (in the Sandbox or Battle Command)', onclick: () => importFromGame(key) }),
 						el('button', { className: 'tb', textContent: 'Save to the game\'s Battle tab', disabled: !scene, title: 'Saves this battle with the map\'s own (Userdata/BattlePresets), to change it there', onclick: () => exportToGame(key) })),
-					el('p', { className: 'ed-note', textContent: 'The game lists this battle with ' + (scene ? scene.name : 'its map') + '\'s battles too: in the map browser (Sandbox and Battle Command) and the Sandbox\'s Battle tab, to play there.' })));
+					note('The game lists this battle with ' + (scene ? scene.name : 'its map') + '\'s battles too: in the map browser (Sandbox and Battle Command) and the Sandbox\'s Battle tab, to play there.')),
+				].filter(Boolean));
 			};
 			const drawAll = () => {
 				if (!host.isConnected) {
@@ -1492,5 +1915,5 @@ window.MS = window.MS || {};
 		]);
 	}
 
-	MS.battleEditor = { open, openByKey, isBattle, newBattle, MODES, parse, serialise };
+	MS.battleEditor = { open, openByKey, isBattle, newBattle, MODES, parse, serialise, Setup, needs, problem, things, parseOrder, fmtOrder };
 })();

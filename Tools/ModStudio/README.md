@@ -54,7 +54,12 @@ Studio app does this itself).
   hill, assault, one flag, the point...) laid out on a map by hand, in the **Battle Editor**: the same map, and beside it the mode,
   the teams (who plays, their size and faction, which one the player commands), a checklist of what the mode needs placed (each
   team's spawn zones, flags, goal zones, the hills or objectives in order, flag or ship positions, pickup spots), its rules, and a
-  red line saying what still stops it starting. Place one from the checklist or by right-clicking the map: a click for a point (it
+  red line saying what still stops it starting, and every other setting of the game's Battle tab: each team's factions (as many as
+  you like), favourites, crabs, jetpacks, craft, risk and rush, the spawn orders of a team the player commands (the team's, and
+  each spawn zone's own, their points placed on the map), where units come in, respawns and routes, the AI commanders, Battle
+  Command (fog of war, field brain, hot-seat, picking an army), pickups and their kinds, and how it shows: objectives lit up and
+  their look (each mode's own, a glowing outline, ground line or terrain), spawn zones, the mode's zones and the battle info, saved
+  with the battle or left to the player. The map shows each objective lit up as the game will. Place one from the checklist or by right-clicking the map: a click for a point (it
   lands on the ground under it), a dragged box for a zone, or its corners with Zones set to Polygon. Drag to move, drag a corner to
   reshape, Alt-click an edge for a new corner, Shift-click a corner to take it out; Mirror copies a team's side across the map.
   A battle is a copy of Battle Command under its own name (`Activities/<name>.ini`) and its setup, in the form the game's Battle tab

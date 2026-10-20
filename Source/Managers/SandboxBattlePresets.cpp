@@ -152,6 +152,11 @@ namespace SandboxDetail {
 			visit("PickupPlaces", mode.PickupPlaces);
 			visit("PickupSpots", mode.PickupSpots);
 			visit("PickupZones", mode.PickupZones);
+			visit("ShowObjectives", mode.ShowObjectives);
+			visit("ObjectiveLook", mode.ObjectiveLook);
+			visit("ShowSpawnZones", mode.ShowSpawnZones);
+			visit("ShowModeZones", mode.ShowModeZones);
+			visit("ShowInfo", mode.ShowInfo);
 		}
 
 		// Values as text: a point "x,y", a line of points with spaces between, zones with " | " between.
@@ -344,6 +349,10 @@ namespace SandboxDetail {
 			}
 			VisitMode(mode, load);
 			mode.Attacker = std::clamp(mode.Attacker, 0, c_Sides - 1);
+			for (int* show: {&mode.ShowObjectives, &mode.ShowSpawnZones, &mode.ShowModeZones, &mode.ShowInfo}) {
+				*show = std::clamp(*show, -1, 1);
+			}
+			mode.ObjectiveLook = std::clamp(mode.ObjectiveLook, -1, static_cast<int>(ObjectiveLook::Count));
 			if (mode.FlagSpots.size() > c_MaxFlagSpots) {
 				mode.FlagSpots.resize(c_MaxFlagSpots);
 			}
