@@ -218,7 +218,6 @@ namespace RTE {
 
 		float Surface = -1.0F; //!< The ground surface in this node's column within its cell, or -1 for none (the node is in the air, or buried).
 		int FreeHeight = 0; //!< Air above the surface (or above the centre, for a node in the air) in the node's column, up to c_ClearanceReach.
-		int WalkHeight = 0; //!< The least air over the body's width (FreeHeight is the most): what a body walking through has over its head.
 		int ClearLeft = 0; //!< Air to the left of the centre (a little over the surface, for a node on the ground), up to a node's width.
 		int ClearRight = 0; //!< Air to the right, likewise.
 		bool StairsUpRight = false; //!< Whether stairs, or a slope of about sixty degrees, lead from this node's floor up to the floor of the node two up and one to the right (see UpdateNodeCosts).
