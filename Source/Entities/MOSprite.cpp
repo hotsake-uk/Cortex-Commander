@@ -9,6 +9,7 @@
 #include "PostProcessMan.h"
 #include "DebugMan.h"
 #include "ConsoleMan.h"
+#include "TimerMan.h"
 
 using namespace RTE;
 
@@ -35,6 +36,7 @@ void MOSprite::Clear() {
 	m_TeamColored = true;
 	m_HasTeamColorDefault = false;
 	m_TeamColorDefault.Reset();
+	m_BloodStains.clear();
 	m_IconFile.Reset();
 	m_GraphicalIcon = nullptr;
 	m_FrameCount = 1;
@@ -164,6 +166,7 @@ int MOSprite::Create(const MOSprite& reference) {
 	m_TeamColored = reference.m_TeamColored;
 	m_HasTeamColorDefault = reference.m_HasTeamColorDefault;
 	m_TeamColorDefault = reference.m_TeamColorDefault;
+	m_BloodStains = reference.m_BloodStains;
 	m_SpriteOffset = reference.m_SpriteOffset;
 	m_SpriteAnimMode = reference.m_SpriteAnimMode;
 	m_SpriteAnimDuration = reference.m_SpriteAnimDuration;
@@ -712,11 +715,71 @@ void MOSprite::ApplySpriteMaps() const {
 		}
 	}
 
-	if (!normalMap && !emissiveMap && !teamColor.Active) {
+	// Blood, in the frame's own pixels: the offsets are from the position, which sits at -m_SpriteOffset in the frame.
+	SpriteStains stains;
+	if (!m_BloodStains.empty() && lighting.UnitBloodStains && lighting.UnitBloodStainStrength > 0.0F) {
+		long long now = g_TimerMan.GetSimTimeMS();
+		Vector spriteOffset = m_SpriteOffset.GetRounded();
+		for (const BloodStain& stain: m_BloodStains) {
+			if (stains.Count >= SpriteStains::c_Max) {
+				break;
+			}
+			Vector inFrame = stain.Offset - spriteOffset;
+			float wet = 1.0F - std::clamp(static_cast<float>(now - stain.WetSinceMS) / static_cast<float>(c_BloodStainDryMS), 0.0F, 1.0F);
+			stains.Spots[stains.Count] = glm::vec4(inFrame.m_X, inFrame.m_Y, stain.Radius, stain.Amount * std::min(lighting.UnitBloodStainStrength, 1.0F));
+			stains.Colors[stains.Count] = glm::vec4(static_cast<float>((stain.Rgb >> 16) & 0xFF) / 255.0F, static_cast<float>((stain.Rgb >> 8) & 0xFF) / 255.0F, static_cast<float>(stain.Rgb & 0xFF) / 255.0F, wet);
+			++stains.Count;
+		}
+	}
+
+	if (!normalMap && !emissiveMap && !teamColor.Active && stains.Count == 0) {
 		return;
 	}
 	const FloatRect& spriteUV = m_Sprites[m_Frame]->GetUVRect();
-	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F), teamColor);
+	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F), teamColor, stains);
+}
+
+void MOSprite::AddBloodStain(const Vector& offset, float radius, unsigned int rgb, float amount) {
+	if (amount <= 0.0F || rgb == 0 || radius <= 0.0F) {
+		return;
+	}
+	long long now = g_TimerMan.GetSimTimeMS();
+	BloodStain* nearest = nullptr;
+	float nearestDistance = 0.0F;
+	for (BloodStain& stain: m_BloodStains) {
+		float distance = (stain.Offset - offset).GetMagnitude();
+		if (!nearest || distance < nearestDistance) {
+			nearest = &stain;
+			nearestDistance = distance;
+		}
+	}
+	bool overlaps = nearest && nearestDistance < std::max(nearest->Radius, radius) * 0.8F;
+	if (!overlaps && m_BloodStains.size() < static_cast<size_t>(c_MaxBloodStains)) {
+		m_BloodStains.push_back({offset, radius, rgb, std::min(amount, 1.0F), now});
+		return;
+	}
+	if (!nearest) {
+		return;
+	}
+	// Soaks into the blood already there: it spreads a little towards the new blood, up to a size that still leaves the sprite readable.
+	float weight = amount / (nearest->Amount + amount);
+	nearest->Offset += (offset - nearest->Offset) * (weight * 0.5F);
+	nearest->Radius = std::min(std::max(nearest->Radius, radius) + 0.35F * radius * weight, 9.0F);
+	nearest->Amount = std::min(nearest->Amount + amount * 0.5F, 1.0F);
+	auto blend = [weight](unsigned int from, unsigned int to, int shift) {
+		float a = static_cast<float>((from >> shift) & 0xFF);
+		float b = static_cast<float>((to >> shift) & 0xFF);
+		return static_cast<unsigned int>(std::clamp(a + (b - a) * weight, 0.0F, 255.0F)) << shift;
+	};
+	nearest->Rgb = blend(nearest->Rgb, rgb, 16) | blend(nearest->Rgb, rgb, 8) | blend(nearest->Rgb, rgb, 0);
+	nearest->WetSinceMS = now;
+}
+
+void MOSprite::RemoveBloodStainNear(const Vector& offset) {
+	auto nearest = std::min_element(m_BloodStains.begin(), m_BloodStains.end(), [&offset](const BloodStain& a, const BloodStain& b) { return (a.Offset - offset).GetSqrMagnitude() < (b.Offset - offset).GetSqrMagnitude(); });
+	if (nearest != m_BloodStains.end()) {
+		m_BloodStains.erase(nearest);
+	}
 }
 
 void MOSprite::StoreRenderPreviousState() {

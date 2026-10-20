@@ -902,6 +902,11 @@ void DebugMan::SettingsGUI() {
 		Check("Wet, sooty, snowy and hot surfaces", &settings.SurfaceStates);
 		Check("Scorch marks", &settings.ScorchMarks);
 		Check("Blood, oil and water stains", &settings.Stains);
+		Check("Bloodstains on units", &settings.UnitBloodStains);
+		Tip("Units get blood on them where they're wounded and where gore nearby splashes them. It starts bright and wet and dries dark, stays on corpses, and healing washes it off.");
+		if (settings.UnitBloodStains) {
+			Slider("Bloodstain strength", &settings.UnitBloodStainStrength, 0.0F, 1.0F);
+		}
 		Check("Stains and soot change the shine", &settings.StainSurface);
 		Tip("Fresh blood shines a little and dries dark and matte, oil stays glossy and catches lamps, and soot dulls the ground. Off: stains and soot only tint the ground, as before.");
 		if (settings.StainSurface) {

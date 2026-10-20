@@ -23,6 +23,14 @@ namespace RTE {
 		GLuint Map = 0; //!< GL texture of the frame's mask, or 0.
 	};
 
+	/// Blood on a sprite (MOSprite's blood stains), for one draw.
+	struct SpriteStains {
+		static constexpr int c_Max = 8;
+		int Count = 0; //!< How many of the spots are used.
+		std::array<glm::vec4, c_Max> Spots{}; //!< xy the centre in the frame's pixels, z the radius in pixels, w how much, 0 to 1.
+		std::array<glm::vec4, c_Max> Colors{}; //!< rgb the colour, 0 to 1, a how wet it still is, 0 to 1.
+	};
+
 	class RenderMan: public Singleton<RenderMan> {
 	public:
 		/// Constructor
@@ -97,7 +105,7 @@ namespace RTE {
 		/// @param spriteUV Where the frame sits in its GL texture (xy corner, zw size, in UV), which differs from the maps when it's in the sprite atlas.
 		/// @param strength The player's strength for authored maps, 0 to 1.
 		/// @param teamColor The parts drawn in the side's colour, if any.
-		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor = {});
+		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor = {}, const SpriteStains& stains = {});
 
 		/// Stops drawing with a sprite's maps. Does nothing if none are on.
 		void EndObjectMaps() { m_ActiveBatch->m_ObjectMapUniforms.clear(); }

@@ -134,6 +134,23 @@ namespace RTE {
 		/// Gets the palette indices drawn in the side's colour.
 		/// @return The marked palette indices.
 		const std::vector<int>& GetTeamColorIndices() const { return m_TeamColorIndices; }
+
+		/// Puts blood on this sprite, where it was wounded or splashed. Close to blood already there, that grows and gets fresh instead; with no room left, the nearest takes it.
+		/// @param offset Where, relative to the position, not rotated or flipped (like an attachable's parent offset).
+		/// @param radius How far it spreads, in pixels.
+		/// @param rgb The blood's colour, 0xRRGGBB.
+		/// @param amount How much, 0 to 1.
+		void AddBloodStain(const Vector& offset, float radius, unsigned int rgb, float amount);
+
+		/// Washes off the blood nearest a place, e.g. where a wound was healed.
+		/// @param offset Where, relative to the position, not rotated or flipped.
+		void RemoveBloodStainNear(const Vector& offset);
+
+		/// Washes off all the blood on this sprite (not its attachables).
+		void ClearBloodStains() { m_BloodStains.clear(); }
+
+		/// Gets whether this sprite has any blood on it.
+		bool HasBloodStains() const { return !m_BloodStains.empty(); }
 #pragma endregion
 
 		/// Gets the color index of the pixel at position (X, Y) in the sprite bitmap
@@ -423,6 +440,18 @@ namespace RTE {
 		bool m_TeamColored; //!< Whether the parts marked by m_TeamColorIndices and m_TeamColorMaps are recoloured at all.
 		bool m_HasTeamColorDefault; //!< Whether m_TeamColorDefault was given. Without it, the marked parts keep their painted colour when there's no side colour to use.
 		Color m_TeamColorDefault; //!< The marked parts' colour when the team colour setting is off or the object has no side.
+
+		/// A patch of blood on the sprite.
+		struct BloodStain {
+			Vector Offset; //!< Relative to the position, not rotated or flipped.
+			float Radius = 2.0F; //!< Pixels.
+			unsigned int Rgb = 0; //!< 0xRRGGBB.
+			float Amount = 1.0F; //!< 0 to 1.
+			long long WetSinceMS = 0; //!< Sim time it was last freshened; it dries over c_BloodStainDryMS.
+		};
+		static constexpr int c_MaxBloodStains = 8; //!< As many as the sprite shader takes (SpriteStains::c_Max).
+		static constexpr long long c_BloodStainDryMS = 30000; //!< How long fresh blood takes to dry dark.
+		std::vector<BloodStain> m_BloodStains; //!< The blood on this sprite, up to c_MaxBloodStains.
 
 		/// Hands the current frame's authored maps and team colour, if it has any, to the draws that follow, until RestoreRenderBlendMode. Call after ApplyRenderBlendMode.
 		void ApplySpriteMaps() const;

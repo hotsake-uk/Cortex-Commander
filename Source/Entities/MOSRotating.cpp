@@ -602,6 +602,8 @@ float MOSRotating::RemoveWounds(int numberOfWoundsToRemove, bool includePositive
 		}
 		AEmitter* wound = m_Wounds.front();
 		float woundDamage = wound->GetBurstDamage();
+		// The blood goes with the wound it came from.
+		RemoveBloodStainNear(wound->GetParentOffset());
 		m_AttachableAndWoundMass -= wound->GetMass();
 		std::iter_swap(m_Wounds.begin(), m_Wounds.end() - 1);
 		m_Wounds.pop_back();
@@ -627,8 +629,79 @@ float MOSRotating::RemoveWounds(int numberOfWoundsToRemove, bool includePositive
 			woundedParts.erase(woundedParts.begin() + woundedPartIndex);
 		}
 	}
+	if (GetWoundCount(true, true, true) == 0) {
+		// Healed whole: washed clean, splashes from others included.
+		ClearBloodStainsOfAll();
+	}
 
 	return damage;
+}
+
+void MOSRotating::StainFromWound(const AEmitter* wound, const Vector& parentOffset, float amount) {
+	if (!wound || !g_PostProcessMan.GetLightingSettings().UnitBloodStains) {
+		return;
+	}
+	unsigned int rgb = wound->GetBleedColor();
+	if (rgb == 0) {
+		return;
+	}
+	float radius = std::clamp(static_cast<float>(wound->GetSpriteWidth()) * 0.6F + 1.0F, 2.0F, 5.0F);
+	AddBloodStain(parentOffset, radius, rgb, amount);
+	// What runs from it: a smaller patch below, whichever way the part is turned.
+	AddBloodStain(parentOffset + UnRotateOffset(Vector(0.0F, radius * 1.4F)), radius * 0.7F, rgb, amount * 0.6F);
+}
+
+unsigned int MOSRotating::GetGoreColor() const {
+	for (const Gib* gib: m_Gibs) {
+		if (unsigned int rgb = AEmitter::StainColorOfParticle(gib->GetParticlePreset())) {
+			return rgb;
+		}
+	}
+	for (const AEmitter* wound: m_Wounds) {
+		if (unsigned int rgb = wound->GetBleedColor()) {
+			return rgb;
+		}
+	}
+	return m_pEntryWound ? m_pEntryWound->GetBleedColor() : 0;
+}
+
+void MOSRotating::SplatterBloodNearby(const Vector& origin, const Vector& direction, unsigned int rgb, float reach, float strength, const MovableObject* exclude) {
+	if (rgb == 0 || strength <= 0.0F || reach <= 0.0F || !g_PostProcessMan.GetLightingSettings().UnitBloodStains) {
+		return;
+	}
+	Vector aim = direction.IsZero() ? Vector() : direction.GetNormalized();
+	for (MovableObject* movableObject: g_SceneMan.GetMOIDGrid().GetMOsInRadius(origin, reach, Activity::NoTeam, false)) {
+		MOSRotating* part = dynamic_cast<MOSRotating*>(movableObject);
+		if (!part || part == exclude || part->IsSetToDelete() || !part->GetRootParent()->IsActor()) {
+			continue;
+		}
+		if (const Attachable* attachable = dynamic_cast<const Attachable*>(part); attachable && attachable->IsWound()) {
+			continue;
+		}
+		Vector toPart = g_SceneMan.ShortestDistance(origin, part->GetPos(), g_SceneMan.SceneWrapsX());
+		float distance = toPart.GetMagnitude();
+		float partRadius = std::max(part->GetIndividualRadius(), 1.0F);
+		float closeness = 1.0F - std::max(distance - partRadius, 0.0F) / reach;
+		if (closeness <= 0.1F || (!aim.IsZero() && distance > 0.5F && toPart.Dot(aim) < 0.6F * distance)) {
+			continue;
+		}
+		// On the side facing the gore, most of the way out from the middle (the shader only colours what's drawn, so it can't land in the air).
+		Vector facing = distance > 0.5F ? toPart * (-std::min(partRadius * 0.5F, distance) / distance) : Vector();
+		Vector offset = part->UnRotateOffset(facing);
+		float amount = strength * closeness;
+		part->AddBloodStain(offset, 1.5F + 2.5F * closeness, rgb, amount);
+		if (amount > 0.4F && distance > 0.5F) {
+			// A spray rather than one blot: a fleck beside it.
+			part->AddBloodStain(offset + part->UnRotateOffset(toPart.GetPerpendicular() * (2.5F / distance)), 1.5F, rgb, amount * 0.7F);
+		}
+	}
+}
+
+void MOSRotating::ClearBloodStainsOfAll() {
+	ClearBloodStains();
+	for (Attachable* attachable: m_Attachables) {
+		attachable->ClearBloodStainsOfAll();
+	}
 }
 
 void MOSRotating::DestroyScriptState() {
@@ -917,6 +990,7 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 			// Adjust position so that it looks like the hole is actually *on* the Hitee.
 			entryPos[dom] += increment[dom] * (pEntryWound->GetSpriteWidth() / 2);
 			RollWoundBleedOut(pEntryWound);
+			StainFromWound(pEntryWound, entryPos + m_SpriteOffset);
 			AddWoundExt(pEntryWound, entryPos + m_SpriteOffset, true, true, false);
 			pEntryWound = 0;
 		}
@@ -934,6 +1008,11 @@ bool MOSRotating::ParticlePenetration(HitData& hd) {
 				float damageMultiplier = pExitWound->HasNoSetDamageMultiplier() ? 1.0F : pExitWound->GetDamageMultiplier();
 				pExitWound->SetDamageMultiplier(damageMultiplier * hd.Body[HITOR]->WoundDamageMultiplier() * WeaponUnitDamageFrom(hd.Body[HITOR]));
 				RollWoundBleedOut(pExitWound);
+				StainFromWound(pExitWound, exitPos + m_SpriteOffset);
+				if (unsigned int rgb = g_PostProcessMan.GetLightingSettings().UnitBloodStains ? pExitWound->GetBleedColor() : 0) {
+					// What comes out the far side sprays whoever is just behind.
+					SplatterBloodNearby(m_Pos + RotateOffset(exitPos + m_SpriteOffset), hd.HitVel[HITOR], rgb, 28.0F, 0.7F, this);
+				}
 				AddWoundExt(pExitWound, exitPos + m_SpriteOffset, true, false, true);
 				pExitWound = 0;
 			}
@@ -977,6 +1056,11 @@ void MOSRotating::GibThis(const Vector& impactImpulse, MovableObject* movableObj
 		counterForce.SetMagnitude(GetGibImpulseLimit());
 		m_ImpulseForces.emplace_back(-counterForce, Vector());
 		MOSprite::ApplyImpulses();
+	}
+
+	if (unsigned int rgb = g_PostProcessMan.GetLightingSettings().UnitBloodStains ? GetGoreColor() : 0) {
+		// Bursting splashes whoever is close, and more the bigger it was.
+		SplatterBloodNearby(m_Pos, Vector(), rgb, std::clamp(GetIndividualRadius() * 1.5F + 20.0F, 20.0F, 60.0F), 1.0F, this);
 	}
 
 	CreateGibsWhenGibbing(impactImpulse, movableObjectToIgnore);
@@ -1891,6 +1975,7 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 				parentBreakWound->SetDrawnAfterParent(attachable->IsDrawnAfterParent());
 				parentBreakWound->SetInheritedRotAngleOffset((attachable->GetParentOffset() * m_Rotation).GetAbsRadAngle());
 				RollWoundBleedOut(parentBreakWound);
+				StainFromWound(parentBreakWound, attachable->GetParentOffset(), 1.0F);
 				AddWound(parentBreakWound, attachable->GetParentOffset(), false);
 				parentBreakWound = nullptr;
 			}
@@ -1900,6 +1985,7 @@ Attachable* MOSRotating::RemoveAttachable(Attachable* attachable, bool addToMova
 			if (childBreakWound) {
 				childBreakWound->SetInheritedRotAngleOffset(attachable->GetJointOffset().GetAbsRadAngle());
 				RollWoundBleedOut(childBreakWound);
+				attachable->StainFromWound(childBreakWound, attachable->GetJointOffset(), 1.0F);
 				attachable->AddWound(childBreakWound, attachable->GetJointOffset());
 				childBreakWound = nullptr;
 			}
