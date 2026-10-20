@@ -510,9 +510,16 @@ fn refs(config: &Config) -> Result<Value, String> {
 	Ok(json!({ "refs": list, "default": format!("{}/{}", config.remote, config.branch) }))
 }
 
-fn commits(config: &Config, reference: &str) -> Result<Value, String> {
+/// A page of a branch's history, newest first: `skip` commits in, `limit` of them. `first_parent` gives only what landed on the branch
+/// itself (on maindev, one commit per merged pull request) rather than every commit of every branch merged into it.
+fn commits(config: &Config, reference: &str, skip: usize, limit: usize, first_parent: bool) -> Result<Value, String> {
 	let repo = Path::new(&config.repo);
-	let log = git(repo, &["log", reference, "-n", "60", "--date-order", "--date=iso", "--format=%H%x09%cd%x09%an%x09%s", "--"])?;
+	let skip_arg = format!("--skip={skip}");
+	let limit_arg = format!("-n{}", limit + 1); // one more than shown, to know whether there are more
+	let mut args = vec!["log", reference, &skip_arg, &limit_arg, "--date=iso", "--format=%H%x09%cd%x09%an%x09%s"];
+	args.push(if first_parent { "--first-parent" } else { "--date-order" });
+	args.push("--");
+	let log = git(repo, &args)?;
 	let built = built_info(&config.slot_path());
 	let rows: Vec<Value> = log
 		.lines()
@@ -524,7 +531,9 @@ fn commits(config: &Config, reference: &str) -> Result<Value, String> {
 			})
 		})
 		.collect();
-	Ok(json!({ "commits": rows }))
+	let more = rows.len() > limit;
+	let rows: Vec<Value> = rows.into_iter().take(limit).collect();
+	Ok(json!({ "commits": rows, "more": more }))
 }
 
 /// The game version at each commit: the commit that brought a version in reads "8.5.230", later ones "8.5.230+N".
@@ -1639,7 +1648,13 @@ pub fn handle(launcher: &Launcher, action: &str, query: &dyn Fn(&str) -> Option<
 			Ok(v) => ok(v),
 			Err(e) => fail(500, e),
 		},
-		"commits" => match commits(&config, &query("ref").unwrap_or_else(|| format!("{}/{}", config.remote, config.branch))) {
+		"commits" => match commits(
+			&config,
+			&query("ref").unwrap_or_else(|| format!("{}/{}", config.remote, config.branch)),
+			query("skip").and_then(|v| v.parse().ok()).unwrap_or(0),
+			query("limit").and_then(|v| v.parse().ok()).unwrap_or(60).clamp(1, 1000),
+			query("firstParent").map(|v| v == "1" || v == "true").unwrap_or(false),
+		) {
 			Ok(v) => ok(v),
 			Err(e) => fail(500, e),
 		},
