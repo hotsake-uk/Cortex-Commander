@@ -109,7 +109,7 @@ window.MS = window.MS || {};
 	const PICKUP_RULES = [['PickupEvery', 'Seconds between pickups', 5, 600, 45], ['PickupMost', 'Most on the map at once', 1, 20, 3], ['PickupLasts', 'A pickup lies for (seconds, 0: till taken)', 0, 600, 90]];
 	const PICKUP_KINDS = ['Energy shield', 'Stim', 'Overcharge', 'Cloak', 'Medkit', 'Juggernaut', 'Spell scroll']; // bits of PickupKinds, by c_PickupKinds
 	const ARMY_CARDS = [['Rifleman', 8], ['Sniper', 2], ['Heavy', 2], ['Digger', 2], ['Crab', 0]]; // c_ReinforcementCards, with Army's defaults
-	const CRAFTS = ['Dropship', 'Rocket'];
+	const CRAFTS = ['Dropship', 'Rocket', 'Drop crate'];
 	// A spawn order's kinds (SpawnOrderKind) and the points each takes: none, one, a route, or one it can do without.
 	const ORDER_KINDS = [['Hold where they land', 'none'], ['Move', 'one'], ['Attack-move', 'one'], ['Defend at', 'one'], ['Patrol', 'route'], ['Jetpack here', 'one'], ['Battle objective', 'optional']];
 	// How the battle shows (the Battle tab's show settings, the battle's own when set): -1 the player's own setting.
@@ -1601,7 +1601,7 @@ window.MS = window.MS || {};
 							flag(team + 'FavouritesOnly', 'Favourites only', false, 'Only units marked as favourites, of those factions (any, when none are).'),
 							flag(team + 'Crabs', 'Spawn crabs', false, 'Crabs among its units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.'),
 							flag(team + 'JetpackOnly', 'Jetpacks only', false, 'Only units with a jetpack.'),
-							choice(team + 'Craft', 'Craft, coming in by ship', 0, CRAFTS.map((c, i) => [i, c])),
+							choice(team + 'Craft', 'Craft, coming in by ship or drop crate', 2, CRAFTS.map((c, i) => [i, c])),
 							risk('RiskMin', 'Least risk', 0), risk('RiskMax', 'Most risk', 0),
 							number('RushPercent.' + side, 'Rush the objective (% of its units)', 0, 100, 30, 'Its units that make a beeline for the objective, shooting as they go, not taking cover or stopping to fight. Guards never rush.'),
 							flag('PlayerCommands.' + side, 'You command this team', false, 'Its units come in with no job from the mode, for the player to command (Battle Command). Tick two teams for hot-seat.'),

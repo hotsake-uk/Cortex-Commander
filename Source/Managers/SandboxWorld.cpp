@@ -2473,10 +2473,54 @@ namespace SandboxDetail {
 		}
 	}
 
-	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves. Returns what the units cost.
+	/// Drops units in drop crates (c_CraftCrate): up to c_UnitsPerCrate in each, the crates side by side over the point, falling from the top
+	/// of the scene (from below too: a crate has no engine to climb with), straight down onto it. Each lands, lets its units out and goes
+	/// (Battle Drop Crate's script). Returns what the units cost; none with no crate to be had, the units deleted.
+	static float DropUnitsByCrate(std::vector<Actor*>& units, int team, float x, bool invincible) {
+		const CraftChoice& choice = c_Crafts[c_CraftCrate];
+		const int crates = (static_cast<int>(units.size()) + c_UnitsPerCrate - 1) / c_UnitsPerCrate;
+		float cost = 0.0F;
+		size_t next = 0;
+		ActivateSide(team);
+		for (int i = 0; i < crates; ++i) {
+			ACraft* crate = dynamic_cast<ACraft*>(CreateBaseObject(choice.ClassName, choice.PresetName));
+			if (!crate) {
+				break;
+			}
+			for (int aboard = 0; aboard < c_UnitsPerCrate && next < units.size(); ++aboard, ++next) {
+				cost += units[next]->GetTotalValue(units[next]->GetModuleID(), 1.0F);
+				crate->AddInventoryItem(units[next]);
+			}
+			Vector at(x + (static_cast<float>(i) - static_cast<float>(crates - 1) * 0.5F) * 40.0F, 0.0F);
+			g_SceneMan.WrapPosition(at);
+			crate->SetPos(at);
+			crate->SetTeam(team);
+			crate->SetControllerMode(Controller::CIM_AI);
+			crate->SetAIMode(Actor::AIMODE_DELIVER);
+			crate->ResetAllTimers();
+			if (invincible) {
+				KeepCraftWhole(crate);
+			}
+			NotePlaced(crate);
+			g_MovableMan.AddActor(crate);
+		}
+		// (Any left over had no crate to go in.)
+		for (; next < units.size(); ++next) {
+			delete units[next];
+		}
+		units.clear();
+		return cost;
+	}
+
+	/// Sends units in by dropship or rocket, which comes down from the sky over a point, unloads and leaves; or by drop crate
+	/// (DropUnitsByCrate). Returns what the units cost.
 	/// @param invincible Whether the craft takes no harm, and is taken away once it has unloaded and left (KeepCraftWhole).
 	float DropUnits(std::vector<Actor*>& units, int team, float x, int craft, bool invincible) {
-		const CraftChoice& choice = c_Crafts[std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1)];
+		craft = std::clamp(craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
+		if (craft == c_CraftCrate) {
+			return DropUnitsByCrate(units, team, x, invincible);
+		}
+		const CraftChoice& choice = c_Crafts[craft];
 		ACraft* ship = dynamic_cast<ACraft*>(CreateBaseObject(choice.ClassName, choice.PresetName));
 		float cost = 0.0F;
 		if (!ship) {

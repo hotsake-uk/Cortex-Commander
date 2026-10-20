@@ -5895,7 +5895,7 @@ namespace SandboxDetail {
 			if (kind == Tool::Drop) {
 				next();
 				ImGui::SetNextItemWidth(field * 0.7F);
-				ImGui::Combo("##craft", &s_Craft, "Dropship\0Rocket\0");
+				ImGui::Combo("##craft", &s_Craft, "Dropship\0Rocket\0Drop crate\0");
 			}
 		} else if (kind == Tool::SpawnPoint) {
 			std::string summary = SpawnPointSummary();
