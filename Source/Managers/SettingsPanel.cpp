@@ -2256,8 +2256,6 @@ void DebugMan::SettingsGUI() {
 		Tip("AI units take hold of a ladder only when their route climbs it, so they don't catch on ladders they are only passing. Bunker ladders follow the same rule. Off: they grab any ladder they press up or down at, as a player does. Players always climb as before.");
 		Toggle("AI grabs ladders mid-jetpack", g_SettingsMan.AIGrabsLaddersMidJet(), [](bool on) { g_SettingsMan.SetAIGrabsLaddersMidJet(on); });
 		Tip("An AI unit flying, hopping or falling past the ladder its route climbs next takes hold of it, cutting the jetpack. Off: a lit jetpack stops it grabbing, and it has to land first.");
-		Toggle("Jetpack units use ladders", g_SettingsMan.AIJetUnitsClimbLadders(), [](bool on) { g_SettingsMan.SetAIJetUnitsClimbLadders(on); });
-		Tip("AI units with a good jetpack have ladders in their routes too, and climb one where the route by it costs less than flying. Off: only units with no jetpack or a weak one route by ladder, and the rest always fly up a laddered shaft.");
 		Toggle("Risky orders fly past ladders", g_SettingsMan.RiskyOrdersFlyPastLadders(), [](bool on) { g_SettingsMan.SetRiskyOrdersFlyPastLadders(on); });
 		Tip("On a risky order (a double click dragged), units with the fuel jetpack up a laddered shaft instead of climbing, and their routes count ladders as slower the riskier the order. Off: they climb ladders as a normal order does.");
 		{
