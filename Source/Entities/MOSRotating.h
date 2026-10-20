@@ -477,6 +477,28 @@ namespace RTE {
 		/// @param checkGibWoundLimit Whether to gib this MOSRotating if adding this wound raises its wound count past its gib wound limit. Defaults to true.
 		virtual void AddWoundExt(AEmitter* woundToAdd, const Vector& parentOffsetToSet, bool checkGibWoundLimit = true, bool isEntryWound = false, bool isExitWound = false);
 
+		/// Bloodies this where a wound is, if the wound bleeds blood or oil ("Bloodstains on units"): a patch about it and a smaller one running below.
+		/// @param wound The wound, or its preset.
+		/// @param parentOffset Where it is, relative to the position, not rotated or flipped.
+		/// @param amount How much, 0 to 1.
+		void StainFromWound(const AEmitter* wound, const Vector& parentOffset, float amount = 0.85F);
+
+		/// Gets the colour of the blood (or oil) this would spill if it burst: of its gibs, else its wounds. 0 if it has none.
+		/// @return The colour, 0xRRGGBB, or 0.
+		unsigned int GetGoreColor() const;
+
+		/// Splashes blood on the parts of units near a place ("Bloodstains on units"), on the side facing it.
+		/// @param origin Where the blood comes from, in the scene.
+		/// @param direction Which way it sprays, or zero for all round.
+		/// @param rgb The blood's colour, 0xRRGGBB.
+		/// @param reach How far it reaches, in pixels.
+		/// @param strength How much lands on what's right there, 0 to 1. Less lands further off.
+		/// @param exclude A part to leave clean, or nullptr.
+		static void SplatterBloodNearby(const Vector& origin, const Vector& direction, unsigned int rgb, float reach, float strength, const MovableObject* exclude);
+
+		/// Washes the blood off this and everything attached to it.
+		void ClearBloodStainsOfAll();
+
 		/// Removes the specified number of wounds from this MOSRotating, and returns damage caused by these removed wounds.
 		/// Includes any Attachables (and their Attachables, etc.) that have a positive damage multiplier.
 		/// @param numberOfWoundsToRemove The number of wounds that should be removed.

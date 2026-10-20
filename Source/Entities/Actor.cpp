@@ -3489,7 +3489,8 @@ void Actor::Update() {
 
 	// Prevent dead actors from rotating like mad
 	if (m_Status == DYING || m_Status == DEAD) {
-		m_AngularVel = m_AngularVel * 0.98F;
+		// (Much less on a ragdolling humanoid, which a hit should send spinning: SettingsMan::RagdollDeaths.)
+		m_AngularVel = m_AngularVel * (g_SettingsMan.RagdollDeaths() && dynamic_cast<AHuman*>(this) ? 0.995F : 0.98F);
 	}
 
 	if (m_Status == DYING && m_DeathTmr.GetElapsedSimTimeMS() > 1000) {

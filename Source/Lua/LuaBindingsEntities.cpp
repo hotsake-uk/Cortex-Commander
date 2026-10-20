@@ -1213,6 +1213,8 @@ LuaBindingRegisterFunctionDefinitionForType(EntityLuaBindings, MOSprite) {
 	    .def("ClearTeamColorDefault", &MOSprite::ClearTeamColorDefault)
 	    .def("AddTeamColorIndex", &MOSprite::AddTeamColorIndex)
 	    .def("ClearTeamColorIndices", &MOSprite::ClearTeamColorIndices)
+	    .def("AddBloodStain", &MOSprite::AddBloodStain)
+	    .def("ClearBloodStains", &MOSprite::ClearBloodStains)
 	    .def("IsTooFast", &MOSprite::IsTooFast)
 	    .def("IsOnScenePoint", &MOSprite::IsOnScenePoint)
 	    .def("RotateOffset", &MOSprite::RotateOffset)
