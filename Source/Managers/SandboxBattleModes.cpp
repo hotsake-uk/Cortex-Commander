@@ -4012,6 +4012,7 @@ namespace SandboxDetail {
 		TerritoryLine s_TerritoryLine;
 		std::vector<int> s_TerritoryOwner; //!< Each cell's team, -1 nobody.
 		std::vector<bool> s_TerritoryContested; //!< Each cell claimed by more than one team at the last count.
+		std::vector<long long> s_TerritoryTakenAt; //!< With taken ground kept: the sim update each cell's team last had a unit on it.
 		std::array<float, c_Sides> s_TerritoryScore{}; //!< Each team's points, to the fraction (the score shows the whole points).
 		std::array<float, c_Sides> s_TerritoryShare{}; //!< Each team's share of the line now, 0 to 1.
 		int s_TerritoryLeader = -1; //!< The team holding the most of it, -1 none (or tied).
@@ -4097,6 +4098,10 @@ namespace SandboxDetail {
 			const int columns = static_cast<int>(line.Ground.size());
 			s_TerritoryOwner.resize(columns, -1);
 			s_TerritoryContested.assign(columns, false);
+			s_TerritoryTakenAt.resize(columns, 0);
+			const long long now = g_TimerMan.GetSimUpdateCount();
+			// (Taken ground kept for so long after its team's last unit leaves it, unless an enemy takes it first; 0: for good.)
+			const long long keepFor = settings.TerritoryHoldSeconds > 0 ? static_cast<long long>(static_cast<float>(settings.TerritoryHoldSeconds) * UpdatesPerSecond()) : -1;
 			std::vector<unsigned> claims(columns, 0u);
 			const bool wraps = g_SceneMan.SceneWrapsX();
 			for (const Actor* unit: Fighters()) {
@@ -4133,12 +4138,13 @@ namespace SandboxDetail {
 							owner = side;
 						}
 					}
+					s_TerritoryTakenAt[cell] = now;
 				} else if (claim != 0) {
 					s_TerritoryContested[cell] = true;
 					if (!settings.TerritoryKeep) {
 						owner = -1;
 					}
-				} else if (!settings.TerritoryKeep) {
+				} else if (!settings.TerritoryKeep || (keepFor >= 0 && owner >= 0 && now - s_TerritoryTakenAt[cell] > keepFor)) {
 					owner = -1;
 				}
 				if (owner >= 0 && !s_TerritoryContested[cell]) {
@@ -4260,6 +4266,7 @@ namespace SandboxDetail {
 			s_TerritoryLine = TerritoryLine();
 			s_TerritoryOwner.clear();
 			s_TerritoryContested.clear();
+			s_TerritoryTakenAt.clear();
 			s_TerritoryScore.fill(0.0F);
 			s_TerritoryShare.fill(0.0F);
 			s_TerritoryLeader = -1;
@@ -4339,6 +4346,10 @@ namespace SandboxDetail {
 				changed = true;
 			}
 			ImGui::SetItemTooltip("While stood on: ground counts for a team only while one of its units is on it. Taken: a unit walking over ground takes it for its team, and it stays theirs till an enemy unit walks over it.");
+			if (setup.TerritoryKeep) {
+				changed |= ImGui::SliderInt("Ground stays taken", &setup.TerritoryHoldSeconds, 0, 300, setup.TerritoryHoldSeconds > 0 ? "%d s" : "unlimited");
+				ImGui::SetItemTooltip("How long taken ground stays its team's after the team's last unit leaves it, unless an enemy takes it first; then it goes back to nobody's. 0: unlimited, till an enemy takes it.");
+			}
 			changed |= ImGui::SliderInt("Claim width", &setup.TerritoryScale, 25, 300, "%d%% of the unit's width");
 			ImGui::SetItemTooltip("How wide a stretch of the line each unit claims, by its own size: a soldier a soldier's width, a tank a tank's.");
 			changed |= ImGui::SliderInt("Claim padding", &setup.TerritoryPadding, 0, 60, "%d px each side");
@@ -4359,6 +4370,8 @@ namespace SandboxDetail {
 		/// The colour a cell of the line shows in: its holder's, orange while contested, else white.
 		ImU32 TerritoryColor(int owner, bool contested) { return contested ? IM_COL32(255, 150, 40, 255) : (owner >= 0 ? c_SideColors[owner] : IM_COL32(230, 230, 230, 255)); }
 
+		void TerritoryObjectives(const BattleModeSettings& settings, bool running, std::vector<BattleObjective>& out);
+
 		void TerritoryDraw(bool running) {
 			ImDrawList* drawList = ImGui::GetBackgroundDrawList();
 			const BattleModeSettings& settings = running ? s_ModeRun.Settings : s_ModeSetup;
@@ -4366,44 +4379,79 @@ namespace SandboxDetail {
 			const TerritoryLine& line = TraceTerritory(settings);
 			const int columns = static_cast<int>(line.Ground.size());
 			const bool counted = running && static_cast<int>(s_TerritoryOwner.size()) == columns && static_cast<int>(s_TerritoryContested.size()) == columns;
-			// The line glowing along the ground, a run at a time in its holder's colour (faint where nobody holds it).
+			// The line lit up in the objective look (with "Show battle objectives" on), a run at a time in its holder's colour (faint where
+			// nobody holds it): each mode's own and the ground line, a glowing line along the ground; glowing terrain, a band of the ground
+			// under it glowing; an outline, a glowing line round that band; rings, a ring at the middle of each sector.
+			const int lookNow = std::clamp(BattleObjectiveLookNow(), 0, static_cast<int>(ObjectiveLook::Count));
+			const ObjectiveLook look = lookNow > 0 ? static_cast<ObjectiveLook>(lookNow - 1) : ObjectiveLook::Ground;
 			const float pulse = running ? 0.8F + 0.2F * Pulse(3.0F) : 0.7F;
-			std::vector<ImVec2> points;
-			ImU32 runColor = 0;
-			bool runHeld = false;
-			int last = -10;
-			float lastGround = 0.0F;
-			auto flush = [&]() {
-				if (points.size() >= 2) {
-					GlowPolyline(drawList, points, runColor, false, runHeld ? pulse : pulse * 0.45F);
+			if (BattleShowsObjectives() && look == ObjectiveLook::Marker) {
+				std::vector<BattleObjective> sectors;
+				TerritoryObjectives(settings, running, sectors);
+				for (BattleObjective& sector: sectors) {
+					sector.Radius = 60.0F;
+					sector.Live = true;
+					DrawObjective(drawList, sector, ObjectiveLook::Marker);
 				}
-				points.clear();
-			};
-			for (int cell = 0; cell < columns; ++cell) {
-				const float ground = line.Ground[cell];
-				if (ground < 0.0F) {
-					flush();
-					continue;
-				}
-				const int owner = counted ? s_TerritoryOwner[cell] : -1;
-				const bool contested = counted && s_TerritoryContested[cell];
-				const ImU32 color = TerritoryColor(owner, contested);
-				const ImVec2 at = ToScreen(TerritoryCellAt(line, cell));
-				const bool joins = cell == last + 1 && std::abs(ground - lastGround) <= 12.0F;
-				if (!points.empty() && (!joins || color != runColor)) {
-					if (joins) {
-						// (Run on to this cell so the line has no gap where the colour changes.)
-						points.push_back(at);
+			} else if (BattleShowsObjectives()) {
+				constexpr float c_Band = 14.0F; // How deep under the ground's top the glowing terrain and the outline reach.
+				const auto alpha = [](float a) { return static_cast<ImU32>(std::clamp(a, 0.0F, 255.0F)) << 24; };
+				std::vector<int> run; // Cells, the last perhaps the next run's first (so the line has no gap where the colour changes).
+				ImU32 runColor = 0;
+				bool runHeld = false;
+				auto flush = [&]() {
+					const float strength = runHeld ? pulse : pulse * 0.45F;
+					if (run.size() >= 2 && (look == ObjectiveLook::Ground || look == ObjectiveLook::Outline)) {
+						std::vector<ImVec2> points;
+						for (int cell: run) {
+							points.push_back(ToScreen(TerritoryCellAt(line, cell)));
+						}
+						if (look == ObjectiveLook::Outline) {
+							for (auto cell = run.rbegin(); cell != run.rend(); ++cell) {
+								points.push_back(ToScreen(TerritoryCellAt(line, *cell) + Vector(0.0F, c_Band)));
+							}
+						}
+						GlowPolyline(drawList, points, runColor, look == ObjectiveLook::Outline, strength);
+					} else if (!run.empty() && look == ObjectiveLook::Glow) {
+						// The ground's top lit up, the band under it tinted, with a soft glow round it.
+						const ImU32 rgb = runColor & 0x00FFFFFF;
+						const ImVec4 tint = ImGui::ColorConvertU32ToFloat4(runColor);
+						const ImU32 bright = ImGui::ColorConvertFloat4ToU32(ImVec4(0.5F + tint.x * 0.5F, 0.5F + tint.y * 0.5F, 0.5F + tint.z * 0.5F, 1.0F)) & 0x00FFFFFF;
+						for (int cell: run) {
+							const Vector top = TerritoryCellAt(line, cell) - Vector(c_TerritoryCell * 0.5F, 0.0F);
+							drawList->AddRectFilled(ToScreen(top - Vector(0.0F, 4.0F)), ToScreen(top + Vector(c_TerritoryCell, c_Band + 4.0F)), rgb | alpha(22.0F * strength));
+							drawList->AddRectFilled(ToScreen(top), ToScreen(top + Vector(c_TerritoryCell, c_Band)), rgb | alpha(60.0F * strength));
+							drawList->AddRectFilled(ToScreen(top), ToScreen(top + Vector(c_TerritoryCell, 3.0F)), bright | alpha(200.0F * strength));
+						}
 					}
-					flush();
+					run.clear();
+				};
+				int last = -10;
+				float lastGround = 0.0F;
+				for (int cell = 0; cell < columns; ++cell) {
+					const float ground = line.Ground[cell];
+					if (ground < 0.0F) {
+						flush();
+						continue;
+					}
+					const int owner = counted ? s_TerritoryOwner[cell] : -1;
+					const bool contested = counted && s_TerritoryContested[cell];
+					const ImU32 color = TerritoryColor(owner, contested);
+					const bool joins = cell == last + 1 && std::abs(ground - lastGround) <= 12.0F;
+					if (!run.empty() && (!joins || color != runColor)) {
+						if (joins && look == ObjectiveLook::Ground) {
+							run.push_back(cell);
+						}
+						flush();
+					}
+					runColor = color;
+					runHeld = owner >= 0 || contested;
+					run.push_back(cell);
+					last = cell;
+					lastGround = ground;
 				}
-				runColor = color;
-				runHeld = owner >= 0 || contested;
-				points.push_back(at);
-				last = cell;
-				lastGround = ground;
+				flush();
 			}
-			flush();
 			if (!running) {
 				return;
 			}
