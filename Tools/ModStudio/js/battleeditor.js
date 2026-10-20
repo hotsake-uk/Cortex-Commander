@@ -1568,7 +1568,7 @@ window.MS = window.MS || {};
 							// (the most never under the least, as the game keeps them)
 							if (k === 'RiskMin' && x.num('Mode.RiskMax.' + side, 0) < v) {
 								x.set('Mode.RiskMax.' + side, v);
-							} else if (k === 'RiskMax' && x.num('Mode.RiskMin.' + side, -100) > v) {
+							} else if (k === 'RiskMax' && x.num('Mode.RiskMin.' + side, 0) > v) {
 								x.set('Mode.RiskMin.' + side, v);
 							}
 						});
@@ -1588,7 +1588,7 @@ window.MS = window.MS || {};
 							flag(team + 'Crabs', 'Spawn crabs', false, 'Crabs among its units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.'),
 							flag(team + 'JetpackOnly', 'Jetpacks only', false, 'Only units with a jetpack.'),
 							choice(team + 'Craft', 'Craft, coming in by ship', 0, CRAFTS.map((c, i) => [i, c])),
-							risk('RiskMin', 'Least risk', -100), risk('RiskMax', 'Most risk', 0),
+							risk('RiskMin', 'Least risk', 0), risk('RiskMax', 'Most risk', 0),
 							number('RushPercent.' + side, 'Rush the objective (% of its units)', 0, 100, 30, 'Its units that make a beeline for the objective, shooting as they go, not taking cover or stopping to fight. Guards never rush.'),
 							flag('PlayerCommands.' + side, 'You command this team', false, 'Its units come in with no job from the mode, for the player to command (Battle Command). Tick two teams for hot-seat.'),
 							...(yours ? [el('div', { className: 'be-label', textContent: 'Spawn order: what each new unit does as it comes in' }), ...orderEditor(st, 'Mode.SpawnOrders.' + side, SIDE_NAMES[side] + '\'s spawn order'), ...zoneOrders] : [])));
