@@ -780,6 +780,12 @@ bool MOSRotating::CollideAtPoint(HitData& hd) {
 		}
 
 		AddImpulseForce(hd.ResImpulse[HITEE], hd.HitRadius[HITEE]);
+		// A shot, a piece of a blast or a thrown thing (not another body leaning on it) knocks a humanoid's ragdoll about (AHuman::NoteRagdollHit).
+		if (g_SettingsMan.RagdollDeaths() && !hd.ResImpulse[HITEE].IsZero() && hd.Body[HITOR] && !hd.Body[HITOR]->GetRootParent()->IsActor() && hd.VelDiff.MagnitudeIsGreaterThan(8.0F)) {
+			if (AHuman* human = dynamic_cast<AHuman*>(GetRootParent())) {
+				human->NoteRagdollHit(this, hd.ResImpulse[HITEE], hd.HitRadius[HITEE]);
+			}
+		}
 		//        m_Vel += hd.ResImpulse[HITEE] / hd.mass[HITEE];
 		//        m_AngularVel += hd.HitRadius[HITEE].GetPerpendicular().Dot(hd.ResImpulse[HITEE]) / hd.MomInertia[HITEE];
 	} else

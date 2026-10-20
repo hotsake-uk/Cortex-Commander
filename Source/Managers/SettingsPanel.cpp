@@ -1336,6 +1336,11 @@ void DebugMan::SettingsGUI() {
 			if (Slider("Ragdoll: hit that still blows apart", &scale, Normal{3.0F}, 1.5F, 10.0F, "%.1fx limit")) {
 				g_SettingsMan.SetRagdollBlowApartScale(scale);
 			}
+			float hitPush = g_SettingsMan.RagdollHitPush();
+			if (Slider("Ragdoll: hit push", &hitPush, Normal{3.0F}, 1.0F, 10.0F, "%.1fx")) {
+				g_SettingsMan.SetRagdollHitPush(hitPush);
+			}
+			Tip("How hard the shot, blast or thrown thing that kills a soldier, and every hit after, knocks the body and its arms and legs about: thrown back by a burst, spun by a shot to the shoulder, a leg kicked out by a round to the knee. 1: only as hard as the game's own physics, which barely moves a body for what a bullet carries.");
 			int bodySeconds = g_SettingsMan.RagdollBodySeconds();
 			if (SliderI("Ragdoll: bodies stay for", &bodySeconds, Normal{30}, 0, 600, bodySeconds > 0 ? "%d s" : "Settle at once")) {
 				g_SettingsMan.SetRagdollBodySeconds(bodySeconds);
