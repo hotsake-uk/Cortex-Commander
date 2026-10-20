@@ -1037,6 +1037,9 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LampBrightness", { g_PostProcessMan.GetLightingSettings().LampBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LampReach", { g_PostProcessMan.GetLightingSettings().LampReach = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LampTint", { g_PostProcessMan.GetLightingSettings().LampTint = ReadVec3(reader.ReadPropValue(), g_PostProcessMan.GetLightingSettings().LampTint); });
+	MatchProperty("LampsOffByDay", { g_PostProcessMan.GetLightingSettings().LampsOffByDay = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LampsOffFrom", { g_PostProcessMan.GetLightingSettings().LampsOffFrom = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 24.0F); });
+	MatchProperty("LampsOffUntil", { g_PostProcessMan.GetLightingSettings().LampsOffUntil = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 24.0F); });
 	MatchProperty("LampCache", { g_PostProcessMan.GetLightingSettings().LampCache = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("LampCacheDetail", { g_PostProcessMan.GetLightingSettings().LampCacheDetail = std::clamp(std::stoi(reader.ReadPropValue()), 0, 2); });
 	MatchProperty("HeadlampBrightness", { g_PostProcessMan.GetLightingSettings().HeadlampBrightness = std::stof(reader.ReadPropValue()); });
@@ -1150,6 +1153,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("AICombatBurst", { reader >> m_AICombat.Burst; ClampAICombat(); });
 	MatchProperty("AICombatHearing", { reader >> m_AICombat.Hearing; ClampAICombat(); });
 	MatchProperty("AICombatInvestigateNoises", { reader >> m_AICombat.InvestigateNoises; });
+	MatchProperty("FixBigMaps", { reader >> m_SlowdownFixes.BigMaps; });
 	MatchProperty("FixLiquidTellsOnlyMoves", { reader >> m_SlowdownFixes.LiquidTellsOnlyMoves; });
 	MatchProperty("WreckSettleSeconds", { reader >> m_SlowdownFixes.WreckSettleSeconds; m_SlowdownFixes.WreckSettleSeconds = std::clamp(m_SlowdownFixes.WreckSettleSeconds, 0, 600); });
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
@@ -1320,6 +1324,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("DigBackOff", { reader >> m_DigSafety.BackOff; });
 	MatchProperty("DigToAvoidCaveIns", { reader >> m_DigSafety.DigToOrders; });
 	MatchProperty("DigToPreviewWarns", { reader >> m_DigSafety.PreviewWarns; });
+	MatchProperty("DigToNearbyOnly", { reader >> m_DigSafety.NearbyOnly; });
 	MatchProperty("AIDodgesFallingGround", { reader >> m_AIDodgesFallingGround; });
 	MatchProperty("DirectDiveRisk", { reader >> m_DirectOrders.DiveRisk; m_DirectOrders.DiveRisk = std::clamp(m_DirectOrders.DiveRisk, 0.5F, 1.0F); });
 	MatchProperty("DirectDiveChance", { reader >> m_DirectOrders.DiveChance; m_DirectOrders.DiveChance = std::clamp(m_DirectOrders.DiveChance, 0.0F, 1.0F); });
@@ -1786,6 +1791,9 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("LampBrightness", lighting.LampBrightness);
 	writer.NewPropertyWithValue("LampReach", lighting.LampReach);
 	writer.NewPropertyWithValue("LampTint", WriteVec3(lighting.LampTint));
+	writer.NewPropertyWithValue("LampsOffByDay", lighting.LampsOffByDay);
+	writer.NewPropertyWithValue("LampsOffFrom", lighting.LampsOffFrom);
+	writer.NewPropertyWithValue("LampsOffUntil", lighting.LampsOffUntil);
 	writer.NewPropertyWithValue("LampCache", lighting.LampCache);
 	writer.NewPropertyWithValue("LampCacheDetail", lighting.LampCacheDetail);
 	writer.NewPropertyWithValue("HeadlampBrightness", lighting.HeadlampBrightness);
@@ -1932,6 +1940,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("AICombatBurst", m_AICombat.Burst);
 	writer.NewPropertyWithValue("AICombatHearing", m_AICombat.Hearing);
 	writer.NewPropertyWithValue("AICombatInvestigateNoises", m_AICombat.InvestigateNoises);
+	writer.NewPropertyWithValue("FixBigMaps", m_SlowdownFixes.BigMaps);
 	writer.NewPropertyWithValue("FixLiquidTellsOnlyMoves", m_SlowdownFixes.LiquidTellsOnlyMoves);
 	writer.NewPropertyWithValue("WreckSettleSeconds", m_SlowdownFixes.WreckSettleSeconds);
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);
@@ -2060,6 +2069,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("DigBackOff", m_DigSafety.BackOff);
 	writer.NewPropertyWithValue("DigToAvoidCaveIns", m_DigSafety.DigToOrders);
 	writer.NewPropertyWithValue("DigToPreviewWarns", m_DigSafety.PreviewWarns);
+	writer.NewPropertyWithValue("DigToNearbyOnly", m_DigSafety.NearbyOnly);
 	writer.NewPropertyWithValue("AIDodgesFallingGround", m_AIDodgesFallingGround);
 	writer.NewPropertyWithValue("DirectDiveRisk", m_DirectOrders.DiveRisk);
 	writer.NewPropertyWithValue("DirectDiveChance", m_DirectOrders.DiveChance);

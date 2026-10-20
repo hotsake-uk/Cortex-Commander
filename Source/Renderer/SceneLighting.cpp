@@ -197,7 +197,12 @@ bool SceneLighting::EnsureWorldResources() {
 		return false;
 	}
 	unsigned int sceneGeneration = g_SceneMan.GetSceneGeneration();
-	if (scene == m_WorldScene && sceneGeneration == m_WorldSceneGeneration && materialBitmap == m_WorldMaterialBitmap && materialBitmap->w == m_SceneWidth && materialBitmap->h == m_SceneHeight) {
+	const bool bigMaps = g_SettingsMan.SlowdownFixes().BigMaps;
+	// (Turning the big-map speedups on or off builds the grid again only where they change its cells, a map of 12 to 32 million pixels.)
+	const long long scenePixels = static_cast<long long>(materialBitmap->w) * materialBitmap->h;
+	const bool cellsChange = bigMaps != m_WorldBigMaps && scenePixels > 12'000'000LL && scenePixels <= 32'000'000LL;
+	if (scene == m_WorldScene && sceneGeneration == m_WorldSceneGeneration && materialBitmap == m_WorldMaterialBitmap && materialBitmap->w == m_SceneWidth && materialBitmap->h == m_SceneHeight && !cellsChange) {
+		m_WorldBigMaps = bigMaps;
 		return true;
 	}
 	ZoneScopedN("Build World Light Grid");
@@ -212,8 +217,10 @@ bool SceneLighting::EnsureWorldResources() {
 	m_SceneHeight = materialBitmap->h;
 	m_WrapX = g_SceneMan.SceneWrapsX();
 	m_WrapY = g_SceneMan.SceneWrapsY();
-	// Keep the grid a manageable size on huge scenes.
-	m_CellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > 32'000'000LL) ? 8 : 4;
+	// Keep the grid a manageable size on huge scenes. With the big-map speedups from 12 million pixels (about 4900 by 2450) instead of 32: the light is
+	// blurred over several cells anyway, and the coarser cells are a quarter of the work in every pass over the grid.
+	m_WorldBigMaps = bigMaps;
+	m_CellSize = (static_cast<long long>(m_SceneWidth) * m_SceneHeight > (bigMaps ? 12'000'000LL : 32'000'000LL)) ? 8 : 4;
 	m_GridWidth = (m_SceneWidth + m_CellSize - 1) / m_CellSize;
 	m_GridHeight = (m_SceneHeight + m_CellSize - 1) / m_CellSize;
 
@@ -237,6 +244,17 @@ bool SceneLighting::EnsureWorldResources() {
 	m_SkylineRows.assign(m_GridWidth, m_GridHeight);
 	m_SkylineDirtyFirstColumn = 0;
 	m_SkylineDirtyEndColumn = m_GridWidth;
+	m_RegionColumns = (m_SceneWidth + c_RegionSize - 1) / c_RegionSize;
+	m_RegionRows = (m_SceneHeight + c_RegionSize - 1) / c_RegionSize;
+	size_t regionCount = static_cast<size_t>(m_RegionColumns) * m_RegionRows;
+	m_RegionsPicked.assign(regionCount, 0);
+	m_SkyLightUnsettled.assign(regionCount, 0);
+	m_WetClocks.assign(regionCount, glm::dvec3(m_WetClock));
+	m_FogClocks.assign(regionCount, glm::dvec3(m_FogClock));
+	m_DecalClocks.assign(regionCount, m_DecalClock);
+	m_RegionsOn = false;
+	m_RegionsFinishing = false;
+	m_RegionSweep = 0;
 
 	GLint wrapS = m_WrapX ? GL_REPEAT : GL_CLAMP_TO_EDGE;
 	GLint wrapT = m_WrapY ? GL_REPEAT : GL_CLAMP_TO_EDGE;
@@ -686,9 +704,18 @@ void SceneLighting::UploadOccupancyRect(int firstRow, int endRow, int firstColum
 	glPixelStorei(GL_UNPACK_ALIGNMENT, 4);
 }
 
-void SceneLighting::PropagateSkyLight(int iterations) {
+void SceneLighting::PropagateSkyLight(int iterations, const std::vector<RegionRect>* regions) {
 	ZoneScoped;
 	TracyGpuZone("Sky Light Propagation");
+	if (regions) {
+		if (regions->empty()) {
+			return;
+		}
+		// An even number of steps ends in the buffer it started from. The cells just outside each rectangle are read (a cell's neighbours, and the sun a step
+		// away) but not written, so the buffer written first gets them from the one read first: both hold the same there, whichever is read.
+		iterations += iterations % 2;
+		CopyRegions(m_SkyLight[m_CurrentSkyLight], m_SkyLight[1 - m_CurrentSkyLight], *regions, m_CellSize, 2);
+	}
 	glDisable(GL_BLEND);
 	glDisable(GL_DEPTH_TEST);
 	glDisable(GL_SCISSOR_TEST);
@@ -708,16 +735,253 @@ void SceneLighting::PropagateSkyLight(int iterations) {
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, m_SkylineTexture.Texture);
+	if (regions) {
+		glEnable(GL_SCISSOR_TEST);
+	}
 	for (int i = 0; i < iterations; ++i) {
 		const GLTarget& source = m_SkyLight[m_CurrentSkyLight];
 		const GLTarget& destination = m_SkyLight[1 - m_CurrentSkyLight];
 		glBindFramebuffer(GL_FRAMEBUFFER, destination.Framebuffer);
 		glActiveTexture(GL_TEXTURE0);
 		glBindTexture(GL_TEXTURE_2D, source.Texture);
-		DrawFullscreen();
+		if (regions) {
+			for (const RegionRect& region: *regions) {
+				ScissorRegion(region.Pixels, m_CellSize, destination);
+				DrawFullscreen();
+			}
+		} else {
+			DrawFullscreen();
+		}
 		m_CurrentSkyLight = 1 - m_CurrentSkyLight;
 	}
+	glDisable(GL_SCISSOR_TEST);
 	glActiveTexture(GL_TEXTURE0);
+}
+
+void SceneLighting::MarkRegions(std::vector<unsigned char>& marks, int minX, int minY, int endX, int endY) const {
+	if (m_RegionColumns <= 0 || m_RegionRows <= 0 || endX <= minX || endY <= minY || marks.size() < static_cast<size_t>(m_RegionColumns) * m_RegionRows) {
+		return;
+	}
+	// Per axis, the box's pixel span as up to two spans inside the scene: wrapped round on a wrapping axis (split in two across the seam), clipped on the other.
+	// Pixels are wrapped before they are put in regions, since the last region is a partial one when the scene isn't a multiple of their size.
+	struct Spans {
+		int Count = 0;
+		int From[2] = {0, 0};
+		int End[2] = {0, 0};
+	};
+	auto spans = [](int from, int end, int size, bool wraps) {
+		Spans result;
+		auto add = [&result](int spanFrom, int spanEnd) {
+			result.From[result.Count] = spanFrom;
+			result.End[result.Count] = spanEnd;
+			++result.Count;
+		};
+		if (wraps && end - from >= size) {
+			add(0, size);
+		} else if (wraps) {
+			int start = ((from % size) + size) % size;
+			int stop = start + (end - from);
+			if (stop <= size) {
+				add(start, stop);
+			} else {
+				add(start, size);
+				add(0, stop - size);
+			}
+		} else {
+			from = std::max(from, 0);
+			end = std::min(end, size);
+			if (end > from) {
+				add(from, end);
+			}
+		}
+		return result;
+	};
+	Spans spansX = spans(minX, endX, m_SceneWidth, m_WrapX);
+	Spans spansY = spans(minY, endY, m_SceneHeight, m_WrapY);
+	for (int y = 0; y < spansY.Count; ++y) {
+		for (int row = spansY.From[y] / c_RegionSize; row <= (spansY.End[y] - 1) / c_RegionSize; ++row) {
+			for (int x = 0; x < spansX.Count; ++x) {
+				for (int column = spansX.From[x] / c_RegionSize; column <= (spansX.End[x] - 1) / c_RegionSize; ++column) {
+					marks[static_cast<size_t>(row) * m_RegionColumns + column] = 1;
+				}
+			}
+		}
+	}
+}
+
+void SceneLighting::PickRegions() {
+	// (A frame that only finished off the regions, below, counts as one without them.)
+	const bool wereOn = m_RegionsOn && !m_RegionsFinishing;
+	m_RegionsOn = false;
+	m_RegionsFinishing = false;
+	if (m_RegionColumns <= 0 || m_RegionRows <= 0) {
+		return;
+	}
+	// Going back to the whole map at once (the speedups turned off, no screen, or a screen over most of the map): one last frame by regions with all of
+	// them picked, so each catches up on what it missed before the whole-map passes carry on from there.
+	auto finish = [this, wereOn]() {
+		if (wereOn) {
+			std::fill(m_RegionsPicked.begin(), m_RegionsPicked.end(), 1);
+			m_RegionsOn = true;
+			m_RegionsFinishing = true;
+		}
+	};
+	if (!g_SettingsMan.SlowdownFixes().BigMaps) {
+		finish();
+		return;
+	}
+	const size_t regionCount = static_cast<size_t>(m_RegionColumns) * m_RegionRows;
+	std::fill(m_RegionsPicked.begin(), m_RegionsPicked.end(), 0);
+	bool anyScreen = false;
+	for (int screen = 0; screen < c_MaxScreens; ++screen) {
+		// Screens lit in the last couple of frames; one not drawn for longer (a player gone) is left out.
+		if (m_FrameCounter - m_ScreenViewFrames[screen] > 2) {
+			continue;
+		}
+		const glm::ivec4& view = m_ScreenViews[screen];
+		// A quarter of the view more all round: for the camera moving before the next frame, and the light, mist and wet coming in from just off screen.
+		int marginX = view.z / 4;
+		int marginY = view.w / 4;
+		MarkRegions(m_RegionsPicked, view.x - marginX, view.y - marginY, view.x + view.z + marginX, view.y + view.w + marginY);
+		anyScreen = true;
+	}
+	// No screen lit (a menu, the first frame of a scene): the whole map, as without the speedups.
+	if (!anyScreen) {
+		finish();
+		return;
+	}
+	size_t picked = static_cast<size_t>(std::count(m_RegionsPicked.begin(), m_RegionsPicked.end(), 1));
+	// The sweep: a slice of the rest of the map each frame, a quarter as much as round the screens, so the rest still moves on (the sun's angle, rain,
+	// fading) and the whole map is gone over every few seconds however big it is.
+	size_t sweep = std::max<size_t>(4, picked / 4);
+	for (size_t i = 0; i < sweep && i < regionCount; ++i) {
+		m_RegionsPicked[m_RegionSweep] = 1;
+		m_RegionSweep = (m_RegionSweep + 1) % static_cast<int>(regionCount);
+	}
+	picked = static_cast<size_t>(std::count(m_RegionsPicked.begin(), m_RegionsPicked.end(), 1));
+	// Most of the map anyway (a small map, or split screens over most of it): the whole map at once, as without the speedups, which is one draw instead of many.
+	if (picked * 4 >= regionCount * 3) {
+		finish();
+		return;
+	}
+	m_RegionsOn = true;
+	if (!wereOn) {
+		// Every region was brought up to date by the whole-map passes until now.
+		std::fill(m_WetClocks.begin(), m_WetClocks.end(), glm::dvec3(m_WetClock));
+		std::fill(m_FogClocks.begin(), m_FogClocks.end(), glm::dvec3(m_FogClock));
+		std::fill(m_DecalClocks.begin(), m_DecalClocks.end(), m_DecalClock);
+	}
+}
+
+std::vector<SceneLighting::RegionRect> SceneLighting::TakeRegions(const std::vector<unsigned char>* extra, bool withPicked, std::vector<glm::dvec3>* clocks, const glm::dvec3& now, bool wholeSteps) {
+	std::vector<RegionRect> rects;
+	// The rectangles ending at the row above, which a run on this row with the same span and the same owed carries on down.
+	std::vector<size_t> open;
+	std::vector<size_t> nextOpen;
+	for (int row = 0; row < m_RegionRows; ++row) {
+		nextOpen.clear();
+		int runStart = -1;
+		glm::dvec3 runOwed(0.0);
+		auto closeRun = [&](int runEnd) {
+			if (runStart < 0) {
+				return;
+			}
+			glm::ivec4 pixels(runStart * c_RegionSize, row * c_RegionSize, std::min(runEnd * c_RegionSize, m_SceneWidth), std::min((row + 1) * c_RegionSize, m_SceneHeight));
+			bool joined = false;
+			for (size_t index: open) {
+				RegionRect& above = rects[index];
+				if (above.Pixels.x == pixels.x && above.Pixels.z == pixels.z && above.Pixels.w == pixels.y && above.Owed == runOwed) {
+					above.Pixels.w = pixels.w;
+					nextOpen.push_back(index);
+					joined = true;
+					break;
+				}
+			}
+			if (!joined) {
+				rects.push_back({pixels, runOwed});
+				nextOpen.push_back(rects.size() - 1);
+			}
+			runStart = -1;
+		};
+		for (int column = 0; column < m_RegionColumns; ++column) {
+			size_t index = static_cast<size_t>(row) * m_RegionColumns + column;
+			bool take = (withPicked && m_RegionsPicked[index]) || (extra && (*extra)[index]);
+			glm::dvec3 owed(0.0);
+			if (take && clocks) {
+				owed = now - (*clocks)[index];
+				if (wholeSteps) {
+					owed = glm::floor(owed);
+					take = owed.x >= 1.0 || owed.y >= 1.0 || owed.z >= 1.0;
+					if (take) {
+						(*clocks)[index] += owed;
+					}
+				} else {
+					(*clocks)[index] = now;
+				}
+			}
+			if (!take) {
+				closeRun(column);
+				continue;
+			}
+			if (runStart >= 0 && owed != runOwed) {
+				closeRun(column);
+			}
+			if (runStart < 0) {
+				runStart = column;
+				runOwed = owed;
+			}
+		}
+		closeRun(m_RegionColumns);
+		open.swap(nextOpen);
+	}
+	return rects;
+}
+
+void SceneLighting::ScissorRegion(const glm::ivec4& pixels, int cellSize, const GLTarget& target) const {
+	int firstColumn = std::clamp(pixels.x / cellSize, 0, target.Width);
+	int firstRow = std::clamp(pixels.y / cellSize, 0, target.Height);
+	int endColumn = std::clamp((pixels.z + cellSize - 1) / cellSize, 0, target.Width);
+	int endRow = std::clamp((pixels.w + cellSize - 1) / cellSize, 0, target.Height);
+	glScissor(firstColumn, firstRow, std::max(endColumn - firstColumn, 0), std::max(endRow - firstRow, 0));
+}
+
+void SceneLighting::CopyRegions(const GLTarget& from, const GLTarget& to, const std::vector<RegionRect>& regions, int cellSize, int margin) const {
+	if (regions.empty()) {
+		return;
+	}
+	glDisable(GL_SCISSOR_TEST);
+	glBindFramebuffer(GL_READ_FRAMEBUFFER, from.Framebuffer);
+	glBindFramebuffer(GL_DRAW_FRAMEBUFFER, to.Framebuffer);
+	auto blit = [&to](int firstColumn, int firstRow, int endColumn, int endRow) {
+		firstColumn = std::max(firstColumn, 0);
+		firstRow = std::max(firstRow, 0);
+		endColumn = std::min(endColumn, to.Width);
+		endRow = std::min(endRow, to.Height);
+		if (endColumn > firstColumn && endRow > firstRow) {
+			glBlitFramebuffer(firstColumn, firstRow, endColumn, endRow, firstColumn, firstRow, endColumn, endRow, GL_COLOR_BUFFER_BIT, GL_NEAREST);
+		}
+	};
+	for (const RegionRect& region: regions) {
+		int firstColumn = region.Pixels.x / cellSize - margin;
+		int firstRow = region.Pixels.y / cellSize - margin;
+		int endColumn = (region.Pixels.z + cellSize - 1) / cellSize + margin;
+		int endRow = (region.Pixels.w + cellSize - 1) / cellSize + margin;
+		blit(firstColumn, firstRow, endColumn, endRow);
+		// The margin across the seam of a wrapping scene, where its cells are read from.
+		if (m_WrapX && firstColumn < 0) {
+			blit(to.Width + firstColumn, firstRow, to.Width, endRow);
+		}
+		if (m_WrapX && endColumn > to.Width) {
+			blit(0, firstRow, endColumn - to.Width, endRow);
+		}
+		if (m_WrapY && firstRow < 0) {
+			blit(firstColumn, to.Height + firstRow, endColumn, to.Height);
+		}
+		if (m_WrapY && endRow > to.Height) {
+			blit(firstColumn, 0, endColumn, endRow - to.Height);
+		}
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, 0);
 }
 
 glm::vec3 SceneLighting::GetDaylightTint(float hours) {
@@ -772,6 +1036,15 @@ void SceneLighting::StampScorchMarks() {
 	}
 	ZoneScoped;
 	TracyGpuZone("Scorch Marks");
+	if (m_RegionsOn) {
+		// Where soot is still owed fading (big-map speedups), it fades first, so a fresh mark isn't faded for the time before it was made.
+		std::vector<unsigned char> under(m_RegionsPicked.size(), 0);
+		for (const PostProcessMan::ScorchMark& mark: marks) {
+			int radius = static_cast<int>(std::ceil(mark.m_Radius)) + m_ScorchCellSize;
+			MarkRegions(under, mark.m_Pos.GetFloorIntX() - radius, mark.m_Pos.GetFloorIntY() - radius, mark.m_Pos.GetFloorIntX() + radius + 1, mark.m_Pos.GetFloorIntY() + radius + 1);
+		}
+		FadeDecalRegions(&under, false);
+	}
 	m_QuadVertices.clear();
 	float cell = static_cast<float>(m_ScorchCellSize);
 	auto addMark = [this, cell](glm::vec2 center, float radius, float darkness) {
@@ -815,6 +1088,17 @@ void SceneLighting::StampStains() {
 	}
 	ZoneScoped;
 	TracyGpuZone("Stains");
+	if (m_RegionsOn) {
+		// As for scorch marks: what's under a fresh stain fades first.
+		std::vector<unsigned char> under(m_RegionsPicked.size(), 0);
+		for (const EffectsParticles::Stain& stain: stains) {
+			int radius = static_cast<int>(std::ceil(stain.Radius)) + m_ScorchCellSize;
+			int x = static_cast<int>(std::floor(stain.Position.x));
+			int y = static_cast<int>(std::floor(stain.Position.y));
+			MarkRegions(under, x - radius, y - radius, x + radius + 1, y + radius + 1);
+		}
+		FadeDecalRegions(&under, false);
+	}
 	m_QuadVertices.clear();
 	float cell = static_cast<float>(m_ScorchCellSize);
 	auto addSplat = [this, cell](glm::vec2 center, float radius, const glm::vec3& color) {
@@ -951,9 +1235,14 @@ void SceneLighting::FadeDecals(float seconds) {
 	// The maps hold 8 bit values, so they fade in whole steps of 1/255 when enough game time has gone by for one, linearly: soot weathers away and stains
 	// wash off over the set minutes (rain much faster), and wet stains dry over a minute and a half (slower in the wet).
 	float fadeSeconds = std::max(m_Settings.DecalFadeMinutes, 0.5F) * 60.0F;
-	m_DecalFadeDebt.x += seconds * 255.0F / fadeSeconds * (1.0F + 3.0F * m_Wetness);
-	m_DecalFadeDebt.y += seconds * 255.0F / 90.0F * (1.0F - 0.8F * m_Wetness);
-	m_DecalFadeDebt.z += seconds * 255.0F / (fadeSeconds * 1.5F) * (1.0F + 6.0F * m_Wetness);
+	glm::vec3 owed(seconds * 255.0F / fadeSeconds * (1.0F + 3.0F * m_Wetness), seconds * 255.0F / 90.0F * (1.0F - 0.8F * m_Wetness), seconds * 255.0F / (fadeSeconds * 1.5F) * (1.0F + 6.0F * m_Wetness));
+	m_DecalClock += glm::dvec3(owed);
+	if (m_RegionsOn) {
+		// Big-map speedups: the regions round the screens and in the sweep, each by what it is owed (m_DecalFadeDebt is left for when the whole map is faded again).
+		FadeDecalRegions(nullptr, true);
+		return;
+	}
+	m_DecalFadeDebt += owed;
 	glm::vec3 steps = glm::floor(m_DecalFadeDebt);
 	if (steps.x < 1.0F && steps.y < 1.0F && steps.z < 1.0F) {
 		return;
@@ -978,6 +1267,47 @@ void SceneLighting::FadeDecals(float seconds) {
 		m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(0.0F, 0.0F, 0.0F, steps.z / 255.0F));
 		DrawFullscreen();
 	}
+	glBlendEquation(GL_FUNC_ADD);
+	glDisable(GL_BLEND);
+	glBindVertexArray(0);
+}
+
+void SceneLighting::FadeDecalRegions(const std::vector<unsigned char>* extra, bool withPicked) {
+	if (!m_RegionsOn || !m_Settings.DecalsFade || !m_Scorch.Framebuffer || !m_Stains.Framebuffer) {
+		return;
+	}
+	std::vector<RegionRect> regions = TakeRegions(extra, withPicked, &m_DecalClocks, m_DecalClock, true);
+	if (regions.empty()) {
+		return;
+	}
+	ZoneScoped;
+	TracyGpuZone("Decal Fade");
+	glDisable(GL_DEPTH_TEST);
+	glEnable(GL_BLEND);
+	// As FadeDecals, rectangle by rectangle: what's drawn is taken off what the map holds. Taking steps late is the same as taking them on time, since each
+	// is a subtraction that stops at none.
+	glBlendEquation(GL_FUNC_REVERSE_SUBTRACT);
+	glBlendFunc(GL_ONE, GL_ONE);
+	glEnable(GL_SCISSOR_TEST);
+	m_DecalFadeShader->Enable();
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Scorch.Framebuffer);
+	glViewport(0, 0, m_Scorch.Width, m_Scorch.Height);
+	for (const RegionRect& region: regions) {
+		glm::vec3 steps(region.Owed);
+		m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(steps.x, steps.y, steps.z, 0.0F) / 255.0F);
+		ScissorRegion(region.Pixels, m_ScorchCellSize, m_Scorch);
+		DrawFullscreen();
+	}
+	glBindFramebuffer(GL_FRAMEBUFFER, m_Stains.Framebuffer);
+	glViewport(0, 0, m_Stains.Width, m_Stains.Height);
+	for (const RegionRect& region: regions) {
+		if (region.Owed.z >= 1.0) {
+			m_DecalFadeShader->SetVector4f("rteAmount", glm::vec4(0.0F, 0.0F, 0.0F, static_cast<float>(region.Owed.z) / 255.0F));
+			ScissorRegion(region.Pixels, m_ScorchCellSize, m_Stains);
+			DrawFullscreen();
+		}
+	}
+	glDisable(GL_SCISSOR_TEST);
 	glBlendEquation(GL_FUNC_ADD);
 	glDisable(GL_BLEND);
 	glBindVertexArray(0);
@@ -1520,7 +1850,20 @@ void SceneLighting::SetShelterUniforms(const Shader& shader, bool use, int unit)
 }
 
 void SceneLighting::UpdateWetMap(float seconds) {
-	if (!m_Settings.WetnessMap || !m_WetMap[0].Framebuffer || seconds <= 0.0F) {
+	m_WetClock += seconds;
+	if (!m_Settings.WetnessMap || !m_WetMap[0].Framebuffer) {
+		// (Kept up to now while it's off, so it carries on from where it was when turned back on, as the whole-map step does.)
+		std::fill(m_WetClocks.begin(), m_WetClocks.end(), glm::dvec3(m_WetClock));
+		return;
+	}
+	// Big-map speedups: only the regions round the screens and in the sweep, each stepped by the time it missed.
+	std::vector<RegionRect> regions;
+	if (m_RegionsOn) {
+		regions = TakeRegions(nullptr, true, &m_WetClocks, glm::dvec3(m_WetClock), false);
+		if (regions.empty()) {
+			return;
+		}
+	} else if (seconds <= 0.0F) {
 		return;
 	}
 	ZoneScoped;
@@ -1543,6 +1886,19 @@ void SceneLighting::UpdateWetMap(float seconds) {
 	glActiveTexture(GL_TEXTURE1);
 	glBindTexture(GL_TEXTURE_2D, m_OccupancyTexture.Texture);
 	glActiveTexture(GL_TEXTURE0);
+	if (m_RegionsOn) {
+		glEnable(GL_SCISSOR_TEST);
+		for (const RegionRect& region: regions) {
+			m_WetnessUpdateShader->SetFloat("rteSeconds", static_cast<float>(region.Owed.x));
+			ScissorRegion(region.Pixels, m_CellSize, destination);
+			DrawFullscreen();
+		}
+		glDisable(GL_SCISSOR_TEST);
+		glBindVertexArray(0);
+		// Only those were written: they're copied back, so the map read from stays the whole of it.
+		CopyRegions(destination, source, regions, m_CellSize, 0);
+		return;
+	}
 	DrawFullscreen();
 	glBindVertexArray(0);
 	m_CurrentWetMap = 1 - m_CurrentWetMap;
@@ -1566,6 +1922,7 @@ void SceneLighting::UpdateFog() {
 		}
 		m_PendingFogPuffs.clear();
 		m_LastFogTime = -1.0;
+		std::fill(m_FogClocks.begin(), m_FogClocks.end(), glm::dvec3(m_FogClock));
 		return;
 	}
 	ZoneScoped;
@@ -1579,6 +1936,7 @@ void SceneLighting::UpdateFog() {
 	double now = PostProcessMan::GetSmoothSimTimePrecise();
 	float seconds = m_LastFogTime >= 0.0 ? static_cast<float>(std::clamp(now - m_LastFogTime, 0.0, 0.25)) : 0.0F;
 	m_LastFogTime = now;
+	m_FogClock += seconds;
 	if (seconds <= 0.0F && m_PendingFogPuffs.empty()) {
 		return;
 	}
@@ -1593,9 +1951,15 @@ void SceneLighting::UpdateFog() {
 	constexpr int maxPuffs = 16;
 	std::array<glm::vec4, maxPuffs> stepPuffs{};
 	int puffCount = 0;
+	// Big-map speedups: the regions the puffs go into are worked on this step too, wherever they are.
+	std::vector<unsigned char> puffRegions(m_RegionsOn ? m_RegionsPicked.size() : 0, 0);
 	for (; puffCount < maxPuffs && puffCount < static_cast<int>(m_PendingFogPuffs.size()); ++puffCount) {
 		const glm::vec4& puff = m_PendingFogPuffs[puffCount];
 		stepPuffs[puffCount] = glm::vec4(puff.x / cell, puff.y / cell, puff.z / cell, puff.w);
+		if (m_RegionsOn) {
+			int reach = static_cast<int>(std::ceil(puff.z)) + m_CellSize;
+			MarkRegions(puffRegions, static_cast<int>(puff.x) - reach, static_cast<int>(puff.y) - reach, static_cast<int>(puff.x) + reach + 1, static_cast<int>(puff.y) + reach + 1);
+		}
 	}
 	m_PendingFogPuffs.erase(m_PendingFogPuffs.begin(), m_PendingFogPuffs.begin() + puffCount);
 
@@ -1611,10 +1975,13 @@ void SceneLighting::UpdateFog() {
 	m_FogUpdateShader->SetInt("rteOccupancy", 1);
 	m_FogUpdateShader->SetInt("rteSkyLight", 2);
 	m_FogUpdateShader->SetVector2f("rteGridSize", glm::vec2(m_GridWidth, m_GridHeight));
-	// Mist drifts at a fraction of the wind (pixels per second), and a little even in still air.
-	m_FogUpdateShader->SetVector2f("rteDrift", glm::vec2((AirPressure::GetNaturalWind() * 0.5F + 2.0F) * seconds / cell, 0.0F));
-	m_FogUpdateShader->SetFloat("rteKeep", std::exp(-seconds / std::max(m_Settings.FogClearSeconds, 1.0F)));
-	m_FogUpdateShader->SetFloat("rteMist", mist);
+	// Mist drifts at a fraction of the wind (pixels per second), and a little even in still air. (A step of other seconds than this frame's is a region catching up, below.)
+	auto setStep = [this, cell, seconds, mist](float stepSeconds) {
+		m_FogUpdateShader->SetVector2f("rteDrift", glm::vec2((AirPressure::GetNaturalWind() * 0.5F + 2.0F) * stepSeconds / cell, 0.0F));
+		m_FogUpdateShader->SetFloat("rteKeep", std::exp(-stepSeconds / std::max(m_Settings.FogClearSeconds, 1.0F)));
+		m_FogUpdateShader->SetFloat("rteMist", seconds > 0.0F ? mist * stepSeconds / seconds : 0.0F);
+	};
+	setStep(seconds);
 	m_FogUpdateShader->SetInt("rtePuffCount", puffCount);
 	if (puffCount > 0) {
 		glUniform4fv(m_FogUpdateShader->GetUniformLocation("rtePuffs[0]"), puffCount, &stepPuffs[0].x);
@@ -1626,6 +1993,22 @@ void SceneLighting::UpdateFog() {
 	glActiveTexture(GL_TEXTURE2);
 	glBindTexture(GL_TEXTURE_2D, m_SkyLight[m_CurrentSkyLight].Texture);
 	glActiveTexture(GL_TEXTURE0);
+	if (m_RegionsOn) {
+		// Big-map speedups: the regions round the screens, in the sweep and under the puffs, each stepped by the time it missed. Up to two seconds of it:
+		// mist thins out over its clearing time and drifts on, so a region left longer is close enough to where it would be, and a longer step would
+		// carry it further with the wind than its neighbours went.
+		std::vector<RegionRect> regions = TakeRegions(&puffRegions, true, &m_FogClocks, glm::dvec3(m_FogClock), false);
+		glEnable(GL_SCISSOR_TEST);
+		for (const RegionRect& region: regions) {
+			setStep(static_cast<float>(std::min(region.Owed.x, 2.0)));
+			ScissorRegion(region.Pixels, m_CellSize, destination);
+			DrawFullscreen();
+		}
+		glDisable(GL_SCISSOR_TEST);
+		CopyRegions(destination, source, regions, m_CellSize, 0);
+		m_FogLive = true;
+		return;
+	}
 	DrawFullscreen();
 	m_CurrentFog = 1 - m_CurrentFog;
 	m_FogLive = true;
@@ -1786,11 +2169,15 @@ void SceneLighting::Update() {
 		return;
 	}
 	++m_FrameCounter;
+	const bool bigMaps = g_SettingsMan.SlowdownFixes().BigMaps;
+	PickRegions();
 
 	// Round-robin refresh of the terrain into the grid, so digging and explosions show up in the lighting within a fraction of a second.
+	// With the big-map speedups the changed tiles below keep the grid up to date, and the round-robin is only a slow look over everything (the whole map
+	// in about ten seconds) for a change nobody marked, instead of re-reading a thirtieth of the map every frame however little changed.
 	PerformanceMan::LogStages logStages(true);
 	logStages.Next("Light grid: terrain refresh and skyline");
-	int rowsPerFrame = std::max(4, m_GridHeight / 30);
+	int rowsPerFrame = bigMaps ? (m_GridHeight + 599) / 600 : std::max(4, m_GridHeight / 30);
 	int firstRow = m_NextRefreshRow;
 	int endRow = std::min(firstRow + rowsPerFrame, m_GridHeight);
 	RefreshOccupancyRows(firstRow, endRow);
@@ -1804,6 +2191,8 @@ void SceneLighting::Update() {
 	// Where the scorch and stain maps' ground is worked out again, in scene pixels: min x, min y, end x, end y. Patches far apart are kept as boxes of their
 	// own (with the slowdown fix on): as one box round them all, two drying puddles at the ends of the map read every material pixel between them each frame.
 	std::vector<glm::ivec4> pendingDecalGround;
+	// Big-map speedups: the regions near terrain that changed, where the sky light is spread for a while longer whether they're seen or not.
+	std::vector<unsigned char> changedRegions(m_RegionsOn ? m_RegionsPicked.size() : 0, 0);
 	const bool splitDecalGround = g_SettingsMan.SlowdownFixes().LightingSplitsChanges;
 	auto addDecalGround = [&pendingDecalGround, splitDecalGround](const glm::ivec4& box) {
 		constexpr int c_JoinGap = 64;
@@ -1840,6 +2229,7 @@ void SceneLighting::Update() {
 			changedFirstRow = 0;
 			changedEndRow = m_GridHeight;
 			pendingDecalGround.assign(1, glm::ivec4(0, 0, m_SceneWidth, m_SceneHeight));
+			std::fill(changedRegions.begin(), changedRegions.end(), 1);
 		} else {
 			auto changed = [this, tilesWide](int tileX, int tileY) {
 				size_t index = static_cast<size_t>(tileY) * tilesWide + tileX;
@@ -1864,6 +2254,10 @@ void SceneLighting::Update() {
 					// The decal ground over the changed tiles (a box across the seam takes the width between, which is only more work).
 					glm::ivec4 runPixels(runStart * tile, tileY * tile, std::min(tileX * tile, m_SceneWidth), std::min((tileY + 1) * tile, m_SceneHeight));
 					addDecalGround(runPixels);
+					if (m_RegionsOn) {
+						// Two regions round it: light coming in through a new hole, or shut off by a filled one, changes that far within the frames given below.
+						MarkRegions(changedRegions, runPixels.x - 2 * c_RegionSize, runPixels.y - 2 * c_RegionSize, runPixels.z + 2 * c_RegionSize, runPixels.w + 2 * c_RegionSize);
+					}
 					int firstColumn = std::clamp((runStart * tile) / m_CellSize - 1, 0, m_GridWidth);
 					int endColumn = std::clamp((tileX * tile - 1) / m_CellSize + 2, 0, m_GridWidth);
 					if (endRow > firstRow && endColumn > firstColumn) {
@@ -1920,7 +2314,24 @@ void SceneLighting::Update() {
 	if (terrainChanged) {
 		iterations += std::min(2 * iterations, (2 * iterations * changedTiles + 15) / 16);
 	}
-	PropagateSkyLight(iterations);
+	if (m_RegionsOn) {
+		// Big-map speedups: round the screens, in the sweep, and for a couple of seconds round wherever the terrain changed, seen or not.
+		constexpr unsigned short c_UnsettledFrames = 120;
+		std::vector<unsigned char> unsettled(m_SkyLightUnsettled.size(), 0);
+		for (size_t region = 0; region < unsettled.size(); ++region) {
+			if (!changedRegions.empty() && changedRegions[region]) {
+				m_SkyLightUnsettled[region] = c_UnsettledFrames;
+			}
+			if (m_SkyLightUnsettled[region] > 0) {
+				unsettled[region] = 1;
+				--m_SkyLightUnsettled[region];
+			}
+		}
+		std::vector<RegionRect> regions = TakeRegions(&unsettled, true, nullptr, glm::dvec3(0.0), false);
+		PropagateSkyLight(iterations, &regions);
+	} else {
+		PropagateSkyLight(iterations);
+	}
 	logStages.Next("Light grid: scorch marks and stains");
 	if (UpdateDecalGroundMaterials()) {
 		// Which materials flow changed (a new scene's liquids, or settings): what counts as ground is worked out afresh, without wiping anything for it.
@@ -2073,6 +2484,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	int width = static_cast<int>(playerScreen->GetSize().w);
 	int height = static_cast<int>(playerScreen->GetSize().h);
 	EnsureScreenResources(width, height);
+	// What this screen shows, for the big-map speedups to work round next frame (PickRegions).
+	m_ScreenViews[screenIndex] = glm::ivec4(static_cast<int>(std::floor(screenOrigin.m_X)), static_cast<int>(std::floor(screenOrigin.m_Y)), width, height);
+	m_ScreenViewFrames[screenIndex] = m_FrameCounter;
 
 	GLint previousViewport[4];
 	glGetIntegerv(GL_VIEWPORT, previousViewport);

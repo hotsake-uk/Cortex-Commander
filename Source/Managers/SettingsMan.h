@@ -375,6 +375,7 @@ namespace RTE {
 		/// The late-battle slowdown fixes ("Performance" in the settings panel), each with a switch so it can be tried against the old behaviour: things a battle
 		/// leaves behind (blood pools, wrecks, debris, gas, scattered terrain changes) that kept costing every frame after the fighting, all actors gone or not.
 		struct SlowdownFixTuning {
+			bool BigMaps = true; //!< The big-map speedups, all together: the lighting works only where it can be seen or the terrain changed instead of over the whole map every frame, the smoke grid clears only what it used, gib chunks are limited, and path searches give up early on places there's no way to. Off: all of it as before.
 			bool LiquidTellsOnlyMoves = true; //!< Liquid tells the path grid only where it moved, in separate boxes; off: every pixel coming to rest again, all in one box (re-sampling the grid over every pool on the map, for ever).
 			int WreckSettleSeconds = 20; //!< How long a vehicle's or ship's wreck lies still before it settles into the terrain as its own material, 0 to 600. 0: never (it stays a live object, as before).
 			bool DebrisRestsAcrossGaps = true; //!< A piece lying still looks for ground under both sides as well as its middle, so one across a crack or crater lip settles; off: the middle only.
@@ -665,6 +666,7 @@ namespace RTE {
 			bool BackOff = true; //!< With no way round, it digs on, and backs out from under the ground expected to fall while it comes down, waiting for it to settle before going on.
 			bool DigToOrders = true; //!< Units on a dig-to order do the same, but never go round: the player asked for that tunnel, so they dig it and back off.
 			bool PreviewWarns = true; //!< The dig-to preview says when the tunnel would bring the roof down.
+			bool NearbyOnly = true; //!< A dig-to is planned on the ground near the digger only: ground further off is taken for ordinary ground it digs, and found out when it gets there (PathFinder's known reach).
 		};
 
 		/// Gets the digging safety tuning, to read or change ("Digging" settings).

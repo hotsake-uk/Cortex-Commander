@@ -70,6 +70,9 @@ thread_local int s_JumpHeightDiagonal = 0;
 // TODO: Enhance MicroPather to add that capability (or write our own pather)!
 thread_local float s_DigStrength = 0.0F;
 thread_local float s_DigWillingness = 1.0F; // The AI digging setting, as it was when this thread's search began (SettingsMan::AIDigWillingness).
+thread_local float s_DigKnownReach = 0.0F; // On a dig-to planned on nearby ground only (DigSafetyTuning::NearbyOnly): how far from the start the ground is known; 0 for all of it.
+thread_local Vector s_DigKnownFrom; // Where that is measured from: the start.
+thread_local Vector s_CostNodePos; // The node whose steps are being priced (AdjacentCost), for the known reach.
 thread_local float s_DigCostScale = 1.0F; // The searcher's share of the dig price (PathAgent::DigCostScale): under 1 on a dig-to order.
 thread_local float s_FastDigStrength = -1.0F; // What the searcher digs at its usual pace (PathAgent::FastDigStrength); -1 for all it digs.
 thread_local float s_SlowDigFactor = 1.0F; // How many times slower it digs what's stronger than that (PathAgent::SlowDigFactor).
@@ -289,6 +292,84 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	float jumpHeight = agent.JumpHeight;
 	float digStrength = agent.DigStrength;
 	ApplyAgent(agent);
+	// A dig-to planned on what the digger can know (the Digging setting): the ground near it as it is, the rest taken for ground it digs. (Planned
+	// on the whole map, a dig-to went round hard ground deep ahead from its first step, and in a game against a player told them where it was.)
+	if (agent.DigGoal && agent.DigStrength > c_PathFindingDefaultDigStrength + 1.0F && g_SettingsMan.DigSafety().NearbyOnly) {
+		s_DigKnownReach = c_DigKnownReach;
+		s_DigKnownFrom = start;
+	}
+	// A dig-to (a commander's order): no search at all, the straight line from the unit to the point, a node at a time, dug through the ground,
+	// walked or dropped through the air on it and jetted up it. Only where the line meets what the digger can't cut (harder ground than it
+	// cuts, as far as it can know it, or a door) is the rest searched for, from the last point before it. (Searched from the start, a dig-to
+	// went round by the corridors of a whole bunker to reach a point straight under the unit.)
+	if (agent.DigGoal && agent.DigLine && agent.DigStrength > c_PathFindingDefaultDigStrength + 1.0F) {
+		g_SceneMan.ForceBounds(start);
+		g_SceneMan.ForceBounds(end);
+		const Vector way = g_SceneMan.ShortestDistance(start, end, g_SceneMan.SceneWrapsX());
+		const float nodeSize = static_cast<float>(m_NodeDimension);
+		const int steps = std::max(1, static_cast<int>(std::ceil(way.GetMagnitude() / nodeSize)));
+		pathResult.clear();
+		if (kinds) {
+			kinds->clear();
+		}
+		s_LastSkyRoute = false;
+		s_LastCutAtDoor = false;
+		s_LastCutMaterial = 0;
+		pathResult.push_back(start);
+		totalCostResult = 0.0F;
+		Vector from = start;
+		for (int step = 1; step <= steps; ++step) {
+			Vector to = start + way * (static_cast<float>(step) / static_cast<float>(steps));
+			g_SceneMan.WrapPosition(to);
+			const Material* material = StrongestMaterialAlongLine(from, to);
+			const Vector stepWay = g_SceneMan.ShortestDistance(from, to, g_SceneMan.SceneWrapsX());
+			PathStepKind kind;
+			float cost = stepWay.GetMagnitude() / nodeSize;
+			if (material && !Open(*material)) {
+				const bool door = material->GetIndex() == MaterialColorKeys::g_MaterialDoor;
+				if (door || (material->GetIntegrity() > agent.DigStrength && !GroundUnknown(from))) {
+					// What it can't dig: the rest searched for from here (the search goes round, or is cut short at it as any route is).
+					PathAgent rest = agent;
+					rest.DigLine = false;
+					std::list<Vector> restPath;
+					std::list<PathStepKind> restKinds;
+					float restCost = 0.0F;
+					int restResult = CalculatePath(from, end, restPath, restCost, rest, &restKinds);
+					if ((restResult == MicroPather::SOLVED || restResult == MicroPather::START_END_SAME) && !restPath.empty()) {
+						restPath.pop_front();
+						pathResult.splice(pathResult.end(), restPath);
+						if (kinds) {
+							kinds->splice(kinds->end(), restKinds);
+						}
+						totalCostResult += restCost;
+					} else {
+						// No way on from here: cut at it, as a search cuts a route at the first step it can't pass.
+						s_LastCutAtDoor = door;
+						s_LastCutMaterial = material->GetIndex();
+						s_LastCutAt = from + stepWay * 0.5F;
+						totalCostResult += 1000000.0F;
+					}
+					return pathResult.size() > 1 ? MicroPather::SOLVED : MicroPather::START_END_SAME;
+				}
+				kind = PathStepKind::Dig;
+				cost *= 2.5F;
+			} else if (stepWay.m_Y > nodeSize * 0.5F) {
+				kind = PathStepKind::Fall;
+			} else if (stepWay.m_Y < -nodeSize * 0.5F) {
+				kind = PathStepKind::Jump;
+				cost *= 2.0F;
+			} else {
+				kind = PathStepKind::Walk;
+			}
+			pathResult.push_back(to);
+			if (kinds) {
+				kinds->push_back(kind);
+			}
+			totalCostResult += cost;
+			from = to;
+		}
+		return MicroPather::SOLVED;
+	}
 	s_LastSkyRoute = false;
 	s_LeapsTaken.clear();
 	s_LiftStepsTaken.clear();
@@ -456,7 +537,15 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		s_LastSolveMS = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - solveStart).count();
 		// A route that only exists through ground the searcher can't dig is usually down to the start node: a unit pressed into a bunker wall or
 		// a ledge stands in a cell whose every edge samples concrete. The neighbouring cells are tried as starts before that answer is given.
-		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F) {
+		// With the big-map speedups, only when the start really is boxed in, every way out of it that dear: with a way out cheaper than that, a search
+		// from a neighbour comes in no cheaper than this one less that step (this one went that way), and each of the eight tries goes over most of the map.
+		bool boxedIn = true;
+		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && g_SettingsMan.SlowdownFixes().BigMaps) {
+			std::vector<micropather::StateCost> exits;
+			AdjacentCost(static_cast<void*>(startNode), &exits);
+			boxedIn = std::none_of(exits.begin(), exits.end(), [](const micropather::StateCost& exit) { return exit.cost <= 100000.0F; });
+		}
+		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F && boxedIn) {
 			const PathNode* alternatives[] = {startNode->Up, startNode->Down, startNode->Left, startNode->Right, startNode->LeftUp, startNode->UpRight, startNode->DownLeft, startNode->RightDown};
 			for (const PathNode* alternative: alternatives) {
 				if (!alternative || !alternative->m_Navigable || TerrNav(static_cast<int>(alternative->Pos.m_X), static_cast<int>(alternative->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir) {
@@ -777,6 +866,7 @@ void PathFinder::ApplyAgent(const PathAgent& agent) {
 	s_BreachStrength = agent.BreachStrength < 0.0F ? agent.DigStrength : agent.BreachStrength;
 	s_DigWillingness = g_SettingsMan.AIDigWillingness();
 	s_DigCostScale = agent.DigCostScale;
+	s_DigKnownReach = 0.0F; // (Set by CalculatePath, which has the start.)
 	s_FastDigStrength = agent.FastDigStrength;
 	s_SlowDigFactor = agent.SlowDigFactor;
 
@@ -1018,7 +1108,9 @@ DigPlan PathFinder::PlanDig(const Vector& start, const Vector& target, PathAgent
 	const int targetY = static_cast<int>(target.m_Y);
 	if (unsigned char here = g_SceneMan.GetTerrMatter(targetX, targetY); here != MaterialColorKeys::g_MaterialAir) {
 		const Material* material = g_SceneMan.GetMaterialFromID(here);
-		if (material && !Open(*material) && material->GetIntegrity() > agent.DigStrength) {
+		// (Not for ground out of its reach on a dig-to planned on nearby ground: that is found out when it gets there.)
+		const bool known = !g_SettingsMan.DigSafety().NearbyOnly || g_SceneMan.ShortestDistance(start, target, g_SceneMan.SceneWrapsX()).MagnitudeIsLessThan(c_DigKnownReach);
+		if (known && material && !Open(*material) && material->GetIntegrity() > agent.DigStrength) {
 			plan.Result = DigPlan::TooHard;
 			plan.BlockingMaterial = here;
 			plan.BlockingAt = target;
@@ -1056,6 +1148,11 @@ DigPlan PathFinder::PlanDig(const Vector& start, const Vector& target, PathAgent
 		++plan.DigSteps;
 		const Material* material = StrongestMaterialAlongLine(from, to);
 		float integrity = material ? material->GetIntegrity() : 0.0F;
+		// (Out of reach on a dig-to planned on nearby ground: ordinary ground, and not named, so the preview gives nothing away either.)
+		if (GroundUnknown(from)) {
+			integrity = std::min(integrity, std::min(agent.DigStrength, c_DigUnknownIntegrity));
+			material = nullptr;
+		}
 		plan.DigSeconds += DigSecondsPerNode(DigHardness(integrity, DigCutStrength(integrity, agent.DigStrength, agent.FastDigStrength))) * DigSlowness(integrity, agent.FastDigStrength, agent.SlowDigFactor) * std::max(1.0F, g_SceneMan.ShortestDistance(from, to).GetMagnitude() / static_cast<float>(m_NodeDimension));
 		if (material && integrity > hardest) {
 			hardest = integrity;
@@ -1341,6 +1438,7 @@ float PathFinder::LeastCostEstimate(void* startState, void* endState) {
 }
 
 void PathFinder::AdjacentCost(void* state, std::vector<micropather::StateCost>* adjacentList) {
+	s_CostNodePos = static_cast<const PathNode*>(state)->Pos;
 	const PathNode* node = static_cast<PathNode*>(state);
 	micropather::StateCost adjCost;
 	size_t leapsBegin = 0;
@@ -2239,7 +2337,7 @@ float PathFinder::HeadRoomFactor(const PathNode& from, const PathNode& to) const
 	// A node with no floor under it has its free height measured from its own centre, not from a floor, so it says nothing about a
 	// body's head room: a step into one is a step off an edge, and only the room where the step starts counts. (Measured from the
 	// centre, the node over a hatch or past the top step of a stair read as a crawlspace, and units lay down to walk off the edge.)
-	int headRoom = HasFloor(to) ? std::min(from.FreeHeight, to.FreeHeight) : from.FreeHeight;
+	int headRoom = HasFloor(to) ? std::min(from.WalkHeight, to.WalkHeight) : from.WalkHeight;
 	if (static_cast<float>(headRoom) < s_CrawlHeight) {
 		return 1000.0F;
 	}
@@ -2319,7 +2417,7 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	// A diagonal step up or down an incline the legs walk (SurfaceWalkable): a walk, whatever the line between the centres clips. (Every step
 	// up was labelled a jump, and up a hillside the follower jumped or jetted node by node.)
 	if (s_JumpHeight < FLT_MAX && std::abs(std::abs(dx) - nodeSize) < 1.0F && std::abs(std::abs(dy) - nodeSize) < 1.0F && SurfaceWalkable(*from, *to)) {
-		int headRoom = std::min(from->FreeHeight, to->FreeHeight);
+		int headRoom = std::min(from->WalkHeight, to->WalkHeight);
 		return static_cast<float>(headRoom) < s_CrouchHeight ? PathStepKind::Crawl : (static_cast<float>(headRoom) < s_StandHeight ? PathStepKind::Crouch : PathStepKind::Walk);
 	}
 	// Something solid on the straight line between the two: a dig if this searcher digs that, and otherwise the step wasn't along that
@@ -2329,7 +2427,7 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 	// follower pressed into a pile of rubble without the digger out until it had been stuck there two seconds.)
 	const bool digsLoose = s_DigStrength > c_PathFindingDefaultDigStrength && material && !Open(*material);
 	if (material && (material->GetIntegrity() > c_PathFindingDefaultDigStrength || digsLoose) && std::abs(dy) <= nodeSize && std::abs(dx) <= nodeSize) {
-		if (material->GetIntegrity() <= s_DigStrength) {
+		if (material->GetIntegrity() <= s_DigStrength || (material->GetIndex() != MaterialColorKeys::g_MaterialDoor && GroundUnknown(from->Pos))) {
 			return PathStepKind::Dig;
 		}
 		return dy < -1.0F ? PathStepKind::Jump : PathStepKind::Walk;
@@ -2367,7 +2465,7 @@ PathStepKind PathFinder::StepKindBetween(const PathNode* from, const PathNode* t
 		return PathStepKind::Fall;
 	}
 	// (Only where both have floors: see HeadRoomFactor.)
-	int headRoom = HasFloor(*to) ? std::min(from->FreeHeight, to->FreeHeight) : from->FreeHeight;
+	int headRoom = HasFloor(*to) ? std::min(from->WalkHeight, to->WalkHeight) : from->WalkHeight;
 	if (static_cast<float>(headRoom) < s_CrouchHeight) {
 		return PathStepKind::Crawl;
 	}
@@ -2945,8 +3043,16 @@ float PathFinder::ThreatCost(const PathNode& node) const {
 	return enemies * 1.2F * s_ThreatWeight;
 }
 
+bool PathFinder::GroundUnknown(const Vector& at) const {
+	return s_DigKnownReach > 0.0F && g_SceneMan.ShortestDistance(s_DigKnownFrom, at, g_SceneMan.SceneWrapsX()).MagnitudeIsGreaterThan(s_DigKnownReach);
+}
+
 float PathFinder::GetMaterialTransitionCost(const Material& material) const {
 	float strength = material.GetIntegrity();
+	// Ground out of the digger's reach on a dig-to planned on nearby ground: ordinary ground it digs, whatever it is (see s_DigKnownReach).
+	if (!Open(material) && material.GetIndex() != MaterialColorKeys::g_MaterialDoor && GroundUnknown(s_CostNodePos)) {
+		strength = std::min(strength, std::min(s_DigStrength, c_DigUnknownIntegrity));
+	}
 
 	// A door is open to whoever can dig it or shoot it open; anything else is open to whoever can dig it.
 	bool door = material.GetIndex() == MaterialColorKeys::g_MaterialDoor;
@@ -3030,6 +3136,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 
 	std::array<const Material*, PathNode::c_MaxAdjacentNodeCount> oldMaterials = node->AdjacentNodeBlockingMaterials;
 	int oldFreeHeight = node->FreeHeight;
+	int oldWalkHeight = node->WalkHeight;
 	int oldClearLeft = node->ClearLeft;
 	int oldClearRight = node->ClearRight;
 	bool oldLadder = node->Ladder;
@@ -3091,14 +3198,22 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 		// every 8 px, and a node whose centre was over them read as having no head room at all, so the shaft beside a ladder was no way up
 		// and every route past one came back impossible. A ceiling or a floor slab fills the cell, and stops all the lines alike.
 		int free = 0;
+		// The walk's head room is the least of those lines, of the ones that start in air (one that starts in ground is a wall or a step
+		// beside, not a ceiling). (The most open alone was taken for walking too: one open line at an overhang's edge read as full height,
+		// the step was labelled a walk, and a unit stood up into the slab, was stuck, and was given the same walk again.)
+		int walkFree = PathNode::c_ClearanceReach;
 		for (int dx: {0, -4, 4, -8, 8}) {
 			int lineFree = 0;
 			while (lineFree < PathNode::c_ClearanceReach && TerrNav(x + dx, from - lineFree) == MaterialColorKeys::g_MaterialAir) {
 				++lineFree;
 			}
 			free = std::max(free, lineFree);
+			if (lineFree > 0) {
+				walkFree = std::min(walkFree, lineFree);
+			}
 		}
 		node->FreeHeight = free;
+		node->WalkHeight = std::min(free, walkFree);
 		int sideY = floor >= 0 ? floor - 10 : centreY;
 		// (Out to two nodes a side: measured to one, a shaft two nodes wide read as narrower than it was from either of its columns, since
 		// neither is in the middle, and a jet column was refused where a body would have fitted twice over.)
@@ -3520,7 +3635,7 @@ bool PathFinder::UpdateNodeCosts(PathNode* node) const {
 	}
 
 	// Room that has changed enough to matter to a body counts as a change too.
-	if (std::abs(node->FreeHeight - oldFreeHeight) >= 4 || std::abs(node->ClearLeft - oldClearLeft) >= 3 || std::abs(node->ClearRight - oldClearRight) >= 3) {
+	if (std::abs(node->FreeHeight - oldFreeHeight) >= 4 || std::abs(node->WalkHeight - oldWalkHeight) >= 4 || std::abs(node->ClearLeft - oldClearLeft) >= 3 || std::abs(node->ClearRight - oldClearRight) >= 3) {
 		return true;
 	}
 
@@ -3637,6 +3752,7 @@ bool PathFinder::CopyNodeSamples(const PathFinder& from, const std::vector<int>&
 		    node.LadderBottom = source.LadderBottom;
 		    node.Surface = source.Surface;
 		    node.FreeHeight = source.FreeHeight;
+		    node.WalkHeight = source.WalkHeight;
 		    node.ClearLeft = source.ClearLeft;
 		    node.ClearRight = source.ClearRight;
 		    node.StairsUpRight = source.StairsUpRight;

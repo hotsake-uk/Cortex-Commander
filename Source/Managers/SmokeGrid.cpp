@@ -7,6 +7,7 @@
 #include "Atom.h"
 #include "MovableMan.h"
 #include "SceneMan.h"
+#include "SettingsMan.h"
 #include "Vector.h"
 
 #include <algorithm>
@@ -25,6 +26,17 @@ namespace {
 	int s_Width = 0;
 	int s_Height = 0;
 	bool s_HasSmoke = false;
+	std::vector<size_t> s_Touched; //!< The cells given smoke this update (some more than once), so the next clears only those (big-map speedups).
+	bool s_TouchedAll = true; //!< Cells may have smoke that aren't in s_Touched: the next update clears the whole map.
+
+	/// Adds smoke to a cell, noting it as touched.
+	void AddDensity(size_t cell, float amount) {
+		if (s_Density[cell] == 0.0F) {
+			s_Touched.push_back(cell);
+		}
+		s_Density[cell] += amount;
+		s_HasSmoke = true;
+	}
 
 	float Sample(int cellX, int cellY) {
 		if (g_SceneMan.SceneWrapsX()) {
@@ -40,6 +52,8 @@ namespace {
 void SmokeGrid::Update() {
 	s_HasSmoke = false;
 	if (!s_Enabled || !g_SceneMan.GetScene()) {
+		// (Left as it is: the next update that builds it clears it all.)
+		s_TouchedAll = true;
 		return;
 	}
 	int width = (g_SceneMan.GetSceneWidth() + c_CellSize - 1) / c_CellSize;
@@ -48,9 +62,16 @@ void SmokeGrid::Update() {
 		s_Width = width;
 		s_Height = height;
 		s_Density.assign(static_cast<size_t>(width) * height, 0.0F);
-	} else {
+	} else if (s_TouchedAll || !g_SettingsMan.SlowdownFixes().BigMaps) {
 		std::fill(s_Density.begin(), s_Density.end(), 0.0F);
+	} else {
+		// Big-map speedups: only the cells smoke was put in last update, not the whole map's.
+		for (size_t cell: s_Touched) {
+			s_Density[cell] = 0.0F;
+		}
 	}
+	s_Touched.clear();
+	s_TouchedAll = false;
 	for (const MovableObject* particle: g_MovableMan.m_Particles) {
 		// Smoke: weightless air particles that float up.
 		if (!particle || particle->GetGlobalAccScalar() >= 0.0F || particle->ToDelete()) {
@@ -74,8 +95,7 @@ void SmokeGrid::Update() {
 					x = ((x % s_Width) + s_Width) % s_Width;
 				}
 				if (x >= 0 && y >= 0 && x < s_Width && y < s_Height) {
-					s_Density[static_cast<size_t>(y) * s_Width + x] += (dx == 0 && dy == 0) ? amount : amount * 0.4F;
-					s_HasSmoke = true;
+					AddDensity(static_cast<size_t>(y) * s_Width + x, (dx == 0 && dy == 0) ? amount : amount * 0.4F);
 				}
 			}
 		}
@@ -86,8 +106,7 @@ void SmokeGrid::Update() {
 		int cellY = y / c_CellSize;
 		if (cellX >= 0 && cellY >= 0 && cellX < s_Width && cellY < s_Height) {
 			// (A smoke-map cell holds four of the gas's: each adds its quarter.)
-			s_Density[static_cast<size_t>(cellY) * s_Width + cellX] += amount * 0.25F;
-			s_HasSmoke = true;
+			AddDensity(static_cast<size_t>(cellY) * s_Width + cellX, amount * 0.25F);
 		}
 	});
 }

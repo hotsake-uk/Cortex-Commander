@@ -488,7 +488,7 @@ function HumanBehaviors.DraughtUpdate(AI, Owner)
 		return;
 	end
 	local Best, bestDist;
-	for Act in MovableMan.Actors do
+	for Act in SharedBehaviors.ActorsNear(Owner.EyePos, 240) do
 		if Act.Team == Owner.Team and Act.Health < Act.MaxHealth * 0.5 and Act.Health > 0 and Act.Status < Actor.DYING then
 			local Dist = SceneMan:ShortestDistance(Owner.EyePos, Act.Pos, false);
 			local far = Dist.Magnitude;
@@ -2092,7 +2092,7 @@ function HumanBehaviors.UseTheWorld(AI, Owner)
 	if not AI.Dousing or AI.DouseTimer:IsPastSimMS(500) then
 		AI.DouseTimer:Reset();
 		local Friend;
-		for Act in MovableMan.Actors do
+		for Act in SharedBehaviors.ActorsNear(Owner.Pos, 220) do
 			if Act.Team == Owner.Team and Act.ID ~= Owner.ID and SharedBehaviors.PeerValueExists(Act, "OnFire") and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(220) and SharedBehaviors.CanSee(Owner.EyePos, Act.Pos) then
 				Friend = Act;
 				break;
@@ -2180,7 +2180,7 @@ function HumanBehaviors.SpellUpdate(AI, Owner)
 	end
 	if Push and not Owner:IsPlayerControlled() and not AI.flying then
 		local reach = (Push:NumberValueExists("PushRange") and Push:GetNumberValue("PushRange") or 150) * 0.8;
-		for Item in MovableMan.Items do
+		for Item in SharedBehaviors.ItemsNear(Owner.Pos, reach) do
 			if IsThrownDevice(Item) and Item.ID == Item.RootID and Item:HasObjectInGroup("Bombs") then
 				local Grenade = ToThrownDevice(Item);
 				local Away = SceneMan:ShortestDistance(Owner.Pos, Grenade.Pos, false);
@@ -2242,7 +2242,7 @@ function HumanBehaviors.SupportTargetFor(AI, Owner, Spell, kind, range)
 	local burning = Owner:NumberValueExists("OnFire");
 	if kind == "MassHeal" then
 		local hurt = 0;
-		for Act in MovableMan.Actors do
+		for Act in SharedBehaviors.ActorsNear(Owner.Pos, reach) do
 			if Act.Team == Owner.Team and Act.Health < Act.MaxHealth * 0.7 and Act.Status < Actor.DYING and SceneMan:ShortestDistance(Owner.Pos, Act.Pos, false):MagnitudeIsLessThan(reach) then
 				hurt = hurt + 1;
 			end
@@ -2257,7 +2257,7 @@ function HumanBehaviors.SupportTargetFor(AI, Owner, Spell, kind, range)
 	end
 	-- A friend: the nearest in need.
 	local Best, bestDist;
-	for Act in MovableMan.Actors do
+	for Act in SharedBehaviors.ActorsNear(Owner.EyePos, reach) do
 		if Act.Team == Owner.Team and Act.UniqueID ~= Owner.UniqueID and Act.Status < Actor.DYING and Act.Health > 0 and not Act:NumberValueExists("MedievalIllusion") then
 			local Away = SceneMan:ShortestDistance(Owner.EyePos, Act.Pos, false);
 			if Away:MagnitudeIsLessThan(reach) and (not bestDist or Away.Magnitude < bestDist) then

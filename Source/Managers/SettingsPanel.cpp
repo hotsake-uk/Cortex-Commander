@@ -838,6 +838,12 @@ void DebugMan::SettingsGUI() {
 		Slider("Lamp brightness", &settings.LampBrightness, 0.0F, 4.0F);
 		Slider("Lamp reach", &settings.LampReach, 0.25F, 3.0F);
 		Tint("Lamp tint", &settings.LampTint.x);
+		Check("Lamps off in daylight", &settings.LampsOffByDay);
+		Tip("Lamps in buildings and bunkers that daylight reaches, by a doorway, a window or a hole in the roof, switch off for the day and back on in the evening, each at a slightly different minute. Deep lamps no daylight gets to stay on, and so do warning lights that flicker or pulse. A lamp that's off can still be shot out. Light sources (Debug) shows which lamps are which.");
+		if (settings.LampsOffByDay) {
+			Slider("Lamps go off at (hour)", &settings.LampsOffFrom, 0.0F, 24.0F, "%.1f");
+			Slider("Lamps come on at (hour)", &settings.LampsOffUntil, 0.0F, 24.0F, "%.1f");
+		}
 		Check("Light steady lamps once (faster)", &settings.LampCache);
 		Tip("Scenery lamps that don't flicker are lit once into a map of the world, and only relit where the ground around them changes, so bases full of lamps cost about as much as one. Units cast no shadows from those lamps, and the lamps' shadows are softer. Off: every lamp is drawn every frame. On in the Low preset.");
 		if (settings.LampCache) {
@@ -2208,6 +2214,9 @@ void DebugMan::SettingsGUI() {
 		Tip("Units you send to dig to a place look out for cave-ins too, but never go round: you asked for that tunnel, so they dig it and back off from what comes down (with the setting above on). Off: they just dig.");
 		Check("Dig-to preview warns of cave-ins", &safety.PreviewWarns);
 		Tip("The dig-to line by the cursor adds \"the roof will come down\" when the planned tunnel would bring ground down into it.");
+		Heading("Dig-to orders");
+		Check("Plan only on ground nearby", &safety.NearbyOnly);
+		Tip("On (normal): a dig-to is planned on the ground within about 200 px of the digger only. Ground further off is taken for ground it can dig, so it digs straight on, and only when it reaches something too hard does it go round from there. Its route gives nothing away about what is deep in the ground. Off: the route knows all the ground from the start and goes round hard ground far ahead.");
 		if (Plain()) {
 			ImGui::Spacing();
 			if (ToolUI::Button("Reset to defaults")) {
@@ -2406,7 +2415,7 @@ void DebugMan::SettingsGUI() {
 			if (Slider("Dig cost on a dig-to", &dig, Normal{normal.DigCostScale * 100.0F}, 1.0F, 100.0F, "%.0f%%", ImGuiSliderFlags_Logarithmic)) {
 				direct.DigCostScale = dig / 100.0F;
 			}
-			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 25%.");
+			Tip("What tunnelling a node costs on a direct dig-to, as a share of a normal unit's price. Lower digs through rather than walking round; 2% (normal) tunnels straight through anything its digger cuts. A normal dig-to is 8%.");
 			Slider("Dig straightness", &direct.LineWeight, 0.0F, 1.0F, "%.2f");
 			Tip("How hard a direct dig-to keeps to the straight line from where it starts to the point, rather than any route as short: the cost of each node off the line, in nodes walked. 0 doesn't care; 0.1 is normal.");
 			Slider("Route straightness", &direct.MoveLineWeight, 0.0F, 2.0F, "%.2f");
@@ -2720,7 +2729,7 @@ void DebugMan::SettingsGUI() {
 	// How the picture is lit, drawn over the game.
 	auto renderDebug = [&]() {
 		Toggle("Light sources", g_SettingsMan.ShowLightSources(), [](bool on) { g_SettingsMan.SetShowLightSources(on); });
-		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey), and counts by kind with the summed reach squared, about what the light pass costs.");
+		Tip("Every light on screen as a circle as far as it reaches with a dot of its colour (cone lights as a wedge; glows' lights dashed; lights left out for the cap on lights in red), the scenery lamps with a line to what they hang on (green), none found (red) or not looked up yet (grey) and a ring round each for daylight (yellow: daylight reaches it, so it's off by day; blue: a deep lamp that stays on; none: a warning light, or not looked yet), and counts by kind with the summed reach squared, about what the light pass costs.");
 		Toggle("Lights by source", g_SettingsMan.ShowLightsBySource(), [](bool on) { g_SettingsMan.SetShowLightsBySource(on); });
 		Tip("A readout in the bottom left: the lights registered for the frame about to be drawn, counted by what registered them (objects, hot spots, headlamps, tracers, scenery lamps, fire, sandbox effects, scripts), cone lights apart, and how many sim updates ran since the last drawn frame.");
 		Toggle("Sun direction and shadow strength", g_SettingsMan.ShowSunDirection(), [](bool on) { g_SettingsMan.SetShowSunDirection(on); });
@@ -2802,6 +2811,9 @@ void DebugMan::SettingsGUI() {
 
 	auto performance = [&]() {
 		SettingsMan::SlowdownFixTuning& fixes = g_SettingsMan.SlowdownFixes();
+		Heading("Big maps");
+		Check("Big-map speedups", &fixes.BigMaps);
+		Tip("What made big maps slower than small ones, all on this one switch, so it can be tried against the old behaviour:\n- The lighting's sky light, wetness, mist and soot fading are worked out only round each screen, for a couple of seconds round wherever the terrain changed, and a slice of the rest of the map each frame, instead of over the whole map every frame. The rest catches up on the time it missed when it is next worked on, so light can be seen settling for a moment into a cave opened off screen.\n- The terrain is read into the lighting where it changed, and only slowly all over (the whole map in about ten seconds, for anything nobody marked), not a thirtieth of the map every frame. Air cleaning marks only the pixels it changed instead of the whole map.\n- Maps over 12 million pixels get the coarser light grid (8 px cells) that maps over 32 million had. (Turning this switch on or off on such a map builds the light grid again, which clears its soot and stains.)\n- The smoke grid clears only the cells smoke was in.\n- Gib chunks are limited to 400 when their own limit, under Gibs, is No limit.\n- A path search with no way through tries again from the cells round its start only when the start is boxed in; each of those eight tries went over most of the map.\n- The AI's looks round for units or grenades near it go over only those near it, not every one on the map.\nOff, as before.");
 		Heading("Late-battle slowdown fixes");
 		Check("Liquid tells paths only where it moved", &fixes.LiquidTellsOnlyMoves);
 		Tip("The path grid is told only where liquid really moved, in separate boxes, and the liquid sweep wakes the end of a pool only for a drop its flow can reach.\nOff, as before: every pool's surface, woken now and then to look for a lower level, told the path grid again each time it settled, all in one box from the leftmost pool to the rightmost, so after a bloody battle most of the map was re-sampled every second, for good.");

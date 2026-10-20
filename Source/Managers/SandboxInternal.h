@@ -859,6 +859,8 @@ namespace SandboxDetail {
 		int TimeLimit = 300; //!< Assault: seconds the attackers have; each objective taken adds BonusSeconds.
 		int BonusSeconds = 60;
 		bool BlockLastRespawns = false; //!< Assault: no more respawns for the defenders while the last objective is in play and being fought over or taken.
+		int AttackerSpawn = 1; //!< Assault: where the attackers come in once objectives are taken: 0 their own spawn zones all game; 1 the last objective
+		                       //!< taken (their only spawn zone); 2 one behind: the first taken, then always the one before the last taken.
 		int Tickets = 60; //!< Last team standing: units each team gets in all, its first ones counted.
 		int KillsToWin = 5; //!< VIP hunt: enemy VIPs a team has to bring down to win.
 		int VipRespawnSeconds = 20; //!< VIP hunt: seconds before a fallen VIP's team has a new one.
@@ -1220,6 +1222,9 @@ namespace SandboxDetail {
 		long long IdleSince = -1; //!< A roamer: the sim update it was first seen waiting at its spot, -1 while on its way.
 		long long Dwell = 0; //!< A roamer: how long it waits at a spot before going on, in sim updates.
 		long ChasingID = 0; //!< The enemy it was sent after, 0 when at (or on its way back to) its post.
+		long long ChaseSince = -1; //!< The sim update it was sent after that enemy.
+		long long ChaseSeen = -1; //!< The sim update it last saw that enemy, or had it within reach.
+		long long NoEnemySince = -1; //!< The sim update it first found no enemy to go after, -1 while it has one: it goes back to its post only after a while of that.
 		bool Seen = false; //!< Out in the world at least once: before that it is riding in its ship.
 		long long Made = 0; //!< The sim update it was made on.
 		bool Commanded = false; //!< Told to defend by a player's order (Defend at, defend here, guard): its own place, radius and chase distance,

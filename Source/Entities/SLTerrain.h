@@ -42,6 +42,14 @@ namespace RTE {
 		int m_Anchored; //!< Whether it hangs on something solid, and so goes out when that is destroyed. -1 until that's been looked up.
 		Vector m_AnchorOffset; //!< Where the solid thing it hangs on is, from the light.
 		int m_AnchorSolid; //!< How many solid pixels there were in the fixture around the anchor when it was looked up. The lamp goes out when fewer than half are left.
+		float m_SkyOpen; //!< Of the rays the lamp casts round itself, the share that get out to open sky, so daylight reaches it (LightingSettings::LampsOffByDay). Below 0 until looked. Not saved.
+		float m_DayFade; //!< How far the lamp is on, 0 switched off for the day to 1 lit. Not saved.
+
+		/// Whether daylight reaches this lamp, so it's switched off by day: enough of its rays got out to open sky (see m_SkyOpen).
+		bool IsDaylit() const { return m_SkyOpen >= 2.0F / 16.0F; }
+
+		/// Whether this is a warning light, one that flickers or pulses, and so is left on by day.
+		bool IsWarningLight() const { return m_Flicker > 0.0F || m_Pulse > 0.0F; }
 
 	private:
 		static const std::string c_ClassName; //!< A string with the friendly-formatted type name of this.
@@ -318,6 +326,9 @@ namespace RTE {
 
 		std::vector<TerrainLight> m_Lights; //!< The lights of the scenery, in scene coordinates.
 		int m_LightCheckCounter; //!< Counts updates between checks of whether the lights' fixtures are still there.
+		size_t m_LightSkyCheckNext; //!< The next lamp to look again at how much sky it can see, in turn.
+		std::vector<int> m_SkyColumnTop; //!< Per scene column, the row of its topmost solid pixel (the scene's height for none), or -1 not looked yet: what open sky is, for the lamps.
+		std::vector<long long> m_SkyColumnLooked; //!< The sim update each of those was looked at, so they're looked again as the ground changes.
 		std::vector<unsigned char> m_LightCells; //!< A coarse grid over the scene marking where there's a light nearby, so shots can tell quickly that they aren't hitting one.
 		int m_LightCellColumns; //!< How many cells wide that grid is.
 		bool m_LightCellsStale; //!< Whether the lights have changed since the grid was made.
@@ -331,6 +342,14 @@ namespace RTE {
 
 		/// Applies Material textures to the foreground and background color layers, based on the loaded material layer (main bitmap).
 		void TexturizeTerrain();
+
+		/// Measures how much open sky a lamp can see: of 16 rays cast round it through the air, the share that reach a point with nothing solid above it, or the top or side of the scene.
+		/// @param from The lamp's position.
+		/// @return 0 (deep in the ground, no daylight gets to it) to 1.
+		float MeasureLampSkyOpen(const Vector& from);
+
+		/// Whether a lamp is switched off now for the day: the setting is on, it's a daylit lamp that isn't a warning light, and it's within the hours lamps are off (each lamp a little early or late, so a base doesn't go dark all at once).
+		bool IsLampOffForTheDay(const TerrainLight& light) const;
 
 		/// Clears all the member variables of this SLTerrain, effectively resetting the members of this abstraction level only.
 		void Clear();

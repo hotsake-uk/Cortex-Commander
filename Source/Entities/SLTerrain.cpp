@@ -15,9 +15,11 @@
 #include "Atom.h"
 #include "DataModule.h"
 #include "PresetMan.h"
+#include "SettingsMan.h"
 #include "Draw.h"
 #include "BigTexture.h"
 #include "Texture.h"
+#include "TimerMan.h"
 #include "tracy/Tracy.hpp"
 
 #include <array>
@@ -49,6 +51,8 @@ void TerrainLight::Clear() {
 	m_Anchored = -1;
 	m_AnchorOffset.Reset();
 	m_AnchorSolid = 0;
+	m_SkyOpen = -1.0F;
+	m_DayFade = 1.0F;
 }
 
 int TerrainLight::ReadProperty(const std::string_view& propName, Reader& reader) {
@@ -110,6 +114,9 @@ void SLTerrain::Clear() {
 	m_Lights.clear();
 	m_QueuedLights.clear();
 	m_LightCheckCounter = 0;
+	m_LightSkyCheckNext = 0;
+	m_SkyColumnTop.clear();
+	m_SkyColumnLooked.clear();
 	m_LightCells.clear();
 	m_LightCellColumns = 0;
 	m_LightCellsStale = true;
@@ -511,6 +518,32 @@ void SLTerrain::UpdateLights() {
 	if (checkFixtures) {
 		m_LightCheckCounter = 0;
 	}
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (lighting.LampsOffByDay) {
+		// How much sky each lamp sees, for switching them off by day: the ones not looked at yet first (a few an update, so a scene full of lamps doesn't stall as it loads),
+		// then one an update in turn, so lamps dug out or walled in come round to it again.
+		int budget = 8;
+		for (TerrainLight& light: m_Lights) {
+			if (budget == 0) {
+				break;
+			}
+			if (light.m_SkyOpen < 0.0F && !light.IsWarningLight()) {
+				light.m_SkyOpen = MeasureLampSkyOpen(light.m_Pos);
+				// The first time, it's straight away as it should be for the hour: a scene loaded at noon doesn't open with its lamps fading out.
+				light.m_DayFade = IsLampOffForTheDay(light) ? 0.0F : 1.0F;
+				--budget;
+			}
+		}
+		if (budget == 8) {
+			m_LightSkyCheckNext = m_LightSkyCheckNext < m_Lights.size() ? m_LightSkyCheckNext : 0;
+			TerrainLight& light = m_Lights[m_LightSkyCheckNext++];
+			if (!light.IsWarningLight()) {
+				light.m_SkyOpen = MeasureLampSkyOpen(light.m_Pos);
+			}
+		}
+	}
+	// Lamps switch on and off for the day over a second and a half.
+	const float dayFadeStep = g_TimerMan.GetDeltaTimeSecs() / 1.5F;
 	float time = PostProcessMan::GetEffectTime();
 	for (auto light = m_Lights.begin(); light != m_Lights.end();) {
 		if (light->m_Anchored < 0) {
@@ -540,7 +573,12 @@ void SLTerrain::UpdateLights() {
 			m_LightCellsStale = true;
 			continue;
 		}
-		float brightness = light->m_Intensity;
+		light->m_DayFade = std::clamp(light->m_DayFade + (IsLampOffForTheDay(*light) ? -dayFadeStep : dayFadeStep), 0.0F, 1.0F);
+		if (light->m_DayFade <= 0.0F) {
+			++light;
+			continue;
+		}
+		float brightness = light->m_Intensity * light->m_DayFade;
 		if (light->m_Flicker > 0.0F) {
 			brightness *= 1.0F - light->m_Flicker * RandomNum(0.0F, 1.0F);
 		}
@@ -548,7 +586,6 @@ void SLTerrain::UpdateLights() {
 			brightness *= 0.5F + 0.5F * std::sin(time * light->m_Pulse * c_TwoPI + light->m_Pos.m_X);
 		}
 		// The player's settings for scenery lamps: brighter or dimmer, further or nearer, and a tint (applied to the displayed color, so it works like a gel over the lamp).
-		const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
 		brightness *= lighting.LampBrightness;
 		float reach = light->m_Radius * lighting.LampReach;
 		glm::vec3 gel = glm::pow(glm::max(lighting.LampTint, glm::vec3(0.0F)), glm::vec3(1.0F / 2.2F));
@@ -557,10 +594,88 @@ void SLTerrain::UpdateLights() {
 			float direction = light->m_ConeDirection * c_PI / 180.0F;
 			g_PostProcessMan.RegisterConeLight(light->m_Pos, Vector(std::cos(direction), std::sin(direction)), light->m_ConeAngle, color, reach, brightness, LightSource::Lamps);
 		} else {
-			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps, light->m_Flicker <= 0.0F && light->m_Pulse <= 0.0F);
+			// (A lamp switching on or off for the day is drawn as it is each frame, not lit into the lamp cache, which would be relit every frame until it's done.)
+			g_PostProcessMan.RegisterLight(light->m_Pos, color, reach, brightness, LightSource::Lamps, !light->IsWarningLight() && light->m_DayFade >= 1.0F);
 		}
 		++light;
 	}
+}
+
+float SLTerrain::MeasureLampSkyOpen(const Vector& from) {
+	if (!m_MainBitmap) {
+		return 0.0F;
+	}
+	const int width = m_MainBitmap->w;
+	const int height = m_MainBitmap->h;
+	auto solidAt = [](int x, int y) { return g_SceneMan.GetTerrMatter(x, y) > MaterialColorKeys::g_MaterialCavity; };
+	if (static_cast<int>(m_SkyColumnTop.size()) != width) {
+		m_SkyColumnTop.assign(width, -1);
+		m_SkyColumnLooked.assign(width, 0);
+	}
+	// The topmost solid pixel of a column, looked again once it's a few seconds old, as the ground is shot away or built on.
+	const long long now = g_TimerMan.GetSimUpdateCount();
+	auto columnTop = [&](int x) {
+		if (m_SkyColumnTop[x] < 0 || now - m_SkyColumnLooked[x] > 300) {
+			int y = 0;
+			while (y < height && !solidAt(x, y)) {
+				++y;
+			}
+			m_SkyColumnTop[x] = y;
+			m_SkyColumnLooked[x] = now;
+		}
+		return m_SkyColumnTop[x];
+	};
+
+	// Each ray goes through the air in 2 px steps (so it doesn't slip through a thin wall), out to about as far as daylight comes into a room,
+	// and gets out if somewhere along it there's nothing solid overhead, or it leaves the scene by the top or a side that doesn't wrap.
+	constexpr int c_Rays = 16;
+	constexpr float c_Reach = 320.0F;
+	constexpr float c_Step = 2.0F;
+	int open = 0;
+	for (int ray = 0; ray < c_Rays; ++ray) {
+		float angle = static_cast<float>(ray) * c_TwoPI / static_cast<float>(c_Rays);
+		Vector direction(std::cos(angle), std::sin(angle));
+		// The first few pixels are what the lamp hangs on.
+		for (float distance = 4.0F; distance <= c_Reach; distance += c_Step) {
+			Vector point = from + direction * distance;
+			int x = point.GetFloorIntX();
+			int y = point.GetFloorIntY();
+			if (y < 0) {
+				++open;
+				break;
+			}
+			if (x < 0 || x >= width) {
+				if (!m_WrapX) {
+					++open;
+					break;
+				}
+				x = ((x % width) + width) % width;
+			}
+			if (y >= height || solidAt(x, y)) {
+				break;
+			}
+			if (y < columnTop(x)) {
+				++open;
+				break;
+			}
+		}
+	}
+	return static_cast<float>(open) / static_cast<float>(c_Rays);
+}
+
+bool SLTerrain::IsLampOffForTheDay(const TerrainLight& light) const {
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	if (!lighting.LampsOffByDay || light.IsWarningLight() || !light.IsDaylit()) {
+		return false;
+	}
+	// Each lamp switches up to twenty minutes before or after the hour, by where it is, so the same lamp always does it at the same minute.
+	unsigned int hash = static_cast<unsigned int>(light.m_Pos.GetFloorIntX()) * 73856093U ^ static_cast<unsigned int>(light.m_Pos.GetFloorIntY()) * 19349663U;
+	float early = (static_cast<float>(hash % 1000U) / 999.0F - 0.5F) * (40.0F / 60.0F);
+	float hour = lighting.TimeOfDay - early;
+	hour = std::fmod(std::fmod(hour, 24.0F) + 24.0F, 24.0F);
+	float from = lighting.LampsOffFrom;
+	float until = lighting.LampsOffUntil;
+	return from <= until ? (hour >= from && hour < until) : (hour >= from || hour < until);
 }
 
 void SLTerrain::ResetChangeTiles(int sceneWidth, int sceneHeight, bool wrapX, bool wrapY) {
@@ -750,6 +865,8 @@ bool SLTerrain::IsBoxBuried(const Box& checkBox) const {
 void SLTerrain::CleanAir() {
 	std::vector<int> rows(m_MainBitmap->h); // we loop through h first, because we want each thread to have sequential memory that they're touching
 	std::iota(std::begin(rows), std::end(rows), 0);
+	// With the big-map speedups only the pixels whose material changed are marked for the lighting, not the whole map (which had it re-read the whole map's terrain the frame after).
+	const bool markChanges = g_SettingsMan.SlowdownFixes().BigMaps;
 
 	std::for_each(std::execution::par_unseq, std::begin(rows), std::end(rows),
 	              [&](int yPos) {
@@ -758,13 +875,18 @@ void SLTerrain::CleanAir() {
 			              if (matPixel == MaterialColorKeys::g_MaterialCavity) {
 				              _putpixel(m_MainBitmap, xPos, yPos, MaterialColorKeys::g_MaterialAir);
 				              matPixel = MaterialColorKeys::g_MaterialAir;
+				              if (markChanges) {
+					              NoteMaterialChange(xPos, yPos);
+				              }
 			              }
 			              if (matPixel == MaterialColorKeys::g_MaterialAir) {
 				              _putpixel(m_FGColorLayer->GetBitmap(), xPos, yPos, ColorKeys::g_MaskColor);
 			              }
 		              }
 	              });
-	NoteMaterialChangeBox(0, 0, m_MainBitmap->w - 1, m_MainBitmap->h - 1);
+	if (!markChanges) {
+		NoteMaterialChangeBox(0, 0, m_MainBitmap->w - 1, m_MainBitmap->h - 1);
+	}
 }
 
 void SLTerrain::CleanAirBox(const Box& box, bool wrapsX, bool wrapsY) {
