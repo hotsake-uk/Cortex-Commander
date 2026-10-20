@@ -13,11 +13,11 @@
 namespace SandboxDetail {
 	/// The battle's own looks while it's on, else the setup's.
 	static const BattleModeSettings& LooksFrom() { return s_ModeRun.Running ? s_ModeRun.Settings : s_ModeSetup; }
-	bool BattleShowsObjectives() { return LooksFrom().ShowObjectives >= 0 ? LooksFrom().ShowObjectives > 0 : BattleShowsObjectives(); }
-	int BattleObjectiveLookNow() { return LooksFrom().ObjectiveLook >= 0 ? LooksFrom().ObjectiveLook : BattleObjectiveLookNow(); }
-	bool BattleShowsSpawnZones() { return LooksFrom().ShowSpawnZones >= 0 ? LooksFrom().ShowSpawnZones > 0 : BattleShowsSpawnZones(); }
-	bool BattleShowsModeZones() { return LooksFrom().ShowModeZones >= 0 ? LooksFrom().ShowModeZones > 0 : BattleShowsModeZones(); }
-	bool BattleShowsInfo() { return LooksFrom().ShowInfo >= 0 ? LooksFrom().ShowInfo > 0 : BattleShowsInfo(); }
+	bool BattleShowsObjectives() { return LooksFrom().ShowObjectives >= 0 ? LooksFrom().ShowObjectives > 0 : g_SettingsMan.ShowBattleObjectives(); }
+	int BattleObjectiveLookNow() { return LooksFrom().ObjectiveLook >= 0 ? LooksFrom().ObjectiveLook : g_SettingsMan.BattleObjectiveLook(); }
+	bool BattleShowsSpawnZones() { return LooksFrom().ShowSpawnZones >= 0 ? LooksFrom().ShowSpawnZones > 0 : g_SettingsMan.ShowBattleSpawnZones(); }
+	bool BattleShowsModeZones() { return LooksFrom().ShowModeZones >= 0 ? LooksFrom().ShowModeZones > 0 : g_SettingsMan.ShowBattleModeZones(); }
+	bool BattleShowsInfo() { return LooksFrom().ShowInfo >= 0 ? LooksFrom().ShowInfo > 0 : g_SettingsMan.ShowBattleInfo(); }
 
 	namespace {
 		/// Sim updates in a second of game time.
