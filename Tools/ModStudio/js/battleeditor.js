@@ -31,6 +31,7 @@ window.MS = window.MS || {};
 	const SIDE_COLOURS = ['#e5484d', '#46a758', '#3e8ed0', '#f5c518'];
 	const NEUTRAL = '#e8e8e8';
 	const BATTLE_CLASS = 'BattleCommandActivity';
+	const SANDBOX_CLASS = 'SandboxActivity'; // a custom battle is played in the Sandbox (Battle Command plays the modes only)
 
 	// ---- the modes, as SandboxBattleModes.cpp has them (c_Modes, by BattleMode) ----
 	// point: each team's own point (Mode.Points.N) and what it is; zones: the mode's own zones (Mode.Zones), what each is, how many it needs and whether
@@ -38,7 +39,8 @@ window.MS = window.MS || {};
 	// role: the one side the mode singles out; rules: [key, label, min, max, default, note] numbers, or [key, label, 'bool', default, note].
 	const TIME_LIMIT = ['TimeLimit', 'Time limit (seconds, 0: none)', 0, 3600, 300];
 	const MODES = [
-		null,
+		{ name: 'Custom battle', icon: '⚙', custom: true, blurb: 'The Battle Director: each active team keeps sending in units, by ship, drop crate or in its spawn zones, as its card says, until you stop them. No scoring: nobody wins. Played in the Sandbox.',
+			rules: [] },
 		{ name: 'Capture the flag', icon: '⚑', blurb: 'Each team has a flag and spawn zones. Bring the enemy\'s flag home to your own to score.',
 			point: { label: 'flag', note: 'Where its flag stands. Without one, the game picks a place in its base.' },
 			rules: [['ScoreToWin', 'Captures to win (0: play on)', 0, 50, 3], ['ReturnSeconds', 'A dropped flag goes home after (seconds)', 1, 300, 30], ['GuardPercent', 'Units guarding their flag (%)', 0, 100, 30],
@@ -103,6 +105,7 @@ window.MS = window.MS || {};
 	];
 	// Every mode's own, as the Battle tab's "Respawns and routes" has them.
 	const SHARED_RULES = [['RespawnSeconds', 'Seconds before a fallen unit is replaced (0: at once)', 0, 60, 5], ['MaxRespawns', 'Units each team gets back in all (0: no limit)', 0, 500, 0],
+		['CommanderCallsIn', 'Commander calls in reinforcements', 'bool', false, 'A team you command doesn\'t respawn by itself: each fallen unit goes into its reserves once its respawn time is up, and they come in only when you call them (the Reserves tile, Alt+R). Teams the AI commands respawn as before.'],
 		['StuckSeconds', 'Respawn a unit stuck for (seconds, 0: never)', 0, 120, 20], ['RouteVariety', 'Units taking routes of their own (%)', 0, 100, 0],
 		['MovingSpawns', 'You can move your spawn zones during the battle', 'bool', false, 'Teams you command: drag their spawn zones about behind the spawn line while it is on.']];
 	// Where units come in (ByShip, Anywhere).
@@ -111,6 +114,7 @@ window.MS = window.MS || {};
 	const PICKUP_KINDS = ['Energy shield', 'Stim', 'Overcharge', 'Cloak', 'Medkit', 'Juggernaut', 'Spell scroll']; // bits of PickupKinds, by c_PickupKinds
 	const ARMY_CARDS = [['Rifleman', 8], ['Sniper', 2], ['Heavy', 2], ['Digger', 2], ['Crab', 0]]; // c_ReinforcementCards, with Army's defaults
 	const CRAFTS = ['Dropship', 'Rocket', 'Drop crate'];
+	const STYLES = ['Attack nearest enemy', 'Hunt brains', 'Defend a place', 'Patrol', 'Sentry']; // c_BattleStyleNames, by BattleStyle
 	// A spawn order's kinds (SpawnOrderKind) and the points each takes: none, one, a route, or one it can do without.
 	const ORDER_KINDS = [['Hold where they land', 'none'], ['Move', 'one'], ['Attack-move', 'one'], ['Defend at', 'one'], ['Patrol', 'route'], ['Jetpack here', 'one'], ['Battle objective', 'optional']];
 	// How the battle shows (the Battle tab's show settings, the battle's own when set): -1 the player's own setting.
@@ -177,7 +181,18 @@ window.MS = window.MS || {};
 
 	// What a key holds: a list of zones, one zone (a goal), a list of positions, one point (a team's own, with its HasPoint), or a spawn order's points
 	// (a team's, Mode.SpawnOrders.N, or one of its spawn zones', Mode.ZoneSpawnOrders.N.i).
+	// A custom battle's: each team card's spawn zones (TeamN.SpawnZones, kept the same as Mode.SpawnZones.N, as the game keeps them), its defence
+	// point (TeamN.DefendPos, with HasDefendPos) and its drop line (TeamN.Line: LineA and LineB, with HasLine).
 	function typeOf(key) {
+		if (/^Team\d\.SpawnZones$/.test(key)) {
+			return 'zones';
+		}
+		if (/^Team\d\.DefendPos$/.test(key)) {
+			return 'point';
+		}
+		if (/^Team\d\.Line$/.test(key)) {
+			return 'line';
+		}
 		if (/^Mode\.(SpawnOrders\.\d|ZoneSpawnOrders\.\d\.\d+)$/.test(key)) {
 			return 'order';
 		}
@@ -218,11 +233,21 @@ window.MS = window.MS || {};
 		}
 
 		get mode() {
-			return Math.max(1, Math.min(MODES.length - 1, this.num('Mode.Mode', 1)));
+			return Math.max(0, Math.min(MODES.length - 1, this.num('Mode.Mode', 1)));
+		}
+
+		// Whether a team takes part: in a mode, Plays; in a custom battle, its card's Active.
+		playsKey(side) {
+			return this.mode === 0 ? 'Team' + side + '.Active' : 'Mode.Plays.' + side;
 		}
 
 		plays(side) {
-			return this.bool('Mode.Plays.' + side, side < 2);
+			return this.bool(this.playsKey(side), this.mode !== 0 && side < 2);
+		}
+
+		// A point's "placed" flag: a team's own point's HasPoint, or a card's HasDefendPos.
+		static hasKey(key) {
+			return /^Team\d\./.test(key) ? key.split('.')[0] + '.HasDefendPos' : 'Mode.HasPoint.' + key.split('.')[2];
 		}
 
 		shapes(key) {
@@ -239,9 +264,14 @@ window.MS = window.MS || {};
 				return parsePoints(v).map((p) => [p]);
 			}
 			if (t === 'point') {
-				const side = key.split('.')[2];
 				const p = parsePoint(v);
-				return this.bool('Mode.HasPoint.' + side, false) && p ? [[p]] : [];
+				return this.bool(Setup.hasKey(key), false) && p ? [[p]] : [];
+			}
+			if (t === 'line') {
+				const team = key.split('.')[0];
+				const a = parsePoint(this.raw(team + '.LineA'));
+				const b = parsePoint(this.raw(team + '.LineB'));
+				return this.bool(team + '.HasLine', false) && a && b ? [[a, b]] : [];
 			}
 			if (t === 'order') {
 				return this.order(key).points.map((p) => [p]);
@@ -253,13 +283,24 @@ window.MS = window.MS || {};
 			const t = typeOf(key);
 			if (t === 'zones') {
 				this.set(key, fmtZones(shapes));
+				// (a team's spawn zones are its card's too, whichever is drawn)
+				const zones = /^Mode\.SpawnZones\.(\d)$/.exec(key) || /^Team(\d)\.SpawnZones$/.exec(key);
+				if (zones) {
+					this.set(key.startsWith('Mode') ? 'Team' + zones[1] + '.SpawnZones' : 'Mode.SpawnZones.' + zones[1], fmtZones(shapes));
+				}
+			} else if (t === 'line') {
+				const team = key.split('.')[0];
+				this.set(team + '.HasLine', shapes.length > 0);
+				if (shapes.length) {
+					this.set(team + '.LineA', fmtPoint(shapes[0][0]));
+					this.set(team + '.LineB', fmtPoint(shapes[0][1]));
+				}
 			} else if (t === 'poly') {
 				this.set(key, shapes.length ? fmtPoints(shapes[0]) : '');
 			} else if (t === 'points') {
 				this.set(key, fmtPoints(shapes.map((s) => s[0])));
 			} else if (t === 'point') {
-				const side = key.split('.')[2];
-				this.set('Mode.HasPoint.' + side, shapes.length > 0);
+				this.set(Setup.hasKey(key), shapes.length > 0);
 				this.set(key, shapes.length ? fmtPoint(shapes[0][0]) : '0,0');
 			} else if (t === 'order') {
 				this.setOrder(key, Object.assign(this.order(key), { points: shapes.map((x) => x[0]) }));
@@ -329,13 +370,16 @@ window.MS = window.MS || {};
 	const battlePath = (scenario) => scenario.module + '/Battles/' + stemOf(scenario.name) + '.txt';
 	const locked = (scenario) => !scenario || app().lib.isProtected(scenario.doc);
 
-	// A Battle: a copy of Battle Command (running its script) under a name of its own.
+	// A Battle: a copy of Battle Command (running its script) under a name of its own, or of the Sandbox for a custom battle.
 	function isBattle(scenario) {
-		if (!scenario || scenario.node.key !== 'AddActivity' || scenario.name === 'Battle Command') {
+		if (!scenario || scenario.node.key !== 'AddActivity' || scenario.name === 'Battle Command' || scenario.name === 'Sandbox') {
 			return false;
 		}
-		return app().lib.resolve(scenario.node).str('LuaClassName', '') === BATTLE_CLASS;
+		return [BATTLE_CLASS, SANDBOX_CLASS].includes(app().lib.resolve(scenario.node).str('LuaClassName', ''));
 	}
+
+	// What a battle is built on: the Sandbox for a custom battle, Battle Command for the modes.
+	const baseFor = (mode) => app().lib.presets.find((p) => p.topLevel && p.node.key === 'AddActivity' && p.name === (mode === 0 ? 'Sandbox' : 'Battle Command')) || null;
 
 	const sceneOf = (scenario) => (MS.missionEditor ? MS.missionEditor.sceneOf(scenario) : null);
 
@@ -445,6 +489,26 @@ window.MS = window.MS || {};
 		const spec = MODES[setup.mode];
 		const out = [];
 		const playing = [...Array(SIDES).keys()].filter((side) => setup.plays(side));
+		if (spec.custom) {
+			// a custom battle: each active team's spawn zones, defence point and drop line, as its card has them
+			for (const side of playing) {
+				const team = 'Team' + side + '.';
+				out.push({ key: team + 'SpawnZones', label: SIDE_NAMES[side] + ' spawn zone', side, required: false, many: true, max: 8, note: 'Where ' + SIDE_NAMES[side] + '\'s units appear, a lot every so often. None: they come only by ship or drop crate.' });
+				if (setup.num(team + 'Style', 0) === 2) {
+					out.push({ key: team + 'DefendPos', label: SIDE_NAMES[side] + ' defence point', side, required: false, many: false, note: 'The place it defends. Not set: it attacks till it is.' });
+				}
+				if (setup.bool(team + 'DropOnLine', false)) {
+					out.push({ key: team + 'Line', label: SIDE_NAMES[side] + ' drop line', side, required: false, many: false, note: 'Its ships come in over this line. Not drawn: anywhere till it is. Drag along the map to draw it.' });
+				}
+			}
+			for (const n of out) {
+				n.count = setup.shapes(n.key).length;
+				n.done = n.count > 0;
+				n.type = typeOf(n.key);
+				n.colour = SIDE_COLOURS[n.side];
+			}
+			return out;
+		}
 		for (const side of playing) {
 			out.push({ key: 'Mode.SpawnZones.' + side, label: SIDE_NAMES[side] + ' spawn zone', side, required: true, many: true, note: 'Where ' + SIDE_NAMES[side] + '\'s units come in. Draw as many as you like.' });
 			if (spec.point) {
@@ -498,6 +562,9 @@ window.MS = window.MS || {};
 	function problem(setup) {
 		const spec = MODES[setup.mode];
 		const playing = [...Array(SIDES).keys()].filter((side) => setup.plays(side));
+		if (spec.custom) {
+			return playing.length ? '' : 'Tick Active on at least one team.';
+		}
 		if (playing.length < 2) {
 			return 'Tick at least 2 teams.';
 		}
@@ -519,6 +586,7 @@ window.MS = window.MS || {};
 		for (const n of needs(setup)) {
 			setup.shapes(n.key).forEach((pts, i) => {
 				let label = n.side >= 0 ? (n.type === 'zones' ? SIDE_NAMES[n.side] + ' spawn' : n.label) : n.label;
+				label = n.type === 'line' ? SIDE_NAMES[n.side] + ' drop line' : label;
 				if (n.many && (n.ordered || n.count > 1)) {
 					label += ' ' + (i + 1);
 				}
@@ -542,7 +610,7 @@ window.MS = window.MS || {};
 
 	// A zone hidden in the game (spawn zones or the mode's own zones shown off): drawn faint here, to still be placed and moved.
 	function faintOf(setup, key) {
-		if (/^Mode\.SpawnZones\./.test(key)) {
+		if (/^Mode\.SpawnZones\.|^Team\d\.SpawnZones$/.test(key)) {
 			return !showing(setup, 'ShowSpawnZones');
 		}
 		return /^Mode\.(Zones|Goals\.\d)$/.test(key) && !showing(setup, 'ShowModeZones');
@@ -770,11 +838,15 @@ window.MS = window.MS || {};
 				return point;
 			}
 			const area = (pts) => Math.abs(pts.reduce((s, a, i) => s + a.x * pts[(i + 1) % pts.length].y - pts[(i + 1) % pts.length].x * a.y, 0));
+			const line = list.slice().reverse().find((t) => t.pts.length === 2 && segDist(p, t.pts[0], t.pts[1]) < 8 / this.zoom);
+			if (line) {
+				return line;
+			}
 			return list.filter((t) => t.pts.length >= 3 && insideZone(t.pts, p)).sort((a, b) => area(a.pts) - area(b.pts))[0] || null;
 		}
 
 		cornerAt(t, sx, sy) {
-			if (!t || t.pts.length < 3) {
+			if (!t || t.pts.length < 2) {
 				return -1;
 			}
 			return t.pts.findIndex((c) => {
@@ -983,10 +1055,31 @@ window.MS = window.MS || {};
 				ctx.stroke();
 				ctx.setLineDash([]);
 			}
+			// drop lines: a dashed line its ships come in over, with an arrow down at each end
+			for (const t of list.filter((x) => x.pts.length === 2)) {
+				const a = this.toScreen(t.pts[0].x, t.pts[0].y);
+				const b = this.toScreen(t.pts[1].x, t.pts[1].y);
+				ctx.beginPath();
+				ctx.moveTo(a.x, a.y);
+				ctx.lineTo(b.x, b.y);
+				ctx.strokeStyle = sel === t ? '#fff' : t.colour;
+				ctx.lineWidth = sel === t ? 3 : 2;
+				ctx.setLineDash([10, 5]);
+				ctx.stroke();
+				ctx.setLineDash([]);
+				for (const e of [a, b]) {
+					ctx.beginPath();
+					ctx.moveTo(e.x - 5, e.y + 4);
+					ctx.lineTo(e.x, e.y + 11);
+					ctx.lineTo(e.x + 5, e.y + 4);
+					ctx.stroke();
+				}
+				this.tag(ctx, Math.min(a.x, b.x), Math.min(a.y, b.y) - 6, t.label, t.colour);
+			}
 			for (const t of list.filter((x) => x.pts.length === 1)) {
 				this.drawFlag(ctx, t.pts[0], t.colour, t.label, sel === t);
 			}
-			if (sel && sel.pts.length >= 3) {
+			if (sel && sel.pts.length >= 2) {
 				ctx.fillStyle = '#fff';
 				for (const cn of sel.pts) {
 					const s = this.toScreen(cn.x, cn.y);
@@ -996,7 +1089,16 @@ window.MS = window.MS || {};
 			// what's being placed
 			const placing = this.hooks.placing();
 			const d = this.drag;
-			if (d && d.kind === 'box' && d.now) {
+			if (d && d.kind === 'box' && d.now && placing && placing.type === 'line') {
+				const a = this.toScreen(d.start.x, d.start.y);
+				const b = this.toScreen(d.now.x, d.now.y);
+				ctx.beginPath();
+				ctx.moveTo(a.x, a.y);
+				ctx.lineTo(b.x, b.y);
+				ctx.strokeStyle = '#fff';
+				ctx.lineWidth = 2;
+				ctx.stroke();
+			} else if (d && d.kind === 'box' && d.now) {
 				const pts = boxZone(d.start, d.now);
 				this.path(ctx, pts);
 				ctx.fillStyle = (placing ? placing.colour : '#fff') + '44';
@@ -1028,7 +1130,7 @@ window.MS = window.MS || {};
 				}
 			}
 			if (placing) {
-				const text = 'Placing: ' + placing.label + (pointy(placing.type) ? ' (click on the map)' : this.state.shape === 'poly' ? ' (click its corners; double-click or Enter closes it)' : ' (drag a box)') + '. Esc stops.';
+				const text = 'Placing: ' + placing.label + (pointy(placing.type) ? ' (click on the map)' : placing.type === 'line' ? ' (drag along the map)' : this.state.shape === 'poly' ? ' (click its corners; double-click or Enter closes it)' : ' (drag a box)') + '. Esc stops.';
 				ctx.fillStyle = 'rgba(0,0,0,.75)';
 				ctx.fillRect(8, r.height - 28, ctx.measureText(text).width + 16, 20);
 				ctx.fillStyle = placing.colour;
@@ -1096,7 +1198,7 @@ window.MS = window.MS || {};
 						this.hooks.place(placing.key, [{ x: Math.round(p.x), y: Math.round(p.y) }]);
 						return;
 					}
-					if (this.state.shape === 'poly') {
+					if (this.state.shape === 'poly' && placing.type !== 'line') {
 						this.draft = (this.draft || []).concat([world]);
 						this.draw();
 						return;
@@ -1189,7 +1291,9 @@ window.MS = window.MS || {};
 				}
 				if (d.kind === 'box') {
 					const placing = this.hooks.placing();
-					if (placing && d.now && Math.abs(d.now.x - d.start.x) * this.zoom > 4 && Math.abs(d.now.y - d.start.y) * this.zoom > 4) {
+					if (placing && placing.type === 'line' && d.now && Math.hypot(d.now.x - d.start.x, d.now.y - d.start.y) * this.zoom > 6) {
+						this.hooks.place(placing.key, [d.start, d.now].map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })));
+					} else if (placing && placing.type !== 'line' && d.now && Math.abs(d.now.x - d.start.x) * this.zoom > 4 && Math.abs(d.now.y - d.start.y) * this.zoom > 4) {
 						this.hooks.place(placing.key, boxZone(d.start, d.now).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })));
 					}
 					this.draw();
@@ -1342,8 +1446,9 @@ window.MS = window.MS || {};
 				}
 				// what can go here: a point at the spot, a zone as a box round it
 				const box = (w, h) => boxZone({ x: world.x - w / 2, y: world.y - h / 2 }, { x: world.x + w / 2, y: world.y + h / 2 }).map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) }));
-				const items = listNow().map((n) => [(pointy(n.type) ? '' : '▭ ') + n.label + ' here', () => {
-					const pts = pointy(n.type) ? [ground(world)].map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })) : box(n.key.startsWith('Mode.SpawnZones') ? 200 : 160, 120);
+				const items = listNow().map((n) => [(pointy(n.type) ? '' : n.type === 'line' ? '― ' : '▭ ') + n.label + ' here', () => {
+					const pts = pointy(n.type) ? [ground(world)].map((p) => ({ x: Math.round(p.x), y: Math.round(p.y) })) : n.type === 'line' ? [{ x: Math.round(world.x - 200), y: Math.round(world.y) }, { x: Math.round(world.x + 200), y: Math.round(world.y) }]
+						: box(/SpawnZones/.test(n.key) ? 200 : 160, 120);
 					place(n.key, pts);
 				}]);
 				menuAt(items, cx, cy);
@@ -1519,6 +1624,93 @@ window.MS = window.MS || {};
 				}
 				return rows;
 			};
+			// A custom battle is played in the Sandbox, a mode in Battle Command: the scenario is a copy of the one that plays it.
+			const rebase = (mode) => {
+				const base = baseFor(mode);
+				if (!base || ro || resolvedClass() === base.node.str('LuaClassName', '')) {
+					return;
+				}
+				a.edit('Play ' + scenario.name + ' in ' + base.name, () => scenario.node.set('CopyOf', a.lib.reference(base.name, base.module, scenario.module)));
+			};
+			const resolvedClass = () => a.lib.resolve(scenario.node).str('LuaClassName', '');
+			// A custom battle's team cards, as the Battle Director's (BattleCard): who comes, how they play, and how they come in.
+			const customTeams = (st) => [...Array(SIDES).keys()].map((side) => {
+				const team = 'Team' + side + '.';
+				const on = st.plays(side);
+				const active = el('input', { type: 'checkbox', checked: on, disabled: ro });
+				active.onchange = () => edit((active.checked ? 'Make ' : 'Take out ') + SIDE_NAMES[side] + (active.checked ? ' active' : ''), (x) => x.set(team + 'Active', active.checked));
+				const now = String(st.raw(team + 'Factions') || '').split(';').filter(Boolean);
+				const facText = now.length ? now.map((m) => m.replace(/[.]rte$/i, '')).join(', ') : 'Any faction';
+				const row = el('div', { className: 'be-team be-team-custom' + (on ? '' : ' off') }, el('label', { className: 'be-flag' }, active, el('span', { className: 'me-swatch', style: 'background:' + SIDE_COLOURS[side] }), el('b', { textContent: SIDE_NAMES[side] })),
+					el('span', { className: 'be-dim', textContent: on ? STYLES[st.num(team + 'Style', 0)] || STYLES[0] : 'Not taking part' }), el('span', { className: 'be-dim be-fac', textContent: facText, title: facText }));
+				if (!on) {
+					return [row];
+				}
+				const any = el('input', { type: 'checkbox', checked: !now.length, disabled: ro });
+				any.onchange = () => any.checked && edit(SIDE_NAMES[side] + ': any faction', (x) => x.set(team + 'Factions', ''));
+				const facList = el('div', { className: 'be-facs' }, el('label', { className: 'be-flag' }, any, el('span', { textContent: 'Any faction' })), ...factions().map((m) => {
+					const tick = el('input', { type: 'checkbox', checked: now.includes(m), disabled: ro });
+					tick.onchange = () => edit(SIDE_NAMES[side] + (tick.checked ? ': add ' : ': take out ') + m, (x) => {
+						const list = String(x.raw(team + 'Factions') || '').split(';').filter(Boolean).filter((f) => f !== m);
+						x.set(team + 'Factions', (tick.checked ? list.concat([m]) : list).join(';'));
+					});
+					return el('label', { className: 'be-flag' }, tick, el('span', { textContent: m.replace(/[.]rte$/i, '') }));
+				}));
+				const style = st.num(team + 'Style', 0);
+				const endless = st.bool(team + 'EndlessMoney', false);
+				const onLine = st.bool(team + 'DropOnLine', false);
+				const anywhereToo = st.bool(team + 'AppearAnywhere', false);
+				const details = el('details', { className: 'be-teamdet', open: !s.open || s.open['card' + side] !== false }, el('summary', { textContent: 'Its card: units, play style, waves, ships, spawn zones' }),
+					el('div', { className: 'be-sub' },
+						el('div', { className: 'be-label', textContent: 'Factions (tick as many as you like)' }), facList,
+						flag(team + 'FavouritesOnly', 'Favourites only', false, 'Only units marked as favourites, of those factions (any, when none are).'),
+						flag(team + 'Crabs', 'Spawn crabs', false, 'Crabs among its units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.'),
+						flag(team + 'JetpackOnly', 'Jetpacks only', false, 'Only units with a jetpack.'),
+						choice(team + 'Style', 'Play style', 0, STYLES.map((t, i) => [i, t]), 'What its units do once in: attack the nearest enemy, hunt the brains, defend a place, patrol, or stand sentry.'),
+						...(style === 2 ? [note('Place its defence point on the map (Place on the map, below). Not set: it attacks till it is.'),
+							number(team + 'DefendRadius', 'Defend radius (px)', 30, 600, 150), number(team + 'ChaseDistance', 'Chase distance (px)', 0, 1500, 300),
+							number(team + 'RoamPercent', 'Roaming (% of them)', 0, 100, 0)] : []),
+						el('div', { className: 'be-label', textContent: 'Waves' }),
+						flag(team + 'EndlessMoney', 'No money limit', false),
+						endless ? null : number(team + 'Budget', 'Budget (oz)', 500, 100000, 5000, 'What it may spend in all.'),
+						number(team + 'WaveSize', 'Units per ship', 1, 10, 5),
+						number(team + 'UnitLimit', 'Unit limit (0: none)', 0, 200, 0, 'Most units it has in at once, those still in its ships counted.'),
+						el('div', { className: 'be-label', textContent: 'Ships' }),
+						choice(team + 'Craft', 'Craft', 2, CRAFTS.map((c, i) => [i, c]), 'A dropship, a rocket, or drop crates that fall from the sky, land and let their units out.'),
+						choice(team + 'DropOnLine', 'Ships come in', 0, [[0, 'Anywhere'], [1, 'Over a drop line']], 'Over a drop line: draw it on the map (Place on the map, below).'),
+						number(team + 'ShipsPerBurst', 'Ships at a time (0: no ships)', 0, 6, 1),
+						number(team + 'EverySeconds', 'Every (seconds)', 5, 300, 30),
+						flag(team + 'Invincible', 'Ships can\'t be hurt', false, 'Its ships take no harm, and are taken away once they\'ve unloaded and left.'),
+						el('div', { className: 'be-label', textContent: 'Where units come in' }),
+						flag(team + 'AppearAnywhere', 'Units appear anywhere on the map', false, 'Its units also appear anywhere on the map there is ground to stand on, a lot at a time, rather than only in its spawn zones.'),
+						!onLine || anywhereToo ? number(team + 'KeepClear', 'Keep clear of enemies by (px)', 0, 2000, 300, 'Ships coming in anywhere, and units appearing anywhere: how far they keep from enemy units.') : null,
+						number(team + 'ZoneUnits', 'Units per zone', 1, 10, 3, 'Units that appear at each spawn zone (or anywhere) each time.'),
+						number(team + 'ZoneEverySeconds', 'Every (seconds)', 5, 300, 30)));
+				details.ontoggle = () => {
+					s.open = Object.assign(s.open || {}, { ['card' + side]: details.open });
+				};
+				return [row, details];
+			}).flat();
+			// A custom battle's panel: the mode, the team cards, what to place, how it shows, and with the game.
+			const drawCustom = (st, modes, placeRows, why) => {
+				const showPick = (k, label) => {
+					const pick = el('select', { className: 'ed-input', disabled: ro }, ...[[-1, 'As the player has it'], [1, 'Shown'], [0, 'Hidden']].map(([v, t]) => el('option', { value: String(v), textContent: t, selected: st.show(k) === v })));
+					pick.onchange = () => edit(label + ': ' + pick.selectedOptions[0].textContent.toLowerCase(), (x) => x.set('Mode.' + k, Number(pick.value)));
+					return el('label', { className: 'be-rule' }, el('span', { textContent: label }), pick);
+				};
+				panel.replaceChildren(...[
+					ro ? el('div', { className: 'ed-banner', textContent: scenario.module + ' is read only here. Make a battle of your own with + New battle to change it.' }) : null,
+					section('Mode', modes, note(MODES[0].blurb)),
+					section('Teams', note('Tick Active on each team that takes part. Each keeps sending in units as its card says, from the start of the battle till it is stopped.'), ...customTeams(st)),
+					section('Place on the map', why ? el('div', { className: 'be-why', textContent: why }) : el('div', { className: 'be-ready', textContent: 'Ready to play.' }), ...placeRows,
+						note('Spawn zones, a defence point (Play style: Defend a place) and a drop line (Ships come in: Over a drop line) for each active team. Drag along the map to draw a drop line.')),
+					fold('looks', 'How it shows', showPick('ShowSpawnZones', 'Spawn zones'), showPick('ShowInfo', 'Battle info under the score')),
+					section('With the game', el('div', { className: 'be-io' },
+						el('button', { className: 'tb', textContent: 'Copy from the game\'s Battle tab…', disabled: ro || !scene, title: 'Brings in a setup saved on this map from the Battle tab', onclick: () => importFromGame(key) }),
+						el('button', { className: 'tb', textContent: 'Save to the game\'s Battle tab', disabled: !scene, title: 'Saves this battle with the map\'s own (Userdata/BattlePresets), to change it there', onclick: () => exportToGame(key) })),
+					note('A custom battle plays in the Sandbox: ▶ Play starts it there, and the game lists it with ' + (scene ? scene.name : 'its map') + '\'s battles in the map browser and the Battle tab.')),
+				].filter(Boolean));
+			};
 			const drawPanel = () => {
 				const st = docs.get(key).setup;
 				const sp = MODES[st.mode];
@@ -1528,6 +1720,7 @@ window.MS = window.MS || {};
 				// the mode
 				const modes = el('div', { className: 'be-modes' }, ...MODES.map((m, i) => (m ? el('button', { className: 'be-mode' + (i === st.mode ? ' sel' : ''), title: m.blurb, disabled: ro, onclick: () => {
 					s.map.place = null;
+					rebase(i);
 					edit('Make it ' + m.name, (x) => x.set('Mode.Mode', i));
 				} }, el('span', { className: 'be-mode-icon', textContent: m.icon }), el('span', { textContent: m.name })) : null)));
 				// the teams
@@ -1602,7 +1795,6 @@ window.MS = window.MS || {};
 							flag(team + 'FavouritesOnly', 'Favourites only', false, 'Only units marked as favourites, of those factions (any, when none are).'),
 							flag(team + 'Crabs', 'Spawn crabs', false, 'Crabs among its units: crabs, and the tanks and walkers built on them. Off: infantry and drones only.'),
 							flag(team + 'JetpackOnly', 'Jetpacks only', false, 'Only units with a jetpack.'),
-							choice(team + 'Craft', 'Craft, coming in by ship or drop crate', 2, CRAFTS.map((c, i) => [i, c])),
 							risk('RiskMin', 'Least risk', 0), risk('RiskMax', 'Most risk', 0),
 							number('RushPercent.' + side, 'Rush the objective (% of its units)', 0, 100, 30, 'Its units that make a beeline for the objective, shooting as they go, not taking cover or stopping to fight. Guards never rush.'),
 							flag('PlayerCommands.' + side, 'You command this team', false, 'Its units come in with no job from the mode, for the player to command (Battle Command). Tick two teams for hot-seat.'),
@@ -1640,6 +1832,10 @@ window.MS = window.MS || {};
 					}
 					return out;
 				}).flat();
+				if (sp.custom) {
+					drawCustom(st, modes, placeRows, why);
+					return;
+				}
 				// mirror: a team's spawn zones and point copied to another, flipped across the map
 				const mirrorFrom = el('select', { className: 'ed-input' }, ...sides.filter((x) => st.plays(x)).map((x) => el('option', { value: String(x), textContent: SIDE_NAMES[x] })));
 				const mirrorTo = el('select', { className: 'ed-input' }, ...sides.filter((x) => st.plays(x)).map((x, i) => el('option', { value: String(x), textContent: SIDE_NAMES[x], selected: i === 1 })));
@@ -1719,9 +1915,10 @@ window.MS = window.MS || {};
 						el('div', { className: 'be-mirror' }, el('span', { textContent: 'Mirror' }), mirrorFrom, el('span', { textContent: 'onto' }), mirrorTo, mirror),
 						note('Place, then click (points) or drag a box (zones) on the map; right-click the map to place something there. Drag to move, drag a corner to reshape, Alt-click an edge to add a corner, Shift-click a corner to take it out, Delete takes out what is picked.')),
 					section('Rules', ...sp.rules.map(rule), ...ringRules),
-					fold('arrive', 'Where units come in', el('label', { className: 'be-rule' }, el('span', { textContent: 'Units' }), arrive),
+					section('Where units come in', el('label', { className: 'be-rule' }, el('span', { textContent: 'Units' }), arrive),
 						anywhere ? number('KeepClear', 'Coming in anywhere: keep clear of enemies by (px)', 0, 2000, 300) : null,
-						byShip ? note('Each team\'s craft is under its Units, in Teams.') : null),
+						...sides.filter((side) => st.plays(side)).map((side) => choice('Team' + side + '.Craft', SIDE_NAMES[side] + ' comes in by', 2, CRAFTS.map((c, i) => [i, c]), 'With "Ships over their base" or "Ships anywhere": a dropship, a rocket, or drop crates that fall from the sky, land and let their units out.')),
+						byShip ? null : note('Each team\'s craft is used with "Ships over their base" or "Ships anywhere", and for reinforcements called in.')),
 					fold('respawn', 'Respawns and routes', ...SHARED_RULES.map(rule)),
 					anyAI ? fold('ai', 'AI commanders', ...aiRules) : null,
 					fold('command', 'Battle Command', commanded.length ? null : note('For a team the player commands (The player, above).'),
@@ -1823,6 +2020,11 @@ window.MS = window.MS || {};
 				}
 				st.sec.lines = keep;
 			});
+			// (a custom battle plays in the Sandbox, a mode in Battle Command)
+			const base = baseFor(Number(sec.lines.get('Mode.Mode')) === 0 ? 0 : 1);
+			if (base && !locked(scenario) && app().lib.resolve(scenario.node).str('LuaClassName', '') !== base.node.str('LuaClassName', '')) {
+				app().edit('Play ' + scenario.name + ' in ' + base.name, () => scenario.node.set('CopyOf', app().lib.reference(base.name, base.module, scenario.module)));
+			}
 			app().toast('Copied ' + sec.name + ' into ' + scenario.name + '.', 'good');
 		} }, el('b', { textContent: sec.name }), el('small', { textContent: (MODES[Number(sec.lines.get('Mode.Mode')) || 0] || { name: 'Custom' }).name }))));
 		MS.dialogs.open('Copy a setup from the game', el('div', {}, el('p', { className: 'ed-note', textContent: 'Setups saved on ' + scene.name + ' from the game\'s Battle tab. The one picked takes the place of this battle (Undo puts it back).' }), list), [{ text: 'Cancel' }], true);
@@ -1909,12 +2111,13 @@ window.MS = window.MS || {};
 					return false;
 				}
 				const m = MODES[Number(mode.value)];
+				const on = baseFor(Number(mode.value)) || base; // (a custom battle: a copy of the Sandbox)
 				const doc = a.lib.docFor(path) || (await a.lib.newDoc(path));
 				a.hookDoc(doc);
 				a.hookDoc(a.lib.docFor(module + '/Index.ini'));
 				a.edit('New battle ' + n, () => {
-					const block = doc.addTopLevel('AddActivity', base.cls);
-					block.add('CopyOf', a.lib.reference(base.name, base.module, module));
+					const block = doc.addTopLevel('AddActivity', on.cls);
+					block.add('CopyOf', a.lib.reference(on.name, on.module, module));
 					block.add('PresetName', n);
 					block.add('Description', m.name + ' on ' + scene.value + '. ' + m.blurb);
 					if (scene.value) {
