@@ -590,6 +590,23 @@ function HumanBehaviors.EquipSecondaryWeapon(AI, Owner)
 	return false;
 end
 
+-- Whether the held gun's muzzle is at the terrain, or a few pixels short of it: the sweep's low end, so the gun isn't swept into the floor.
+-- (Swept on down, crouched most of all, the gun went into the ground, the arm pulled it back out (Arm::AccountForHeldDeviceTerrainClipping)
+-- and a gun that collides with terrain while held shoved the body: the unit shook while it looked at its feet.)
+local function GunAtTerrain(Owner)
+	local Item = Owner.EquippedItem;
+	if not Item or not IsHeldDevice(Item) then
+		return false;
+	end
+	local Device = ToHeldDevice(Item);
+	local MidToMuzzle = SceneMan:ShortestDistance(Device.Pos, Device.MuzzlePos, false);
+	local reach = MidToMuzzle.Magnitude;
+	if reach < 1 then
+		return false;
+	end
+	return SceneMan:CastStrengthRay(Device.Pos, MidToMuzzle:SetMagnitude(reach + 4), 5, Vector(), 0, rte.airID, SceneMan.SceneWrapsX);
+end
+
 -- in sentry behavior the agent only looks for new enemies, it sometimes sharp aims to increase spotting range
 function HumanBehaviors.Sentry(AI, Owner, Abort)
 	local sweepUp = true;
@@ -671,7 +688,7 @@ function HumanBehaviors.Sentry(AI, Owner, Abort)
 				sweepUp = false;
 			end
 		else
-			if aim > minAng/3 then
+			if aim > minAng/3 and not GunAtTerrain(Owner) then
 				AI.Ctrl:SetState(Controller.AIM_DOWN, false);
 				local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 				if _abrt then return true end
@@ -695,9 +712,9 @@ function HumanBehaviors.Sentry(AI, Owner, Abort)
 		return true; -- restart this behavior
 	end
 
-	while true do	-- look down
+	while true do	-- look down, as far as the gun clears the floor
 		aim = Owner:GetAimAngle(false);
-		if aim > minAng then
+		if aim > minAng and not GunAtTerrain(Owner) then
 			AI.Ctrl:SetState(Controller.AIM_DOWN, true);
 		else
 			break;
@@ -767,7 +784,7 @@ function HumanBehaviors.Sentry(AI, Owner, Abort)
 					IdleAimTimer:Reset();
 				end
 			else
-				if aim > minAng then
+				if aim > minAng and not GunAtTerrain(Owner) then
 					if aim < maxAng/5 and aim > minAng/5 and PosRand() > 0.3 then
 						AI.Ctrl:SetState(Controller.AIM_DOWN, false);
 					else

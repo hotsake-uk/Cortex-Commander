@@ -599,6 +599,7 @@ namespace RTE {
 		void SetAimAngle(float newAngle) {
 			m_AimAngle = newAngle;
 			Clamp(m_AimAngle, m_AimRange, -m_AimRange);
+			m_AimSetMS = g_TimerMan.GetSimTimeMS();
 		}
 
 		/// Sets this Actor's passenger slots.
@@ -2050,6 +2051,7 @@ namespace RTE {
 		float m_AimRange;
 		// Current Aim angle within the AimRange
 		float m_AimAngle;
+		long long m_AimSetMS = -1; //!< The sim time SetAimAngle, or the aim controls on an AHuman, last aimed it (an AI's aim left alone: see AHuman's aim easing).
 		// How far the actor aims/looks by default
 		float m_AimDistance;
 		// Aiming timing timer

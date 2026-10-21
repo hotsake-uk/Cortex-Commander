@@ -2477,6 +2477,7 @@ void AHuman::PreControllerUpdate() {
 	////////////////////////////////////
 	// Aiming
 
+	bool aimedNow = true; // Whether the aim controls (keys or analog) aimed it this frame.
 	if (m_Controller.IsState(AIM_UP) && m_Status != INACTIVE) {
 		// Set the timer to a base number so we don't get a sluggish feeling at start.
 		if (m_AimState != AIMUP) {
@@ -2550,6 +2551,25 @@ void AHuman::PreControllerUpdate() {
 		Clamp(m_AimAngle, m_AimRange, -m_AimRange);
 	} else {
 		m_AimState = AIMSTILL;
+		aimedNow = false;
+	}
+	if (aimedNow) {
+		m_AimSetMS = g_TimerMan.GetSimTimeMS();
+	}
+	// An AI unit's aim left steep with nothing aiming it for two seconds, on its feet with the jet off and off any ladder or rope, eases back
+	// to level. (The route-follower aims it straight up or down to fly and climb and nothing aimed it back after, so a unit walked on or stood
+	// there looking at the sky or its feet. Two seconds, so a guard's sweep, which pauses at its ends, is left as it is.)
+	if (!aimedNow && m_Controller.GetInputMode() == Controller::CIM_AI && m_Status == STABLE && m_MovementState != JUMP && !m_Ladder.active && !m_RopeHold.active &&
+	    !(m_pJetpack && m_pJetpack->IsEmitting()) && g_TimerMan.GetSimTimeMS() - m_AimSetMS > 2000) {
+		if (std::abs(m_AimAngle) > 0.87F) { // About 50 degrees.
+			m_AimEasing = true;
+		}
+		if (m_AimEasing) {
+			m_AimAngle = ExpDecay(m_AimAngle, 0.0F, 6.0F, g_TimerMan.GetDeltaTimeSecs());
+			m_AimEasing = std::abs(m_AimAngle) > 0.05F;
+		}
+	} else {
+		m_AimEasing = false;
 	}
 	float adjustedAimAngle = m_AimAngle * GetFlipFactor();
 
