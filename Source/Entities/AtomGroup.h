@@ -248,6 +248,23 @@ namespace RTE {
 		/// @param travelTime The amount of time in seconds that this AtomGroup is supposed to travel.
 		/// @return The force, in N, the limb pulls its joint with as it reaches the end of its reach: towards the limb, to put on the body at the joint.
 		Vector RagdollAsLimb(const Vector& jointPos, float limbRadius, Vector& limbVel, float mass, float travelTime);
+
+		/// Holds this ragdoll limb's end (see RagdollAsLimb) within the range a hip or shoulder allows, measured against the body: no further forward or
+		/// back from straight down the body than the angles given, and no nearer the joint than the shortest reach. An end pushed past it stops
+		/// there, moving with the body.
+		/// @param jointPos The world position of the joint.
+		/// @param bodyDown The body's down, a unit vector: straight down its legs.
+		/// @param bodyForward The way the body faces, a unit vector square to bodyDown.
+		/// @param forwardLimit How far forward of straight down the limb may swing, in radians.
+		/// @param backLimit How far back of straight down the limb may swing, in radians.
+		/// @param shortestReach How near the joint the end may come, in pixels.
+		/// @param bodyVel The body's velocity, in m/s, given to an end held at the edge of its range.
+		/// @param limbVel The limb end's own velocity, in m/s, updated here.
+		/// @param mass The mass of the limb.
+		/// @param travelTime The time in seconds of this update.
+		/// @param limbPoint Set to where the limb's end is, in the world, after this.
+		/// @return The force, in N, the limb puts on the body at limbPoint as the range stops it: it levers the body round with it.
+		Vector HoldLimbInRange(const Vector& jointPos, const Vector& bodyDown, const Vector& bodyForward, float forwardLimit, float backLimit, float shortestReach, const Vector& bodyVel, Vector& limbVel, float mass, float travelTime, Vector& limbPoint);
 #pragma endregion
 
 #pragma region Collision

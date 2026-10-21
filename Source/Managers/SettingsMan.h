@@ -341,6 +341,18 @@ namespace RTE {
 		/// Sets how hard hits knock a ragdoll about; see RagdollHitPush.
 		void SetRagdollHitPush(float push) { m_RagdollHitPush = std::clamp(push, 1.0F, 10.0F); }
 
+		/// With RagdollDeaths on, how far forward of straight down the body a dead humanoid's leg may swing at the hip, in degrees, 30 to 180.
+		float RagdollLegForward() const { return m_RagdollLegForward; }
+
+		/// Sets how far forward a ragdoll's leg may swing; see RagdollLegForward.
+		void SetRagdollLegForward(float degrees) { m_RagdollLegForward = std::clamp(degrees, 30.0F, 180.0F); }
+
+		/// With RagdollDeaths on, how far back of straight down the body a dead humanoid's leg may swing at the hip, in degrees, 0 to 180.
+		float RagdollLegBack() const { return m_RagdollLegBack; }
+
+		/// Sets how far back a ragdoll's leg may swing; see RagdollLegBack.
+		void SetRagdollLegBack(float degrees) { m_RagdollLegBack = std::clamp(degrees, 0.0F, 180.0F); }
+
 		/// With RagdollDeaths on, how long, in seconds, a humanoid's body stays a body after it dies before it may settle into the terrain, 0 to 600:
 		/// till then it lies about whole, to be pushed, shot and blown about, however still. 0: as soon as it lies still, as the game comes.
 		int RagdollBodySeconds() const { return m_RagdollBodySeconds; }
@@ -1582,6 +1594,8 @@ namespace RTE {
 		bool m_TraceAllUnits; //!< Whether the AI channels trace every unit (see TraceAllUnits).
 		bool m_BodyGearSettlesAsScraps; //!< Whether what came off a unit settles into the terrain as Flesh Scraps (see BodyGearSettlesAsScraps).
 		bool m_RagdollDeaths; //!< Whether humanoids die as whole ragdolls (see RagdollDeaths).
+		float m_RagdollLegForward; //!< How far forward a ragdoll's leg may swing, in degrees (see RagdollLegForward).
+		float m_RagdollLegBack; //!< How far back a ragdoll's leg may swing, in degrees (see RagdollLegBack).
 		float m_RagdollHitPush; //!< How hard hits knock a ragdoll about (see RagdollHitPush).
 		int m_RagdollBodySeconds; //!< How long a ragdoll's body stays before it may settle (see RagdollBodySeconds).
 		bool m_NoDismemberment; //!< Whether humanoids are never dismembered or blown apart (see NoDismemberment).
