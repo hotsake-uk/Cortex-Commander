@@ -742,11 +742,20 @@ namespace {
 		const GAScripted* scripted = dynamic_cast<const GAScripted*>(activity);
 		return scripted && scripted->GetLuaClassName() == "BattleCommandActivity";
 	}
+
+	/// The Sandbox, or a scenario built on it (a custom battle made in Cortex Studio: a copy of the Sandbox, running its script).
+	bool IsSandboxActivity(const Activity* activity) {
+		if (activity->GetPresetName() == "Sandbox") {
+			return true;
+		}
+		const GAScripted* scripted = dynamic_cast<const GAScripted*>(activity);
+		return scripted && scripted->GetLuaClassName() == "SandboxActivity";
+	}
 } // namespace
 
 bool Sandbox::IsGodMode() {
 	const Activity* activity = g_ActivityMan.GetActivity();
-	return activity && InGame() && (activity->GetPresetName() == "Sandbox" || IsBattleCommandActivity(activity));
+	return activity && InGame() && (IsSandboxActivity(activity) || IsBattleCommandActivity(activity));
 }
 
 bool Sandbox::IsBattleCommand() {
