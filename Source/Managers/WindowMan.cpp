@@ -155,6 +155,8 @@ void WindowMan::Initialize() {
 	io.ConfigFlags |= ImGuiConfigFlags_NoMouseCursorChange;
 
 	ImGui::StyleColorsDark();
+	// Every labelled control puts its label first, at the left, and the control at the right edge of its row, so a panel reads as a list of settings.
+	ImGui::SetLabelsLeft(true);
 	// A TTF font rasterized at twice its normal size, drawn at half scale (see DebugMan), so debug windows stay sharp when scaled up for big screens.
 	{
 		std::string fontPath = g_PresetMan.GetFullModulePath("Base.rte/GUIs/Fonts/Roboto-Medium.ttf");

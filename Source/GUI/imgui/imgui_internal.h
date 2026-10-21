@@ -1076,6 +1076,16 @@ struct IMGUI_API ImGuiComboPreviewData
     ImGuiComboPreviewData() { memset(this, 0, sizeof(*this)); }
 };
 
+// [Cortex] Where a labelled control and its label go on their line when labels come first (see SetLabelsLeft()), from the item's start.
+struct ImGuiLabelsLeft
+{
+    bool    Active;     // Labels come first for this item: the rest is to be used.
+    float   FrameX;     // Where the control starts.
+    float   FrameW;     // How wide the control is (it may have been narrowed to leave the label room).
+    float   TotalW;     // How wide the whole item is, label and control.
+    float   LabelW;     // How much of the line the label may take before it is cut short with an ellipsis.
+};
+
 // Stacked storage data for BeginGroup()/EndGroup()
 struct IMGUI_API ImGuiGroupData
 {
@@ -2178,6 +2188,7 @@ struct ImGuiContext
     ImVector<ImGuiGroupData>        GroupStack;                 // Stack for BeginGroup()/EndGroup() - not inherited by Begin()
     int                             WrapSameLineDepth;          // [Cortex] PushWrapSameLine() calls not yet popped.
     int                             FlowItemsDepth;             // [Cortex] PushFlowItems() calls not yet popped.
+    bool                            LabelsLeft;                 // [Cortex] SetLabelsLeft(): labels before their controls.
     ImVector<ImGuiPopupData>        OpenPopupStack;             // Which popups are open (persistent)
     ImVector<ImGuiPopupData>        BeginPopupStack;            // Which level of BeginPopup() we are in (reset every frame)
     ImVector<ImGuiTreeNodeStackData>TreeNodeStack;              // Stack for TreeNode()
@@ -2453,6 +2464,10 @@ struct IMGUI_API ImGuiWindowTempData
     int                     FlowIndex;              // [Cortex] Items laid out so far this frame inside PushFlowItems().
     bool                    FlowApplied;            // [Cortex] The cursor was put on the line before by FlowAfterItem(); FlowNewLinePos is where it was.
     ImVec2                  FlowNewLinePos;
+    ImGuiID                 LabelsLeftKey;          // [Cortex] The last labels-first row (LabelsLeftLayout()), while what follows it on its line is being kept.
+    bool                    LabelsLeftPlacing;      // [Cortex] That row is being laid out: its own ItemSize() is still to come.
+    bool                    LabelsLeftFollowing;    // [Cortex] A SameLine() came after it: the next item is beside it.
+    bool                    LabelsLeftColumn;       // [Cortex] The next item was put at a set place on the line (SameLine() with a position), so starts a column of its own.
     ImVec1                  Indent;                 // Indentation / start position from left of window (increased by TreePush/TreePop, etc.)
     ImVec1                  ColumnsOffset;          // Offset to the current column (if ColumnsCurrent > 0). FIXME: This and the above should be a stack to allow use cases like Tree->Column->Tree. Need revamp columns API.
     ImVec1                  GroupOffset;
@@ -3128,6 +3143,8 @@ namespace ImGui
     IMGUI_API void          FlowUndo(ImGuiWindow* window);                               // [Cortex]
     IMGUI_API ImVec2        GetContentRegionAvailRaw();                                  // [Cortex] GetContentRegionAvail() without FlowUndo(), for the library's own widgets.
     IMGUI_API bool          WrapSameLineBreaks(ImGuiWindow* window, float spacing_w);   // [Cortex]
+    IMGUI_API bool          LabelsLeftLayout(ImGuiID id, float label_w, float frame_w, bool frame_fixed, ImGuiLabelsLeft* out); // [Cortex] See SetLabelsLeft().
+    IMGUI_API void          RenderLabelLeft(const ImVec2& pos, const ImGuiLabelsLeft& layout, const char* label, const ImVec2& label_size); // [Cortex]
     inline void             ItemSize(const ImRect& bb, float text_baseline_y = -1.0f) { ItemSize(bb.GetSize(), text_baseline_y); } // FIXME: This is a misleading API since we expect CursorPos to be bb.Min.
     IMGUI_API bool          ItemAdd(const ImRect& bb, ImGuiID id, const ImRect* nav_bb = NULL, ImGuiItemFlags extra_flags = 0);
     IMGUI_API bool          ItemHoverable(const ImRect& bb, ImGuiID id, ImGuiItemFlags item_flags);

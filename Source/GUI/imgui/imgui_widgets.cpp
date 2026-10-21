@@ -1179,7 +1179,10 @@ bool ImGui::Checkbox(const char* label, bool* v)
 
     const float square_sz = GetFrameHeight();
     const ImVec2 pos = window->DC.CursorPos;
-    const ImRect total_bb(pos, pos + ImVec2(square_sz + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), label_size.y + style.FramePadding.y * 2.0f));
+    // [Cortex] Labels first (SetLabelsLeft()): the label at the left of the row, the box at its right.
+    ImGuiLabelsLeft labels_left;
+    const bool labels_first = LabelsLeftLayout(id, label_size.x, square_sz, true, &labels_left);
+    const ImRect total_bb(pos, pos + ImVec2(labels_first ? labels_left.TotalW : square_sz + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), label_size.y + style.FramePadding.y * 2.0f));
     ItemSize(total_bb, style.FramePadding.y);
     const bool is_visible = ItemAdd(total_bb, id);
     const bool is_multi_select = (g.LastItemData.ItemFlags & ImGuiItemFlags_IsMultiSelect) != 0;
@@ -1211,7 +1214,8 @@ bool ImGui::Checkbox(const char* label, bool* v)
         MarkItemEdited(id);
     }
 
-    const ImRect check_bb(pos, pos + ImVec2(square_sz, square_sz));
+    const ImVec2 check_pos = pos + ImVec2(labels_first ? labels_left.FrameX : 0.0f, 0.0f);
+    const ImRect check_bb(check_pos, check_pos + ImVec2(square_sz, square_sz));
     const bool mixed_value = (g.LastItemData.ItemFlags & ImGuiItemFlags_MixedValue) != 0;
     if (is_visible)
     {
@@ -1231,10 +1235,12 @@ bool ImGui::Checkbox(const char* label, bool* v)
             RenderCheckMark(window->DrawList, check_bb.Min + ImVec2(pad, pad), check_col, square_sz - pad * 2.0f);
         }
     }
-    const ImVec2 label_pos = ImVec2(check_bb.Max.x + style.ItemInnerSpacing.x, check_bb.Min.y + style.FramePadding.y);
+    const ImVec2 label_pos = labels_first ? ImVec2(pos.x, check_bb.Min.y + style.FramePadding.y) : ImVec2(check_bb.Max.x + style.ItemInnerSpacing.x, check_bb.Min.y + style.FramePadding.y);
     if (g.LogEnabled)
         LogRenderedText(&label_pos, mixed_value ? "[~]" : *v ? "[x]" : "[ ]");
-    if (is_visible && label_size.x > 0.0f)
+    if (is_visible && labels_first)
+        RenderLabelLeft(label_pos, labels_left, label, label_size);
+    else if (is_visible && label_size.x > 0.0f)
         RenderText(label_pos, label);
 
     IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Checkable | (*v ? ImGuiItemStatusFlags_Checked : 0));
@@ -1875,9 +1881,16 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
     const float arrow_size = (flags & ImGuiComboFlags_NoArrowButton) ? 0.0f : GetFrameHeight();
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
     const float preview_width = ((flags & ImGuiComboFlags_WidthFitPreview) && (preview_value != NULL)) ? CalcTextSize(preview_value, NULL, true).x : 0.0f;
-    const float w = (flags & ImGuiComboFlags_NoPreview) ? arrow_size : ((flags & ImGuiComboFlags_WidthFitPreview) ? (arrow_size + preview_width + style.FramePadding.x * 2.0f) : CalcItemWidth());
-    const ImRect bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
-    const ImRect total_bb(bb.Min, bb.Max + ImVec2(label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f, 0.0f));
+    float w = (flags & ImGuiComboFlags_NoPreview) ? arrow_size : ((flags & ImGuiComboFlags_WidthFitPreview) ? (arrow_size + preview_width + style.FramePadding.x * 2.0f) : CalcItemWidth());
+    // [Cortex] Labels first (SetLabelsLeft()): the label at the left of the row, the list at its right.
+    ImGuiLabelsLeft labels_left;
+    const ImVec2 item_pos = window->DC.CursorPos;
+    const bool labels_first = LabelsLeftLayout(id, label_size.x, w, (flags & (ImGuiComboFlags_NoPreview | ImGuiComboFlags_WidthFitPreview)) != 0, &labels_left);
+    if (labels_first)
+        w = labels_left.FrameW;
+    const ImVec2 frame_pos = item_pos + ImVec2(labels_first ? labels_left.FrameX : 0.0f, 0.0f);
+    const ImRect bb(frame_pos, frame_pos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
+    const ImRect total_bb = labels_first ? ImRect(item_pos, ImVec2(item_pos.x + labels_left.TotalW, bb.Max.y)) : ImRect(bb.Min, bb.Max + ImVec2(label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f, 0.0f));
     ItemSize(total_bb, style.FramePadding.y);
     if (!ItemAdd(total_bb, id, &bb))
         return false;
@@ -1924,7 +1937,9 @@ bool ImGui::BeginCombo(const char* label, const char* preview_value, ImGuiComboF
             LogSetNextTextDecoration("{", "}");
         RenderTextClipped(bb.Min + style.FramePadding, ImVec2(value_x2, bb.Max.y), preview_value, NULL, NULL);
     }
-    if (label_size.x > 0)
+    if (labels_first)
+        RenderLabelLeft(ImVec2(item_pos.x, bb.Min.y + style.FramePadding.y), labels_left, label, label_size);
+    else if (label_size.x > 0)
         RenderText(ImVec2(bb.Max.x + style.ItemInnerSpacing.x, bb.Min.y + style.FramePadding.y), label);
 
     if (!popup_open)
@@ -2635,11 +2650,16 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
     const ImGuiID id = window->GetID(label);
-    const float w = CalcItemWidth();
-
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
-    const ImRect frame_bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
-    const ImRect total_bb(frame_bb.Min, frame_bb.Max + ImVec2(label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f, 0.0f));
+
+    // [Cortex] Labels first (SetLabelsLeft()): the label at the left of the row, the control at its right.
+    ImGuiLabelsLeft labels_left;
+    const ImVec2 item_pos = window->DC.CursorPos;
+    const bool labels_first = LabelsLeftLayout(id, label_size.x, CalcItemWidth(), false, &labels_left);
+    const float w = labels_first ? labels_left.FrameW : CalcItemWidth();
+    const ImVec2 frame_pos = item_pos + ImVec2(labels_first ? labels_left.FrameX : 0.0f, 0.0f);
+    const ImRect frame_bb(frame_pos, frame_pos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
+    const ImRect total_bb = labels_first ? ImRect(item_pos, ImVec2(item_pos.x + labels_left.TotalW, frame_bb.Max.y)) : ImRect(frame_bb.Min, frame_bb.Max + ImVec2(label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f, 0.0f));
 
     const bool temp_input_allowed = (flags & ImGuiSliderFlags_NoInput) == 0;
     ItemSize(total_bb, style.FramePadding.y);
@@ -2718,7 +2738,9 @@ bool ImGui::DragScalar(const char* label, ImGuiDataType data_type, void* p_data,
         LogSetNextTextDecoration("{", "}");
     RenderTextClipped(frame_bb.Min, frame_bb.Max, value_buf, value_buf_end, NULL, ImVec2(0.5f, 0.5f));
 
-    if (label_size.x > 0.0f)
+    if (labels_first)
+        RenderLabelLeft(ImVec2(item_pos.x, frame_bb.Min.y + style.FramePadding.y), labels_left, label, label_size);
+    else if (label_size.x > 0.0f)
         RenderText(ImVec2(frame_bb.Max.x + style.ItemInnerSpacing.x, frame_bb.Min.y + style.FramePadding.y), label);
 
     IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags | (temp_input_allowed ? ImGuiItemStatusFlags_Inputable : 0));
@@ -3239,11 +3261,16 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
     ImGuiContext& g = *GImGui;
     const ImGuiStyle& style = g.Style;
     const ImGuiID id = window->GetID(label);
-    const float w = CalcItemWidth();
-
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
-    const ImRect frame_bb(window->DC.CursorPos, window->DC.CursorPos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
-    const ImRect total_bb(frame_bb.Min, frame_bb.Max + ImVec2(label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f, 0.0f));
+
+    // [Cortex] Labels first (SetLabelsLeft()): the label at the left of the row, the control at its right.
+    ImGuiLabelsLeft labels_left;
+    const ImVec2 item_pos = window->DC.CursorPos;
+    const bool labels_first = LabelsLeftLayout(id, label_size.x, CalcItemWidth(), false, &labels_left);
+    const float w = labels_first ? labels_left.FrameW : CalcItemWidth();
+    const ImVec2 frame_pos = item_pos + ImVec2(labels_first ? labels_left.FrameX : 0.0f, 0.0f);
+    const ImRect frame_bb(frame_pos, frame_pos + ImVec2(w, label_size.y + style.FramePadding.y * 2.0f));
+    const ImRect total_bb = labels_first ? ImRect(item_pos, ImVec2(item_pos.x + labels_left.TotalW, frame_bb.Max.y)) : ImRect(frame_bb.Min, frame_bb.Max + ImVec2(label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f, 0.0f));
 
     const bool temp_input_allowed = (flags & ImGuiSliderFlags_NoInput) == 0;
     ItemSize(total_bb, style.FramePadding.y);
@@ -3309,7 +3336,9 @@ bool ImGui::SliderScalar(const char* label, ImGuiDataType data_type, void* p_dat
         LogSetNextTextDecoration("{", "}");
     RenderTextClipped(frame_bb.Min, frame_bb.Max, value_buf, value_buf_end, NULL, ImVec2(0.5f, 0.5f));
 
-    if (label_size.x > 0.0f)
+    if (labels_first)
+        RenderLabelLeft(ImVec2(item_pos.x, frame_bb.Min.y + style.FramePadding.y), labels_left, label, label_size);
+    else if (label_size.x > 0.0f)
         RenderText(ImVec2(frame_bb.Max.x + style.ItemInnerSpacing.x, frame_bb.Min.y + style.FramePadding.y), label);
 
     IMGUI_TEST_ENGINE_ITEM_INFO(id, label, g.LastItemData.StatusFlags | (temp_input_allowed ? ImGuiItemStatusFlags_Inputable : 0));
@@ -3734,9 +3763,21 @@ bool ImGui::InputScalar(const char* label, ImGuiDataType data_type, void* p_data
     {
         const float button_size = GetFrameHeight();
 
+        // [Cortex] Labels first (SetLabelsLeft()): the label at the left of the row, the box and its buttons at its right. What follows it isn't kept.
+        const ImVec2 label_size = CalcTextSize(label, NULL, true);
+        ImGuiLabelsLeft labels_left;
+        LabelsLeftLayout(window->GetID(label), label_size.x, CalcItemWidth(), false, &labels_left);
+        window->DC.LabelsLeftKey = 0;
+        window->DC.LabelsLeftPlacing = false;
+
         BeginGroup(); // The only purpose of the group here is to allow the caller to query item data e.g. IsItemActive()
         PushID(label);
-        SetNextItemWidth(ImMax(1.0f, CalcItemWidth() - (button_size + style.ItemInnerSpacing.x) * 2));
+        if (labels_left.Active)
+        {
+            RenderLabelLeft(window->DC.CursorPos + ImVec2(0.0f, style.FramePadding.y), labels_left, label, label_size);
+            window->DC.CursorPos.x += labels_left.FrameX;
+        }
+        SetNextItemWidth(ImMax(1.0f, (labels_left.Active ? labels_left.FrameW : CalcItemWidth()) - (button_size + style.ItemInnerSpacing.x) * 2));
         if (InputText("", buf, IM_ARRAYSIZE(buf), flags)) // PushId(label) + "" gives us the expected ID from outside point of view
             value_changed = DataTypeApplyFromText(buf, data_type, p_data, format, (flags & ImGuiInputTextFlags_ParseEmptyRefVal) ? p_data_default : NULL);
         IMGUI_TEST_ENGINE_ITEM_INFO(g.LastItemData.ID, label, g.LastItemData.StatusFlags | ImGuiItemStatusFlags_Inputable);
@@ -3764,7 +3805,7 @@ bool ImGui::InputScalar(const char* label, ImGuiDataType data_type, void* p_data
             EndDisabled();
 
         const char* label_end = FindRenderedTextEnd(label);
-        if (label != label_end)
+        if (label != label_end && !labels_left.Active)
         {
             SameLine(0, style.ItemInnerSpacing.x);
             TextEx(label, label_end);
@@ -4484,11 +4525,21 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
         BeginGroup();
     const ImGuiID id = window->GetID(label);
     const ImVec2 label_size = CalcTextSize(label, NULL, true);
-    const ImVec2 frame_size = CalcItemSize(size_arg, CalcItemWidth(), (is_multiline ? g.FontSize * 8.0f : label_size.y) + style.FramePadding.y * 2.0f); // Arbitrary default of 8 lines high for multi-line
-    const ImVec2 total_size = ImVec2(frame_size.x + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), frame_size.y);
+    ImVec2 frame_size = CalcItemSize(size_arg, CalcItemWidth(), (is_multiline ? g.FontSize * 8.0f : label_size.y) + style.FramePadding.y * 2.0f); // Arbitrary default of 8 lines high for multi-line
+    ImVec2 total_size = ImVec2(frame_size.x + (label_size.x > 0.0f ? style.ItemInnerSpacing.x + label_size.x : 0.0f), frame_size.y);
 
-    const ImRect frame_bb(window->DC.CursorPos, window->DC.CursorPos + frame_size);
-    const ImRect total_bb(frame_bb.Min, frame_bb.Min + total_size);
+    // [Cortex] Labels first (SetLabelsLeft()), for a box one line high: the label at the left of the row, the box at its right.
+    ImGuiLabelsLeft labels_left;
+    const ImVec2 item_pos = window->DC.CursorPos;
+    const bool labels_first = !is_multiline && LabelsLeftLayout(id, label_size.x, frame_size.x, size_arg.x > 0.0f, &labels_left);
+    if (labels_first)
+    {
+        frame_size.x = labels_left.FrameW;
+        total_size.x = labels_left.TotalW;
+    }
+    const ImVec2 frame_pos = item_pos + ImVec2(labels_first ? labels_left.FrameX : 0.0f, 0.0f);
+    const ImRect frame_bb(frame_pos, frame_pos + frame_size);
+    const ImRect total_bb(item_pos, item_pos + total_size);
 
     ImGuiWindow* draw_window = window;
     ImVec2 inner_size = frame_size;
@@ -5413,7 +5464,9 @@ bool ImGui::InputTextEx(const char* label, const char* hint, char* buf, int buf_
         LogRenderedText(&draw_pos, buf_display, buf_display_end);
     }
 
-    if (label_size.x > 0)
+    if (labels_first)
+        RenderLabelLeft(ImVec2(item_pos.x, frame_bb.Min.y + style.FramePadding.y), labels_left, label, label_size);
+    else if (label_size.x > 0)
         RenderText(ImVec2(frame_bb.Max.x + style.ItemInnerSpacing.x, frame_bb.Min.y + style.FramePadding.y), label);
 
     if (value_changed)
@@ -5527,7 +5580,22 @@ bool ImGui::ColorEdit4(const char* label, float col[4], ImGuiColorEditFlags flag
     float w_full = CalcItemWidth();
     g.NextItemData.ClearFlags();
 
+    // [Cortex] Labels first (SetLabelsLeft()): the label at the left of the row, the colour at its right. What follows it isn't kept.
+    const bool color_no_inputs = (flags & ImGuiColorEditFlags_NoInputs) != 0;
+    const ImVec2 label_size = CalcTextSize(label, label_display_end);
+    ImGuiLabelsLeft labels_left;
+    const bool labels_first = !(flags & ImGuiColorEditFlags_NoLabel) && LabelsLeftLayout(window->GetID(label), label_size.x, color_no_inputs ? square_sz : w_full, color_no_inputs, &labels_left);
+    window->DC.LabelsLeftKey = 0;
+    window->DC.LabelsLeftPlacing = false;
+    if (labels_first && !color_no_inputs)
+        w_full = labels_left.FrameW;
+
     BeginGroup();
+    if (labels_first)
+    {
+        RenderLabelLeft(window->DC.CursorPos + ImVec2(0.0f, style.FramePadding.y), labels_left, label, label_size);
+        window->DC.CursorPos.x += labels_left.FrameX;
+    }
     PushID(label);
     const bool set_current_color_edit_id = (g.ColorEditCurrentID == 0);
     if (set_current_color_edit_id)
@@ -5692,7 +5760,7 @@ bool ImGui::ColorEdit4(const char* label, float col[4], ImGuiColorEditFlags flag
         }
     }
 
-    if (label != label_display_end && !(flags & ImGuiColorEditFlags_NoLabel))
+    if (label != label_display_end && !(flags & ImGuiColorEditFlags_NoLabel) && !labels_first)
     {
         // Position not necessarily next to last submitted button (e.g. if style.ColorButtonPosition == ImGuiDir_Left),
         // but we need to use SameLine() to setup baseline correctly. Might want to refactor SameLine() to simplify this.
