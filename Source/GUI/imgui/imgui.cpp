@@ -4055,6 +4055,7 @@ ImGuiContext::ImGuiContext(ImFontAtlas* shared_font_atlas)
     BeginMenuDepth = BeginComboDepth = 0;
     WrapSameLineDepth = 0;
     FlowItemsDepth = 0;
+    LabelsLeft = false;
     ColorEditOptions = ImGuiColorEditFlags_DefaultOptions_;
     ColorEditCurrentID = ColorEditSavedID = 0;
     ColorEditSavedHue = ColorEditSavedSat = 0.0f;
@@ -7638,6 +7639,8 @@ bool ImGui::Begin(const char* name, bool* p_open, ImGuiWindowFlags flags)
         window->DC.WrapPendingGroupDepth = 0;
         window->DC.FlowIndex = 0;
         window->DC.FlowApplied = false;
+        window->DC.LabelsLeftKey = 0;
+        window->DC.LabelsLeftPlacing = window->DC.LabelsLeftFollowing = window->DC.LabelsLeftColumn = false;
 
         window->DC.NavLayerCurrent = ImGuiNavLayer_Main;
         window->DC.NavLayersActiveMask = window->DC.NavLayersActiveMaskNext;
@@ -10717,6 +10720,16 @@ void ImGui::ItemSize(const ImVec2& size, float text_baseline_y)
     if (window->DC.WrapPendingKey != 0 && window->DC.WrapPendingGroupDepth == g.GroupStack.Size)
         WrapSameLineRecord(window, size);
 
+    // [Cortex] Labels first: the width of what follows a row on its line is kept, so next frame the row leaves room for it (see LabelsLeftLayout()).
+    if (window->DC.LabelsLeftKey != 0)
+    {
+        if (window->DC.LabelsLeftFollowing)
+            window->WrapWidths.SetFloat(window->DC.LabelsLeftKey, window->WrapWidths.GetFloat(window->DC.LabelsLeftKey, 0.0f) + size.x + g.Style.ItemSpacing.x);
+        else if (!window->DC.LabelsLeftPlacing)
+            window->DC.LabelsLeftKey = 0;
+    }
+    window->DC.LabelsLeftPlacing = window->DC.LabelsLeftFollowing = window->DC.LabelsLeftColumn = false;
+
     const float line_y1 = window->DC.IsSameLine ? window->DC.CursorPosPrevLine.y : window->DC.CursorPos.y;
     const float line_height = ImMax(window->DC.CurrLineSize.y, /*ImMax(*/window->DC.CursorPos.y - line_y1/*, 0.0f)*/ + size.y + offset_to_match_baseline_y);
 
@@ -10842,6 +10855,82 @@ void ImGui::FlowUndo(ImGuiWindow* window)
     window->DC.IsSameLine = false;
 }
 
+// [Cortex] Labels first: see SetLabelsLeft().
+void ImGui::SetLabelsLeft(bool labels_left)
+{
+    ImGuiContext& g = *GImGui;
+    g.LabelsLeft = labels_left;
+}
+
+// Where a labelled control (its label label_w wide, the control frame_w) and its label go. On a line of its own, or at a place set by SameLine() with a
+// position, the item is a row running to the right edge, short of whatever was beside it on the line last frame: the label at its left, the control at its
+// right edge. Too narrow for both, the control is narrowed first (unless frame_fixed), then the label is cut short. Flowing (PushFlowItems()), the row is a
+// cell of the item width and a label column, so the cells of a wide window line up. Beside the item before it (SameLine()), in a group, or in a window
+// sized to its contents, the label just comes first and the control right after it.
+bool ImGui::LabelsLeftLayout(ImGuiID id, float label_w, float frame_w, bool frame_fixed, ImGuiLabelsLeft* out)
+{
+    ImGuiContext& g = *GImGui;
+    ImGuiWindow* window = g.CurrentWindow;
+    out->Active = false;
+    if (!g.LabelsLeft || label_w <= 0.0f || window->DC.LayoutType != ImGuiLayoutType_Vertical)
+        return false;
+    const float gap = g.Style.ItemSpacing.x;
+    out->Active = true;
+    out->FrameX = label_w + gap;
+    out->FrameW = frame_w;
+    out->TotalW = out->FrameX + frame_w;
+    out->LabelW = label_w;
+
+    const bool beside = window->DC.IsSameLine && !window->DC.FlowApplied && !window->DC.LabelsLeftColumn;
+    const bool in_group = g.GroupStack.Size > 0 && g.GroupStack.back().WindowID == window->ID;
+    const bool fitted = (window->Flags & ImGuiWindowFlags_AlwaysAutoResize) || (window->ChildFlags & ImGuiChildFlags_AutoResizeX) || window->AutoFitFramesX > 0;
+    if (beside || in_group || fitted || window->DC.LabelsLeftFollowing)
+        return true;
+
+    const ImGuiID key = ImHashData(&id, sizeof(ImGuiID), window->ID ^ 0x1ABE1Fu);
+    const float start_x = window->DC.CursorPos.x;
+    float end_x = window->WorkRect.Max.x - window->WrapWidths.GetFloat(key, 0.0f);
+    const float column_x = window->WrapWidths.GetFloat(key ^ 0x7E1C0Bu, 0.0f);
+    if (column_x > 0.0f)
+        end_x = ImMin(end_x, window->Pos.x - window->Scroll.x + column_x - gap);
+    window->WrapWidths.SetFloat(key, 0.0f);
+    window->WrapWidths.SetFloat(key ^ 0x7E1C0Bu, 0.0f);
+    window->DC.LabelsLeftKey = key;
+    window->DC.LabelsLeftPlacing = true;
+
+    float room = end_x - start_x;
+    if (g.FlowItemsDepth > 0)
+        room = ImMin(room, ImMax(g.FontSize * 12.0f + CalcItemWidth(), out->TotalW));
+    if (room > out->TotalW)
+    {
+        out->TotalW = room;
+        out->FrameX = room - frame_w;
+        return true;
+    }
+    float w = frame_w;
+    if (!frame_fixed)
+        w = ImMax(ImMin(frame_w, ImMax(room * 0.4f, g.FontSize * 4.0f)), room - label_w - gap);
+    out->FrameW = w;
+    out->TotalW = ImMax(room, w);
+    out->FrameX = out->TotalW - w;
+    out->LabelW = ImMax(0.0f, out->FrameX - gap);
+    return true;
+}
+
+// The label of an item laid out by LabelsLeftLayout(), at pos (the item's start, at the height of its text), cut short with an ellipsis if it has no room.
+void ImGui::RenderLabelLeft(const ImVec2& pos, const ImGuiLabelsLeft& layout, const char* label, const ImVec2& label_size)
+{
+    if (layout.LabelW <= 0.0f)
+        return;
+    if (label_size.x <= layout.LabelW + 0.5f)
+    {
+        RenderText(pos, label);
+        return;
+    }
+    const float clip_x = pos.x + layout.LabelW;
+    RenderTextEllipsis(GetCurrentWindow()->DrawList, pos, ImVec2(clip_x, pos.y + label_size.y), clip_x, clip_x, label, FindRenderedTextEnd(label), &label_size);
+}
+
 bool ImGui::WrapSameLineBreaks(ImGuiWindow* window, float spacing_w)
 {
     ImGuiContext& g = *GImGui;
@@ -10880,11 +10969,19 @@ void ImGui::SameLine(float offset_from_start_x, float spacing_w)
             spacing_w = 0.0f;
         window->DC.CursorPos.x = window->Pos.x - window->Scroll.x + offset_from_start_x + spacing_w + window->DC.GroupOffset.x + window->DC.ColumnsOffset.x;
         window->DC.CursorPos.y = window->DC.CursorPosPrevLine.y;
+        // [Cortex] Labels first: an item put at a set place starts a column; a row before it on the line ends short of it (see LabelsLeftLayout()).
+        if (window->DC.LabelsLeftKey != 0)
+            window->WrapWidths.SetFloat(window->DC.LabelsLeftKey ^ 0x7E1C0Bu, window->DC.CursorPos.x - window->Pos.x + window->Scroll.x);
+        window->DC.LabelsLeftKey = 0;
+        window->DC.LabelsLeftColumn = true;
     }
     else
     {
         if (spacing_w < 0.0f)
             spacing_w = g.Style.ItemSpacing.x;
+        // [Cortex] Labels first: the next item is beside a row, which next frame leaves room for it (see LabelsLeftLayout()).
+        if (window->DC.LabelsLeftKey != 0)
+            window->DC.LabelsLeftFollowing = true;
         // [Cortex] Inside PushWrapSameLine(), the next item goes on a new line instead when last frame it didn't fit after this one.
         if (WrapSameLineBreaks(window, spacing_w))
             return;

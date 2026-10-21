@@ -54,7 +54,8 @@ Studio app does this itself).
   hill, assault, one flag, the point...) laid out on a map by hand, in the **Battle Editor**: the same map, and beside it the mode,
   the teams (who plays, their size and faction, which one the player commands), a checklist of what the mode needs placed (each
   team's spawn zones, flags, goal zones, the hills or objectives in order, flag or ship positions, pickup spots), its rules, and a
-  red line saying what still stops it starting, and every other setting of the game's Battle tab: each team's factions (as many as
+  red line saying what still stops it starting, and every other setting of the game's Battle tab (a **Custom battle** has the
+  Battle Director's team cards, its spawn zones, defence points and drop lines, and plays in the Sandbox): each team's factions (as many as
   you like), favourites, crabs, jetpacks, craft, risk and rush, the spawn orders of a team the player commands (the team's, and
   each spawn zone's own, their points placed on the map), where units come in, respawns and routes, the AI commanders, Battle
   Command (fog of war, field brain, hot-seat, picking an army), pickups and their kinds, and how it shows: objectives lit up and

@@ -558,6 +558,24 @@ namespace SandboxDetail {
 			}
 		}
 
+		/// Starts the setup put in (UsePreset): a mode's game, or a custom battle's active teams (as the Battle tab's Start battle). False, with
+		/// why, if it can't start as it is.
+		bool StartSetup(std::string& why) {
+			if (s_ModeSetup.Mode == BattleMode::Custom) {
+				if (std::none_of(s_BattleSetup.begin(), s_BattleSetup.end(), [](const BattleSettings& card) { return card.Active; })) {
+					why = "no team is active";
+					return false;
+				}
+				SendBattleSettings(-1, BattleStartAll);
+				return true;
+			}
+			if (!BattleModeReady(why)) {
+				return false;
+			}
+			SendBattleMode(BattleModeStart);
+			return true;
+		}
+
 		/// The hold zones on the map, kept with a setup being saved if "Hold zones" is ticked.
 		void TakeHoldZones(BattlePreset& preset) {
 			preset.HasHoldZones = s_SaveHoldZones;
@@ -581,7 +599,9 @@ namespace SandboxDetail {
 				CarryIntoNextBattle();
 			}
 			UsePreset(*preset);
-			SendBattleMode(BattleModeStart);
+			if (std::string why; !StartSetup(why)) {
+				g_ConsoleMan.PrintString("SANDBOX: Linked battle \"" + preset->Name + "\" can't be started as it is: " + why);
+			}
 			s_PresetNote = "Linked battle " + std::to_string(at + 1) + " of " + std::to_string(s_Linked.Names.size()) + ": \"" + preset->Name + "\".";
 			return true;
 		}
@@ -784,8 +804,9 @@ namespace SandboxDetail {
 			return;
 		}
 		bool start = startPicked;
-		// A scenario built on Battle Command under a mod battle's name (made in Cortex Studio): that battle, started at once.
-		if (const Activity* activity = g_ActivityMan.GetActivity(); picked.empty() && activity && Sandbox::IsBattleCommand() && activity->GetPresetName() != "Battle Command") {
+		// A scenario built on Battle Command or the Sandbox (a custom battle) under a mod battle's name (made in Cortex Studio): that battle,
+		// started at once.
+		if (const Activity* activity = g_ActivityMan.GetActivity(); picked.empty() && activity && Sandbox::IsGodMode() && activity->GetPresetName() != "Battle Command" && activity->GetPresetName() != "Sandbox") {
 			const std::string& own = activity->GetPresetName();
 			if (std::any_of(s_ModPresets.begin(), s_ModPresets.end(), [&own](const BattlePreset& preset) { return preset.Name == own; })) {
 				picked = own;
@@ -807,9 +828,7 @@ namespace SandboxDetail {
 		// The main menu's quick battle: started at once, if it can be.
 		if (start) {
 			std::string why;
-			if (BattleModeReady(why)) {
-				SendBattleMode(BattleModeStart);
-			} else {
+			if (!StartSetup(why)) {
 				g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + preset.Name + "\" can't be started as it is: " + why);
 			}
 		}
@@ -978,10 +997,9 @@ bool Sandbox::LoadBattleSetup(const std::string& file, const std::string& name, 
 		return true;
 	}
 	std::string why;
-	if (!BattleModeReady(why)) {
+	if (!StartSetup(why)) {
 		g_ConsoleMan.PrintString("SANDBOX: Battle setup \"" + found->Name + "\" can't be started as it is: " + why);
 		return false;
 	}
-	SendBattleMode(BattleModeStart);
 	return true;
 }

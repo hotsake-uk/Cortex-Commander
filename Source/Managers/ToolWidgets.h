@@ -232,12 +232,19 @@ namespace RTE {
 		}
 
 		/// The shared body of the tick-box and the radio button: a square socket with the label beside it. Returns whether it was clicked.
+		/// With labels first (ImGui::SetLabelsLeft()) a tick-box puts its label at the left of its row and the box at the right; a radio button keeps its
+		/// diamond before its label, as the label is the choice itself and the diamonds of a row of choices must stay with theirs.
 		inline bool Socket(const char* label, bool filled, bool diamond) {
 			const ImGuiStyle& style = ImGui::GetStyle();
 			float side = ImGui::GetFrameHeight();
 			ImVec2 labelSize = ImGui::CalcTextSize(label, nullptr, true);
 			ImVec2 at = ImGui::GetCursorScreenPos();
 			ImVec2 size(side + (labelSize.x > 0.0F ? style.ItemInnerSpacing.x + labelSize.x : 0.0F), std::max(side, labelSize.y + style.FramePadding.y * 2.0F));
+			ImGuiLabelsLeft labelsLeft;
+			bool labelsFirst = !diamond && ImGui::LabelsLeftLayout(ImGui::GetID(label), labelSize.x, side, true, &labelsLeft);
+			if (labelsFirst) {
+				size.x = labelsLeft.TotalW;
+			}
 			bool clicked = ImGui::InvisibleButton(label, size);
 			bool hovered = ImGui::IsItemHovered();
 			bool held = ImGui::IsItemActive();
@@ -247,8 +254,9 @@ namespace RTE {
 			ImU32 well = ImGui::GetColorU32(held ? ImGuiCol_FrameBgActive : hovered ? ImGuiCol_FrameBgHovered : ImGuiCol_FrameBg);
 			ImU32 mark = ImGui::GetColorU32(ImGuiCol_CheckMark);
 			float inset = std::floor(side * 0.12F);
-			ImVec2 from(at.x + inset, at.y + inset);
-			ImVec2 to(at.x + side - inset, at.y + side - inset);
+			ImVec2 box(labelsFirst ? at.x + labelsLeft.FrameX : at.x, at.y);
+			ImVec2 from(box.x + inset, box.y + inset);
+			ImVec2 to(box.x + side - inset, box.y + side - inset);
 			if (diamond) {
 				// A radio button: one of several, so a different shape from a tick-box. A square stood on its corner.
 				ImVec2 middle((from.x + to.x) * 0.5F, (from.y + to.y) * 0.5F);
@@ -267,7 +275,9 @@ namespace RTE {
 					drawList->AddRectFilled(ImVec2(from.x + gap, from.y + gap), ImVec2(to.x - gap, to.y - gap), mark);
 				}
 			}
-			if (labelSize.x > 0.0F) {
+			if (labelsFirst) {
+				ImGui::RenderLabelLeft(ImVec2(at.x, at.y + (size.y - labelSize.y) * 0.5F), labelsLeft, label, labelSize);
+			} else if (labelSize.x > 0.0F) {
 				drawList->AddText(ImVec2(at.x + side + style.ItemInnerSpacing.x, at.y + (size.y - labelSize.y) * 0.5F), ImGui::GetColorU32(ImGuiCol_Text), label, ImGui::FindRenderedTextEnd(label));
 			}
 			return clicked;

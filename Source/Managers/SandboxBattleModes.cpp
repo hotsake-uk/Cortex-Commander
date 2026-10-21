@@ -7197,9 +7197,30 @@ namespace SandboxDetail {
 		arrive("Appear in their spawn zones##arrive", false, false, "Each team's units appear in their spawn zones.");
 		ImGui::SameLine();
 		arrive("Appear anywhere##arrive", false, true, "Each team's units appear anywhere on the map there's ground to stand on (caves too), with room above them and not in liquid, kept clear of enemies and objectives. Spawn zones still mark each team's base (its flag, its defenders).");
-		arrive("Ships over their base##arrive", true, false, "Each team's units come in by ship or drop crate over their widest spawn zone (each team's card says which craft: dropship, rocket or drop crate), rather than appearing in their zones.");
+		arrive("Ships or crates over their base##arrive", true, false, "Each team's units come in by ship or drop crate over their widest spawn zone (pick which in Craft, below), rather than appearing in their zones.");
 		ImGui::SameLine();
-		arrive("Ships anywhere##arrive", true, true, "Each team's units come in by ship or drop crate anywhere across the map (each team's card says which craft: dropship, rocket or drop crate), kept clear of enemies and objectives. Spawn zones still mark each team's base.");
+		arrive("Ships or crates anywhere##arrive", true, true, "Each team's units come in by ship or drop crate anywhere across the map (pick which in Craft, below), kept clear of enemies and objectives. Spawn zones still mark each team's base.");
+		if (setup.ByShip) {
+			// The craft is each team's card's (BaseTeam), set here for every team at once, as a mode shows no cards: shown as the first
+			// playing team's.
+			int shown = -1;
+			for (int side = 0; side < c_Sides && shown < 0; ++side) {
+				if (setup.Plays[side]) {
+					shown = side;
+				}
+			}
+			int craft = std::clamp(s_BattleSetup[std::max(shown, 0)].Craft, 0, static_cast<int>(std::size(c_Crafts)) - 1);
+			ImGui::BeginDisabled(running);
+			if (ImGui::Combo("Craft##modecraft", &craft, "Dropship\0Rocket\0Drop crate\0")) {
+				for (int side = 0; side < c_Sides; ++side) {
+					s_BattleSetup[side].Craft = craft;
+					SendBattleSettings(side);
+				}
+				changed = true;
+			}
+			ImGui::EndDisabled();
+			ImGui::SetItemTooltip("What every team's units come in by. A drop crate falls straight down onto its spot, crushes any enemy under it, lets up to %d units out and is gone; a ship flies in, unloads and leaves.", c_UnitsPerCrate);
+		}
 		if (setup.Anywhere) {
 			changed |= KeepClearSlider(setup.KeepClear, "##modeclear");
 		}
