@@ -1346,6 +1346,15 @@ void DebugMan::SettingsGUI() {
 				g_SettingsMan.SetRagdollHitPush(hitPush);
 			}
 			Tip("How hard the shot, blast or thrown thing that kills a soldier, and every hit after, knocks the body and its arms and legs about: thrown back by a burst, spun by a shot to the shoulder, a leg kicked out by a round to the knee. 1: only as hard as the game's own physics, which barely moves a body for what a bullet carries.");
+			float legForward = g_SettingsMan.RagdollLegForward();
+			if (Slider("Ragdoll: legs swing forward", &legForward, Normal{110.0F}, 30.0F, 180.0F, "%.0f deg")) {
+				g_SettingsMan.SetRagdollLegForward(legForward);
+			}
+			float legBack = g_SettingsMan.RagdollLegBack();
+			if (Slider("Ragdoll: legs swing back", &legBack, Normal{30.0F}, 0.0F, 180.0F, "%.0f deg")) {
+				g_SettingsMan.SetRagdollLegBack(legBack);
+			}
+			Tip("How far a dead soldier's legs may swing at the hip, forward and back of straight down its body, as a real hip allows: 110 forward is a knee pulled up to the chest, 30 back a leg kicked out behind. A leg swung against the limit turns the body over with it rather than folding back over it. 180 both ways: anywhere, as before. Arms swing freely but for right round through the back.");
 			int bodySeconds = g_SettingsMan.RagdollBodySeconds();
 			if (SliderI("Ragdoll: bodies stay for", &bodySeconds, Normal{30}, 0, 600, bodySeconds > 0 ? "%d s" : "Settle at once")) {
 				g_SettingsMan.SetRagdollBodySeconds(bodySeconds);

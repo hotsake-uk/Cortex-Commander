@@ -1364,6 +1364,31 @@ Vector AtomGroup::RagdollAsLimb(const Vector& jointPos, float limbRadius, Vector
 	return pull;
 }
 
+Vector AtomGroup::HoldLimbInRange(const Vector& jointPos, const Vector& bodyDown, const Vector& bodyForward, float forwardLimit, float backLimit, float shortestReach, const Vector& bodyVel, Vector& limbVel, float mass, float travelTime, Vector& limbPoint) {
+	Vector reach = g_SceneMan.ShortestDistance(jointPos, m_LimbPos, g_SceneMan.SceneWrapsX());
+	float length = reach.GetMagnitude();
+	float angle = length > 0.0F ? std::atan2(reach.Dot(bodyForward), reach.Dot(bodyDown)) : 0.0F;
+	float heldAngle = std::clamp(angle, -backLimit, forwardLimit);
+	float heldLength = std::max(length, shortestReach);
+	limbPoint = m_LimbPos;
+	if (heldAngle == angle && heldLength == length) {
+		return Vector();
+	}
+	Vector held = jointPos + (bodyDown * std::cos(heldAngle) + bodyForward * std::sin(heldAngle)) * heldLength;
+	g_SceneMan.WrapPosition(held);
+	Vector correction = g_SceneMan.ShortestDistance(m_LimbPos, held, g_SceneMan.SceneWrapsX());
+	m_LimbPos = held;
+	limbPoint = held;
+	limbVel = bodyVel;
+	if (travelTime <= 0.0F) {
+		return Vector();
+	}
+	// What held the limb back pushes the body the other way, where the limb is: a leg swung up against the hip turns the body over with it.
+	Vector force = correction * (-mass / (c_PPM * travelTime * travelTime));
+	force.CapMagnitude(mass * 60.0F);
+	return force;
+}
+
 bool AtomGroup::InTerrain() const {
 	SceneMan::LiquidsPassable liquidsPassable; // Bodies move through liquid rather than hitting it.
 	RTEAssert(m_OwnerMOSR, "Tried to check overlap with terrain for an AtomGroup that has no parent!");

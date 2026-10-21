@@ -132,6 +132,7 @@ void AHuman::Clear() {
 	m_RagdollHeadSpin = 0.0F;
 	m_RagdollBodyKick.Reset();
 	m_RagdollSpinKick = 0.0F;
+	m_RagdollJetSpin = 0.0F;
 	for (Vector& limbKick: m_RagdollLimbKick) {
 		limbKick.Reset();
 	}
@@ -2855,7 +2856,7 @@ void AHuman::PreControllerUpdate() {
 
 	// Hits noted for a ragdoll (NoteRagdollHit) count only for the moment after them while this lives: the one that kills it throws it.
 	if (!IsRagdolling() && !m_RagdollBodyKick.IsZero()) {
-		float fade = std::max(0.0F, 1.0F - 6.0F * deltaTime);
+		float fade = std::max(0.0F, 1.0F - 2.0F * deltaTime);
 		m_RagdollBodyKick *= fade;
 		m_RagdollSpinKick *= fade;
 		for (Vector& limbKick: m_RagdollLimbKick) {
@@ -3115,6 +3116,9 @@ void AHuman::PreControllerUpdate() {
 				limbVel = m_Vel;
 			}
 			m_RagdollHeadSpin = 0.0F;
+			// Which way a lit jetpack tumbles it: the way it's already turning, or the way the hit that killed it turns it.
+			float turning = m_AngularVel + m_RagdollSpinKick;
+			m_RagdollJetSpin = (turning != 0.0F ? std::copysign(1.0F, turning) : (RandomNum() < 0.5F ? -1.0F : 1.0F)) * 9.0F;
 		}
 		// The hits on it throw it harder than the game's own physics did (that part it has had already), and swing the limbs they struck.
 		const float hitPush = g_SettingsMan.RagdollHitPush();
@@ -3124,6 +3128,8 @@ void AHuman::PreControllerUpdate() {
 			m_RagdollBodyKick.Reset();
 			m_RagdollSpinKick = 0.0F;
 		}
+		const Vector bodyDown = RotateOffset(Vector(0.0F, 1.0F));
+		const Vector bodyForward = RotateOffset(Vector(1.0F, 0.0F));
 		const std::array<std::pair<Attachable*, AtomGroup*>, 4> limbs{{{m_pFGArm, m_pFGHandGroup}, {m_pBGArm, m_pBGHandGroup}, {m_pFGLeg, m_pFGFootGroup}, {m_pBGLeg, m_pBGFootGroup}}};
 		for (int index = 0; index < 4; ++index) {
 			auto [limb, limbGroup] = limbs[index];
@@ -3147,6 +3153,20 @@ void AHuman::PreControllerUpdate() {
 			if (!pull.IsZero()) {
 				AddForce(pull, jointOffset / c_PPM);
 			}
+			// Held within what a hip or shoulder allows, so a leg can't fold back over the body: legs as the settings say, arms anywhere but right
+			// round through the back. A limb stopped at the edge levers the body round with it.
+			const float forwardLimit = index < 2 ? c_PI : g_SettingsMan.RagdollLegForward() * c_PI / 180.0F;
+			const float backLimit = index < 2 ? c_PI * 0.75F : g_SettingsMan.RagdollLegBack() * c_PI / 180.0F;
+			const float shortestReach = reach * (index < 2 ? 0.3F : 0.5F);
+			Vector limbPoint;
+			Vector lever = limbGroup->HoldLimbInRange(m_Pos + jointOffset, bodyDown, bodyForward, forwardLimit, backLimit, shortestReach, m_Vel, m_RagdollLimbVel[index], limb->GetMass(), deltaTime, limbPoint);
+			if (!lever.IsZero()) {
+				AddForce(lever, g_SceneMan.ShortestDistance(m_Pos, limbPoint, g_SceneMan.SceneWrapsX()) / c_PPM);
+			}
+		}
+		// A jetpack still lit on a dead body is nobody's to steer: it tumbles the body, and the jet sends it careering about.
+		if (m_pJetpack && m_pJetpack->IsEmitting() && std::abs(m_AngularVel) < 8.0F) {
+			m_AngularVel += m_RagdollJetSpin * deltaTime;
 		}
 	} else {
 		// Not stable/standing, so make sure the end of limbs are moving around limply in a ragdoll fashion.
@@ -3684,6 +3704,11 @@ void AHuman::NoteRagdollHit(const MOSRotating* part, const Vector& impulse, cons
 	// The body is thrown by every hit, a limb's too, and spun by one off its middle (a part's offset taken from the body's centre).
 	m_RagdollBodyKick += impulse;
 	Vector fromCentre = part == this ? offset : g_SceneMan.ShortestDistance(m_Pos, part->GetPos(), g_SceneMan.SceneWrapsX()) * c_MPP + offset;
+	// A hit anywhere above the legs tips the body over away from it, top first, as a shot to the chest throws a body back: taken as struck at the
+	// head, as the hips stay where the legs are and the body pivots there. (A hit at the middle would spin it barely at all.) A hit on a leg sweeps it.
+	if (limbIndex < 2 && m_pHead) {
+		fromCentre = g_SceneMan.ShortestDistance(m_Pos, m_pHead->GetPos(), g_SceneMan.SceneWrapsX()) * c_MPP;
+	}
 	if (m_pAtomGroup && m_pAtomGroup->GetMomentOfInertia() > 0.0F) {
 		m_RagdollSpinKick += fromCentre.GetPerpendicular().Dot(impulse) / m_pAtomGroup->GetMomentOfInertia();
 	}

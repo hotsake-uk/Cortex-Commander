@@ -243,6 +243,8 @@ void SettingsMan::Clear() {
 	m_EnableStuckPush = false;
 	m_BodyGearSettlesAsScraps = true;
 	m_RagdollDeaths = false;
+	m_RagdollLegForward = 110.0F;
+	m_RagdollLegBack = 30.0F;
 	m_RagdollHitPush = 3.0F;
 	m_RagdollBodySeconds = 30;
 	m_NoDismemberment = false;
@@ -1146,6 +1148,8 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("EnableStuckPush", { reader >> m_EnableStuckPush; });
 	MatchProperty("BodyGearSettlesAsScraps", { reader >> m_BodyGearSettlesAsScraps; });
 	MatchProperty("RagdollDeaths", { reader >> m_RagdollDeaths; });
+	MatchProperty("RagdollLegForward", { float degrees = 110.0F; reader >> degrees; SetRagdollLegForward(degrees); });
+	MatchProperty("RagdollLegBack", { float degrees = 30.0F; reader >> degrees; SetRagdollLegBack(degrees); });
 	MatchProperty("RagdollHitPush", { float push = 3.0F; reader >> push; SetRagdollHitPush(push); });
 	MatchProperty("RagdollBodySeconds", { int seconds = 30; reader >> seconds; SetRagdollBodySeconds(seconds); });
 	MatchProperty("NoDismemberment", { reader >> m_NoDismemberment; });
@@ -1942,6 +1946,8 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("EnableStuckPush", m_EnableStuckPush);
 	writer.NewPropertyWithValue("BodyGearSettlesAsScraps", m_BodyGearSettlesAsScraps);
 	writer.NewPropertyWithValue("RagdollDeaths", m_RagdollDeaths);
+	writer.NewPropertyWithValue("RagdollLegForward", m_RagdollLegForward);
+	writer.NewPropertyWithValue("RagdollLegBack", m_RagdollLegBack);
 	writer.NewPropertyWithValue("RagdollHitPush", m_RagdollHitPush);
 	writer.NewPropertyWithValue("RagdollBodySeconds", m_RagdollBodySeconds);
 	writer.NewPropertyWithValue("NoDismemberment", m_NoDismemberment);

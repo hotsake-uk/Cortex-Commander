@@ -882,6 +882,7 @@ namespace RTE {
 		float m_RagdollHeadSpin; //!< The head's own angular velocity, in rad/s, as it lolls about the neck on a ragdoll.
 		Vector m_RagdollBodyKick; //!< The impulse, in kg * m/s, of the hits on the body not yet thrown it as a ragdoll (see NoteRagdollHit).
 		float m_RagdollSpinKick; //!< The spin, in rad/s, the same hits give it.
+		float m_RagdollJetSpin; //!< How fast, in rad/s per second, a jetpack still lit on this ragdoll tumbles it.
 		Vector m_RagdollLimbKick[4]; //!< The impulses of the hits on the FG arm, BG arm, FG leg and BG leg not yet put into their swing.
 		Timer m_EquipHUDTimer; //!< Timer for showing the name of any newly equipped Device.
 		std::array<Matrix, 2> m_WalkAngle; //!< An array of rot angle targets for different movement states.
