@@ -2527,9 +2527,21 @@ void AHuman::PreControllerUpdate() {
 		}
 		if (travel != 0.0F) {
 			analogAim.m_X = travel > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
+		} else if (m_Controller.GetInputMode() == Controller::CIM_AI && m_MovementState != JUMP && !m_Ladder.active && !m_RopeHold.active && !(m_pJetpack && m_pJetpack->IsEmitting())) {
+			// (An AI unit on the ground aiming near straight down or up keeps its facing. It aims from its gun or its eyes, which go to the
+			// other side of the body when it turns, so a target just below or above was on the other side after each turn and it turned back
+			// the next frame, every frame: it shook, its stride restarted and its lean snapped round. Just after a turn the margin is wider, so
+			// that jump can't turn it straight back. Not flying, jetting or on a ladder or rope, nor a player: those turn as they always did.)
+			const float noTurnTan = m_AimFlipTimer.IsPastSimMS(300) ? 0.27F : 1.0F; // About 15 degrees off vertical, 45 just after a turn.
+			if (std::abs(analogAim.m_X) < std::abs(analogAim.m_Y) * noTurnTan) {
+				analogAim.m_X = m_HFlipped ? -std::abs(analogAim.m_X) - 0.01F : std::abs(analogAim.m_X) + 0.01F;
+				// The aim mirrored to the side faced, which a gun pointing down or up hardly changes; unmirrored it would clamp to the other end.
+				m_AimAngle = analogAim.GetAbsRadAngle();
+			}
 		}
 		if ((analogAim.m_X > 0 && m_HFlipped) || (analogAim.m_X < 0 && !m_HFlipped)) {
 			SetHFlipped(!m_HFlipped);
+			m_AimFlipTimer.Reset();
 			m_CheckTerrIntersection = true;
 			if (m_ProneState == NOTPRONE) {
 				MoveOutOfTerrain(g_MaterialGrass);
