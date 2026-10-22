@@ -58,7 +58,7 @@ function CrabBehaviors.LookForTargets(AI, Owner)
 				SharedBehaviors.ReportEnemy(Owner, FoundMO);
 				if AI.Target then
 					-- check if this MO should be targeted instead
-					if SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(AI.Target, Owner) + 0.2 then
+					if SharedBehaviors.MaySwitchTarget(AI) and SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(AI.Target, Owner) + 0.2 then
 						AI.OldTargetPos = Vector(AI.Target.Pos.X, AI.Target.Pos.Y);
 						AI.Target = FoundMO;
 						AI.TargetOffset = SceneMan:ShortestDistance(AI.Target.Pos, HitPoint, false); -- this is the distance vector from the target center to the point we hit with our ray
@@ -507,11 +507,13 @@ function CrabBehaviors.ShootArea(AI, Owner, Abort)
 	local StartPos = Vector(AI.UnseenTarget.Pos.X, AI.UnseenTarget.Pos.Y);
 
 	-- aim at the target in case we can see it when sharp aiming
-	Owner:SetAimAngle(SceneMan:ShortestDistance(Owner.EyePos, StartPos, false).AbsRadAngle);
+	-- (As an analog aim, each tick: SetAimAngle takes an angle from the facing, and this one is from the world's right.)
+	local LookDir = SceneMan:ShortestDistance(Owner.EyePos, StartPos, false).Normalized;
 	AI.deviceState = ACrab.AIMING;
 
 	-- aim for ~250ms
 	for _ = 1, 15 do
+		AI.Ctrl.AnalogAim = LookDir;
 		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 		if _abrt then return true end
 	end

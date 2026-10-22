@@ -350,6 +350,7 @@ function NativeHumanAI:Update(Owner)
 
 	-- look for targets (only those its temperament lets it fight, NC-1; a target it may no longer have is dropped first)
 	SharedBehaviors.DropForbiddenTarget(self, Owner);
+	SharedBehaviors.MaySwitchTarget(self); -- (Each tick, so the time on a target counts from when it was taken.)
 	local FoundMO, HitPoint = self.SpotTargets(self, Owner, self.skill);
 	if FoundMO and (suppressing or not SharedBehaviors.MayTarget(self, Owner, FoundMO)) then
 		FoundMO = nil;
@@ -398,7 +399,7 @@ function NativeHumanAI:Update(Owner)
 					end
 				elseif self.Target then
 					-- check if this MO should be targeted instead
-					if SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(self.Target, Owner) + 0.5 then
+					if SharedBehaviors.MaySwitchTarget(self) and SharedBehaviors.CalculateThreatLevel(FoundMO, Owner) > SharedBehaviors.CalculateThreatLevel(self.Target, Owner) + 0.5 then
 						self.OldTargetPos = Vector(self.Target.Pos.X, self.Target.Pos.Y);
 						self.Target = FoundMO;
 						self.TargetOffset = SceneMan:ShortestDistance(self.Target.Pos, HitPoint, false); -- this is the distance vector from the target center to the point we hit with our ray

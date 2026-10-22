@@ -1749,6 +1749,17 @@ function HumanBehaviors.ShootTarget(AI, Owner, Abort)
 					aimTarget = aimTarget + RangeRand(-0.05, 0.05);
 				end
 
+				-- A target on the other side (a switch to an enemy behind): turned round at once, the gun kept at its height, and the aim eased
+				-- on from there. The shortest way round from one side to the other is over the head or under the feet, so the gun swept up to
+				-- the sky (or into the floor) for a few ticks before the body flipped and the aim snapped onto the target. (Not for a target
+				-- near straight up or down, which is on neither side.)
+				if math.cos(aim) * math.cos(aimTarget) < 0 and math.abs(math.cos(aimTarget)) > 0.17 then
+					aim = math.pi - aim;
+					if aim > math.pi then
+						aim = aim - math.pi*2;
+					end
+				end
+
 				local angDiff = aim - aimTarget;
 				if angDiff > math.pi then
 					angDiff = angDiff - math.pi*2;
@@ -2900,11 +2911,14 @@ function HumanBehaviors.ShootArea(AI, Owner, Abort)
 	local StartPos = Vector(AI.UnseenTarget.Pos.X, AI.UnseenTarget.Pos.Y);
 
 	-- aim at the target in case we can see it when sharp aiming
-	Owner:SetAimAngle(SceneMan:ShortestDistance(Owner.EyePos, StartPos, false).AbsRadAngle);
+	-- (As an analog aim, each tick: SetAimAngle takes an angle from the facing, and this one is from the world's right, so a unit facing
+	-- left looked straight up or down for these ticks and then snapped round to the target.)
+	local LookDir = SceneMan:ShortestDistance(Owner.EyePos, StartPos, false).Normalized;
 	AI.deviceState = AHuman.AIMING;
 
 	-- aim for ~160ms
 	for _ = 1, 10 do
+		AI.Ctrl.AnalogAim = LookDir;
 		local _ai, _ownr, _abrt = coroutine.yield(); -- wait until next frame
 		if _abrt then return true end
 	end
@@ -3029,7 +3043,7 @@ function HumanBehaviors.SuppressZone(AI, Owner, Abort)
 	local ShootTimer = Timer();
 	local ReaimTimer = Timer();
 	local reaimAfter = 0;
-	local AimPoint, aim, aimError;
+	local AimPoint, aim, aimError, LookDir;
 	local PrjDat, Weapon;
 	AI.fire = false;
 	while true do
@@ -3053,7 +3067,8 @@ function HumanBehaviors.SuppressZone(AI, Owner, Abort)
 					aim = HumanBehaviors.GetAngleToHit(PrjDat, Dist);
 				end
 				aimError = RangeRand(-0.03, 0.03) * AI.aimSkill;
-				Owner:SetAimAngle(SceneMan:ShortestDistance(Owner.EyePos, AimPoint, SceneMan.SceneWrapsX).AbsRadAngle);
+				-- (Looked at as an analog aim, below: SetAimAngle takes an angle from the facing, not the world's.)
+				LookDir = SceneMan:ShortestDistance(Owner.EyePos, AimPoint, SceneMan.SceneWrapsX).Normalized;
 			end
 			AI.deviceState = AHuman.AIMING;
 			if aim then
@@ -3066,6 +3081,7 @@ function HumanBehaviors.SuppressZone(AI, Owner, Abort)
 					AI.fire = not AI.fire;
 				end
 			else
+				AI.Ctrl.AnalogAim = LookDir;
 				AI.fire = false;
 			end
 		else

@@ -50,6 +50,20 @@ function SharedBehaviors.TargetMemoryMS(ms)
 	return memory == 1 and ms or ms * memory;
 end
 
+-- Whether a unit fighting AI.Target may change to a bigger threat now: it has kept this target for 2.5 s, or not seen it for half a second.
+-- (It changed whenever another enemy scored higher, which went back and forth as each one's gun was ready or reloading, so a unit
+-- between two enemies flipped round from one to the other and back every second or so.)
+function SharedBehaviors.MaySwitchTarget(AI)
+	if not AI.Target then
+		return true;
+	end
+	if AI.TargetHeldID ~= AI.Target.UniqueID then
+		AI.TargetHeldID = AI.Target.UniqueID;
+		AI.TargetHeldTimer = Timer();
+	end
+	return AI.TargetHeldTimer:IsPastSimMS(2500) or (AI.TargetLostTimer ~= nil and AI.TargetLostTimer:IsPastSimMS(500));
+end
+
 -- Whether a unit takes a throw it judges worth making, by the Grenade use setting (at 1, always, with no roll).
 function SharedBehaviors.TakesThrow()
 	local use = SettingsMan.AICombatGrenadeUse;
@@ -5956,7 +5970,9 @@ function SharedBehaviors.CalculateThreatLevel(MO, Owner)
 
 	-- prioritize the weaker humans over crabs
 	if MO.ClassName == "AHuman" then
-		if MO.FirearmIsReady then	-- prioritize armed targets
+		-- (Reloading counts as armed: it is only a moment, and the score went up and down with it.)
+		local reloading = MO.EquippedItem and IsHDFirearm(MO.EquippedItem) and ToHDFirearm(MO.EquippedItem):IsReloading();
+		if MO.FirearmIsReady or reloading then	-- prioritize armed targets
 			priority = priority + 1.0;
 		else
 			priority = priority + 0.5;
