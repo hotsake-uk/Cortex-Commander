@@ -115,6 +115,9 @@ namespace RTE {
 		/// @return Whether the performance log is on.
 		static bool IsLogging() { return s_Logging; }
 
+		/// Whether anything gathers the named timings (the performance log or the live timings), so timing that costs something can be skipped otherwise.
+		static bool IsTiming() { return s_Timing; }
+
 		/// Turns the live timings on or off: the same named timings as the performance log, kept in memory and averaged over each second, for the
 		/// settings panel's slowdown readout. Off as the game starts (timing everything costs a little).
 		static void SetLiveTimings(bool on);
