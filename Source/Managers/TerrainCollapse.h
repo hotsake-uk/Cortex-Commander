@@ -185,6 +185,23 @@ namespace RTE {
 		/// Gets how many loose pieces are moving right now, for statistics.
 		static int GetFallingCount();
 
+		/// The ground checks' work, for the slowdown readout.
+		struct CheckCounts {
+			int Watched = 0; //!< Squares being watched as they are dug or shot away.
+			int Waiting = 0; //!< Squares waiting for their first look.
+			int Scheduled = 0; //!< Explosions' checks waiting to run.
+			int FirstLooks = 0; //!< First looks at newly worn squares, last update.
+			int WatchedChecks = 0; //!< Watched squares checked, last update.
+			int SkippedChecks = 0; //!< Watched squares due but not checked last update, as nothing near them had changed (falling-ground speedups).
+			int BlastChecks = 0; //!< Explosions' checks run, last update.
+		};
+
+		/// Gets the ground checks' work last update, for the slowdown readout.
+		static const CheckCounts& GetCheckCounts();
+
+		/// Gets how many falling pieces are asleep, lying still until something wakes them (falling-ground speedups).
+		static int GetSleepingCount();
+
 		/// One loose piece, for the world simulation overlay and unit speech.
 		struct FallingPiece {
 			float X, Y; //!< Its centre of mass, in the scene.
