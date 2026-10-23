@@ -273,6 +273,10 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 	}
 }
 
+glm::u8vec4 MOSParticle::GetRenderSurface() const {
+	return g_PostProcessMan.GetLightingSettings().Ghosts(LightingSettings::GhostParticles) ? glm::u8vec4(0, 0, LightingSettings::c_GhostSurfaceMark, 0) : glm::u8vec4(0);
+}
+
 void MOSParticle::Draw(const Camera& camera) const {
 	RTEAssert(!m_Sprites.empty(), "No sprite bitmaps loaded to draw " + GetPresetName());
 	RTEAssert(m_Frame >= 0 && m_Frame < m_FrameCount, "Frame is out of bounds for " + GetPresetName());

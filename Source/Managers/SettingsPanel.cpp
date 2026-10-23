@@ -1507,7 +1507,7 @@ void DebugMan::SettingsGUI() {
 			Slider("LCD dot grid", &retro.LCDGrid, 0.0F, 1.0F);
 			Tip("Thin pale gaps between the screen's pixels, like a Game Boy's dot matrix. Shows where the pixels are big enough on screen, so more with Chunky pixels.");
 			Slider("LCD ghosting", &retro.LCDGhosting, 0.0F, 1.0F);
-			Tip("The LCD's slow pixels: anything moving leaves a short smear, and the whole picture smears a little when the view scrolls.");
+			Tip("The LCD's slow pixels: anything moving leaves a short smear, and the whole picture smears a little when the view scrolls. The LCD page (under Camera & image) has its own ghosting for any screen style, which can smear only effects; when that is on, it is used instead of this.");
 			Slider("Big blast flash", &retro.BlastFlash, 0.0F, 1.0F);
 			Tip("A big explosion in view blinks the Game Boy screen's shades inverted twice, as Game Boy games do on a big hit. Needs the Game Boy screen.");
 			Slider("Handheld frame", &retro.Bezel, 0.0F, 1.0F);
@@ -1710,6 +1710,37 @@ void DebugMan::SettingsGUI() {
 	};
 
 	// ASCII mode: the picture redrawn as text characters, with its own settings whatever screen style is on.
+	auto lcdScreen = [&]() {
+		Slider("LCD ghosting", &settings.LCDGhosting, 0.0F, 1.0F);
+		Tip("An LCD's slow pixels, in any screen style: what moves leaves a short smear in its own colour. 0 leaves it to the screen style's own (the Game Boy's LCD ghosting); above 0 this one is used instead.");
+		ImGui::BeginDisabled(settings.LCDGhosting <= 0.0F);
+		Combo("What smears", &settings.LCDGhostMode, "The whole screen\0Only the effects picked below\0");
+		Tip("The whole screen: the picture as a whole, units and all, and everything smears when the view scrolls. Only the effects picked: just those leave trails, held where they were in the world, so moving the view smears nothing and units and the ground stay sharp.");
+		Heading("Effects that smear");
+		static constexpr const char* c_Labels[LightingSettings::LCDGhostKindCount] = {"Tracers", "Glows and flashes", "Sparks", "Embers", "Explosion fire", "Splash drops", "Water spray", "Froth", "Debris", "Dust", "Soft smoke", "Game particles", "Energy blades"};
+		static constexpr const char* c_Tips[LightingSettings::LCDGhostKindCount] = {
+		    "Tracer rounds and their trails.",
+		    "Glows: muzzle flashes, the glows of blasts and tracers, lamps on things that move, and lightning.",
+		    "Glowing sparks from blasts and from hits on hard ground.",
+		    "Embers lifting off fires and warm glows.",
+		    "The balls of fire that swell and roll up from explosions.",
+		    "The drops a splash throws.",
+		    "The pale spray off falling and splashing water.",
+		    "The froth that sits on water where something splashed in.",
+		    "The little chips blasts and hits throw.",
+		    "Puffs of dust from blasts and from hits on soft ground.",
+		    "The soft, billowing smoke the smoke sprites trail and explosions leave.",
+		    "The game's own little particles: bullets with no trail, smoke and flame sprites and the like.",
+		    "The cores of energy blades (lightsabers), so a swing leaves an arc."};
+		ImGui::BeginDisabled(settings.LCDGhostMode != LightingSettings::LCDGhostSelected);
+		for (int kind = 0; kind < LightingSettings::LCDGhostKindCount; ++kind) {
+			Check(c_Labels[kind], &settings.LCDGhostKinds[kind]);
+			Tip(c_Tips[kind]);
+		}
+		ImGui::EndDisabled();
+		ImGui::EndDisabled();
+	};
+
 	auto asciiMode = [&]() {
 		LightingSettings::AsciiModeSettings& ascii = settings.Ascii;
 		if (Plain()) {
@@ -2992,6 +3023,7 @@ void DebugMan::SettingsGUI() {
 	    {Group::Visual, "Fire, smoke & blast", fireAndSmoke},
 	    {Group::Visual, "Effect layers", effectLayers},
 	    {Group::Visual, "Camera & image", cameraAndImage},
+	    {Group::Visual, "LCD", lcdScreen},
 	    {Group::Visual, "ASCII mode", asciiMode},
 	    {Group::Visual, "HUD & interface", hudAndInterface},
 	    {Group::Visual, "AI awareness", aiAwareness},

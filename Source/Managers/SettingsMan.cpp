@@ -1034,6 +1034,21 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("RainSplashes", { g_PostProcessMan.GetLightingSettings().RainSplashes = std::stof(reader.ReadPropValue()); });
 	MatchProperty("WeatherLight", { g_PostProcessMan.GetLightingSettings().WeatherLight = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerGlow", { g_PostProcessMan.GetLightingSettings().TracerGlow = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LCDGhosting", { g_PostProcessMan.GetLightingSettings().LCDGhosting = std::stof(reader.ReadPropValue()); });
+	MatchProperty("LCDGhostMode", { g_PostProcessMan.GetLightingSettings().LCDGhostMode = std::clamp(std::stoi(reader.ReadPropValue()), 0, 1); });
+	MatchProperty("LCDGhostTracers", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostTracers] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostGlows", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostGlows] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostSparks", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostSparks] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostEmbers", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostEmbers] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostFire", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostFire] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostSplashes", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostSplashes] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostMist", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostMist] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostFroth", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostFroth] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostDebris", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostDebris] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostDust", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostDust] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostSoftSmoke", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostSoftSmoke] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostParticles", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostParticles] = std::stoi(reader.ReadPropValue()) != 0; });
+	MatchProperty("LCDGhostBlades", { g_PostProcessMan.GetLightingSettings().LCDGhostKinds[LightingSettings::GhostBlades] = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("TracerLightBrightness", { g_PostProcessMan.GetLightingSettings().TracerLightBrightness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("TracerLightRandomness", { g_PostProcessMan.GetLightingSettings().TracerLightRandomness = std::stof(reader.ReadPropValue()); });
 	MatchProperty("SaberLightBrightness", { g_PostProcessMan.GetLightingSettings().SaberLightBrightness = std::max(std::stof(reader.ReadPropValue()), 0.0F); });
@@ -1801,6 +1816,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("WaterMistBrightness", lighting.WaterMistBrightness);
 	writer.NewPropertyWithValue("WaterMistGlow", lighting.WaterMistGlow);
 	writer.NewPropertyWithValue("TracerGlow", lighting.TracerGlow);
+	writer.NewPropertyWithValue("LCDGhosting", lighting.LCDGhosting);
+	writer.NewPropertyWithValue("LCDGhostMode", lighting.LCDGhostMode);
+	for (int kind = 0; kind < LightingSettings::LCDGhostKindCount; ++kind) {
+		writer.NewPropertyWithValue(LightingSettings::LCDGhostKindKeys[kind], lighting.LCDGhostKinds[kind]);
+	}
 	writer.NewPropertyWithValue("TracerLightBrightness", lighting.TracerLightBrightness);
 	writer.NewPropertyWithValue("TracerLightReach", lighting.TracerLightReach);
 	writer.NewPropertyWithValue("TracerLightRandomness", lighting.TracerLightRandomness);

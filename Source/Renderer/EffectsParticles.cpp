@@ -680,6 +680,10 @@ void EffectsParticles::Draw(const Camera& camera) {
 			glm::u8vec4 color = Color(particle.Color.r, particle.Color.g, particle.Color.b, alpha);
 			float depth = batch->m_CurrentZ + batch->m_CurrentDepth;
 			glm::u8vec4 surface = batch->m_CurrentSurface;
+			if (layers.Ghosts(LightingSettings::GhostKindOf(LayerOf(particle.Type)))) {
+				// Marked for the LCD ghosting (LightingSettings::LCDGhostSelected).
+				surface.b = LightingSettings::c_GhostSurfaceMark;
+			}
 			Vertex corners[4] = {
 			    Vertex(glm::vec3(glm::vec2(rect.x, rect.y), depth), glm::vec2(0.0F, 0.0F), color, surface),
 			    Vertex(glm::vec3(glm::vec2(rect.x, rect.y) + glm::vec2(rect.w, rect.h), depth), glm::vec2(1.0F, 1.0F), color, surface),
@@ -730,10 +734,10 @@ void EffectsParticles::GetSparks(const glm::vec2& screenOrigin, int width, int h
 		// Motion blurred streak: longer when fast.
 		if (particle.Type == Kind::Ember) {
 			float life = 1.0F - particle.Age / particle.Life;
-			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life), layers.Behind(LightingSettings::LayerEmbers)});
+			sparks.push_back({position, glm::vec2(1.0F, 0.0F), 1.0F, glm::vec3(1.0F, 0.45F, 0.12F) * (0.3F + 0.7F * life), layers.Behind(LightingSettings::LayerEmbers), LightingSettings::LayerEmbers});
 			continue;
 		}
-		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle), layers.Behind(LightingSettings::LayerSparks)});
+		sparks.push_back({position, direction, std::clamp(speed / 60.0F, 1.0F, 6.0F), SparkColor(particle), layers.Behind(LightingSettings::LayerSparks), LightingSettings::LayerSparks});
 	}
 }
 
@@ -764,16 +768,16 @@ void EffectsParticles::GetPuffs(const glm::vec2& screenOrigin, int width, int he
 		bool behind = layers.Behind(LayerOf(particle.Type));
 		if (particle.Type == Kind::Mist) {
 			// A colour above 1 tells the particle shader this one keeps a little light of its own (see LitParticle.frag).
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored, behind});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, std::clamp(g_PostProcessMan.GetLightingSettings().WaterMistOpacity, 0.0F, 1.0F) * remaining * std::clamp(particle.Age * 12.0F, 0.0F, 1.0F)), particle.Angle, particle.Mirrored, behind, LayerOf(particle.Type)});
 			continue;
 		}
 		if (particle.Type == Kind::Froth) {
 			// Like spray, it keeps a little light of its own (a colour above 1); in quickly, out slowly.
 			float opacity = std::clamp(g_PostProcessMan.GetLightingSettings().SplashFrothOpacity, 0.0F, 1.0F) * std::sqrt(std::max(remaining, 0.0F)) * std::clamp(particle.Age * 8.0F, 0.0F, 1.0F);
-			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored, behind});
+			puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F + 1.0F, opacity), particle.Angle, particle.Mirrored, behind, LayerOf(particle.Type)});
 			continue;
 		}
-		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored, behind});
+		puffs.push_back({position, size, glm::vec4(glm::vec3(particle.Color) / 255.0F, (particle.Type == Kind::Smoke ? 0.55F : 0.4F) * remaining * fadeIn), particle.Angle, particle.Mirrored, behind, LayerOf(particle.Type)});
 	}
 }
 
@@ -800,7 +804,7 @@ void EffectsParticles::GetFire(const glm::vec2& screenOrigin, int width, int hei
 		// White hot at first, through yellow and orange to a dull red as it burns out.
 		float burnt = std::clamp(particle.Age / particle.Life, 0.0F, 1.0F);
 		glm::vec3 color = burnt < 0.35F ? glm::mix(glm::vec3(1.0F, 0.95F, 0.75F), glm::vec3(1.0F, 0.7F, 0.2F), burnt / 0.35F) : glm::mix(glm::vec3(1.0F, 0.7F, 0.2F), glm::vec3(0.6F, 0.12F, 0.02F), (burnt - 0.35F) / 0.65F);
-		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F), 0.0F, false, behind});
+		fire.push_back({position, size, glm::vec4(color * std::pow(1.0F - burnt, 0.8F), 1.0F), 0.0F, false, behind, LightingSettings::LayerFire});
 	}
 }
 
