@@ -634,6 +634,52 @@ namespace RTE {
 		float TracerLightRandomness = 0.35F; //!< How much tracers' lights differ from one another in size and brightness, and waver as they fly: 0 all alike and steady, 1 anything from a quarter to nearly twice the size.
 		float TracerLightReach = 28.0F; //!< How far a tracer's light reaches, in pixels.
 
+		/// What the LCD ghosting smears in LCDGhostSelected: these things leave a trail, units, terrain and the HUD don't.
+		enum LCDGhostKind {
+			GhostTracers, //!< Tracers and their trails.
+			GhostGlows, //!< Glows: muzzle flashes, explosion and tracer glows, lamps on moving things, lightning.
+			GhostSparks, //!< Sparks from blasts and hits.
+			GhostEmbers, //!< Embers off fires and warm glows.
+			GhostFire, //!< The balls of fire of explosions.
+			GhostSplashes, //!< The drops of splashes.
+			GhostMist, //!< Spray mist off falling and splashing water.
+			GhostFroth, //!< Froth on water.
+			GhostDebris, //!< Little chips thrown from blasts and hits.
+			GhostDust, //!< Dust puffs from blasts and hits on the ground.
+			GhostSoftSmoke, //!< The soft smoke smoke sprites trail and explosions leave.
+			GhostParticles, //!< The game's own small particles: bullets without a trail, smoke and flame sprites, sparks of guns.
+			GhostBlades, //!< The cores of energy blades (lightsabers).
+			LCDGhostKindCount
+		};
+		/// What the LCD ghosting smears: the whole picture (screen space, so a scrolling view smears too), or only the kinds picked, held where they were in the world.
+		enum LCDGhostModes { LCDGhostWholeScreen = 0, LCDGhostSelected = 1 };
+		/// The settings keys of the kinds, in LCDGhostKind order.
+		static constexpr std::array<const char*, LCDGhostKindCount> LCDGhostKindKeys = {"LCDGhostTracers", "LCDGhostGlows", "LCDGhostSparks", "LCDGhostEmbers", "LCDGhostFire", "LCDGhostSplashes", "LCDGhostMist", "LCDGhostFroth", "LCDGhostDebris", "LCDGhostDust", "LCDGhostSoftSmoke", "LCDGhostParticles", "LCDGhostBlades"};
+		float LCDGhosting = 0.0F; //!< The LCD's slow pixels in any screen style, 0 to 1. 0 leaves it to the screen style's own (RetroLayers::LCDGhosting, the Game Boy's); above, this one is used instead.
+		int LCDGhostMode = LCDGhostSelected; //!< LCDGhostModes.
+		std::array<bool, LCDGhostKindCount> LCDGhostKinds = {true, true, true, true, true, true, true, true, false, false, false, false, false}; //!< Per kind, whether it smears in LCDGhostSelected.
+		/// Whether things of a kind are drawn marked for the LCD ghosting (only in LCDGhostSelected).
+		bool Ghosts(LCDGhostKind kind) const { return LCDGhosting > 0.0F && LCDGhostMode == LCDGhostSelected && LCDGhostKinds[kind]; }
+		/// The surface buffer's solid flag (B) of a pixel marked for the LCD ghosting: not solid, not water, not a unit (see UnitOutlineRow.frag), and not shining.
+		static constexpr unsigned char c_GhostSurfaceMark = 96;
+		/// The same for a shining thing (a tracer): still inside the shining band Blit8.frag reads (128 +-25), which writes it out as c_GhostSurfaceMark.
+		static constexpr unsigned char c_GhostShiningMark = 112;
+		/// Which kind of ghosting an effect of the effects layer is.
+		static LCDGhostKind GhostKindOf(EffectLayer layer) {
+			switch (layer) {
+				case LayerMist: return GhostMist;
+				case LayerSplash: return GhostSplashes;
+				case LayerFroth: return GhostFroth;
+				case LayerDust: return GhostDust;
+				case LayerDebris: return GhostDebris;
+				case LayerSparks: return GhostSparks;
+				case LayerEmbers: return GhostEmbers;
+				case LayerFire: return GhostFire;
+				case LayerSmoke: return GhostParticles;
+				default: return GhostSoftSmoke;
+			}
+		}
+
 		float LightSaturation = 1.0F; //!< How colorful the light of lamps, glows, flashes and fire is: 0 makes all of it white, above 1 deepens the colors.
 		glm::vec3 LightTint = {1.0F, 1.0F, 1.0F}; //!< A color every lamp, glow, flash and fire light is multiplied by.
 

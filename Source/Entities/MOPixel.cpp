@@ -299,15 +299,21 @@ void MOPixel::Draw(const Camera& camera) const {
 		return;
 	}
 	// A shot with a trail is a tracer: it and its trail shine in their own color, whatever the light around them, and bloom. Marked for the shader in the surface values (see Blit8.frag).
-	float tracerGlow = (m_Atom && m_Atom->GetTrailLength() > 0 && (m_Sharpness > 0 || m_Vel.MagnitudeIsGreaterThan(30.0F))) ? g_PostProcessMan.GetLightingSettings().TracerGlow : 0.0F;
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	bool tracer = m_Atom && m_Atom->GetTrailLength() > 0 && (m_Sharpness > 0 || m_Vel.MagnitudeIsGreaterThan(30.0F));
+	float tracerGlow = tracer ? lighting.TracerGlow : 0.0F;
+	// Marked too when the LCD ghosting smears its kind (LightingSettings::LCDGhostSelected).
+	bool ghost = lighting.Ghosts(tracer ? LightingSettings::GhostTracers : LightingSettings::GhostParticles);
 	if (tracerGlow > 0.0F) {
-		g_RenderMan.SetCurrentSurface(glm::u8vec4(0, 0, 128, static_cast<unsigned char>(std::clamp(tracerGlow, 0.0F, 1.0F) * 255.0F)));
+		g_RenderMan.SetCurrentSurface(glm::u8vec4(0, 0, ghost ? LightingSettings::c_GhostShiningMark : 128, static_cast<unsigned char>(std::clamp(tracerGlow, 0.0F, 1.0F) * 255.0F)));
+	} else if (ghost) {
+		g_RenderMan.SetCurrentSurface(glm::u8vec4(0, 0, LightingSettings::c_GhostSurfaceMark, 0));
 	}
 	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
 		Draw::PixelsBatched(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
 	}
 	Draw::PixelBatched(GetRenderPos().GetFloored(), m_Color);
-	if (tracerGlow > 0.0F) {
+	if (tracerGlow > 0.0F || ghost) {
 		g_RenderMan.SetCurrentSurface(glm::u8vec4(0));
 	}
 }

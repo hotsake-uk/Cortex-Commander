@@ -189,6 +189,10 @@ void main() {
 	// What has happened to the object, packed into the surface's last value: heat in the high half, snow in the low.
 	// A shining thing with no surface of its own (a tracer and its trail) is marked by a half value where solid objects say whether they cast shadows; its last value is then how strongly it shines.
 	bool shining = abs(vertexSurface.b - 0.5) < 0.1;
+	// Marked for the LCD ghosting (LightingSettings::c_GhostSurfaceMark, or c_GhostShiningMark for a shining thing): written out as the plain mark,
+	// which every reader of the solid flag takes as nothing solid, no water and no unit.
+	float surfaceMark = floor(vertexSurface.b * 255.0 + 0.5);
+	bool ghosted = surfaceMark == 96.0 || surfaceMark == 112.0;
 	if (shining) {
 		emissive = max(emissive, vertexSurface.a);
 	}
@@ -233,5 +237,5 @@ void main() {
 	// Wet blood glistens, whatever it's on.
 	shine = max(shine, stainShine);
 	NormalOut = vec4(normal.xy * 0.5 + 0.5, 1.0 - shine, 0.5 + 0.5 * emissive);
-	SurfaceOut = vec4(vertexSurface.rg, shining ? 0.0 : vertexSurface.b, 1.0);
+	SurfaceOut = vec4(vertexSurface.rg, ghosted ? 96.0 / 255.0 : shining ? 0.0 : vertexSurface.b, 1.0);
 }

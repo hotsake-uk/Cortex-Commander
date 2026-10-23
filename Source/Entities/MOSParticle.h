@@ -107,6 +107,10 @@ namespace RTE {
 		/// @param onlyPhysical Whether to not draw any extra 'ghost' items of this MOSParticle, indicator arrows or hovering HUD text and so on.
 		void Draw(BITMAP* targetBitmap, const Vector& targetPos = Vector(), DrawMode mode = g_DrawColor, bool onlyPhysical = false) const override;
 		void Draw(const Camera& camera) const override;
+
+		/// Gets the surface values its sprite is drawn with: none, but marked for the LCD ghosting when it smears the game's particles (LightingSettings::GhostParticles).
+		/// @return The surface values (see MovableObject::GetRenderSurface).
+		glm::u8vec4 GetRenderSurface() const override;
 #pragma endregion
 
 	protected:

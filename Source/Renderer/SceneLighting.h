@@ -325,6 +325,9 @@ namespace RTE {
 		bool m_GhostValid[c_MaxScreens] = {}; //!< Whether it holds the last frame's, else it starts afresh.
 		int m_GhostCurrent[c_MaxScreens] = {}; //!< Which of the two holds the latest.
 		double m_GhostLastSeconds[c_MaxScreens] = {}; //!< Real seconds it was last written.
+		glm::vec2 m_GhostOrigin[c_MaxScreens] = {}; //!< Where the screen's view was when it was written: with only the effects picked (LightingSettings::LCDGhostSelected) it follows the world as the camera moves.
+		bool m_GhostWasSelected[c_MaxScreens] = {}; //!< Whether it was written with only the effects picked, so a change of mode starts it afresh.
+		GLTarget m_GhostMask; //!< R: how much of each pixel is an effect the LCD ghosting smears (LightingSettings::LCDGhostSelected). Made when it's first used.
 		GLTarget m_RetroScene; //!< A copy of the lit scene for the retro pass (a screen style's sky and edge lines) to read. Made when it's first used.
 		GLTarget m_WeatherDrops; //!< The weather's drops on their own, premultiplied, for Weather everywhere to lay over the scene but the terrain. Made when it's first used.
 		static constexpr int c_BloomMipCount = 5;
@@ -378,6 +381,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_DepthOfFieldShader;
 		std::unique_ptr<Shader> m_RetroSceneShader;
 		std::unique_ptr<Shader> m_AfterglowShader;
+		std::unique_ptr<Shader> m_GhostMaskShader; //!< The glow and particle quads into the LCD ghosting's mask (see GhostMask.frag).
 		std::unique_ptr<Shader> m_GodRaysApplyShader;
 		std::unique_ptr<Shader> m_ScorchShader;
 		std::unique_ptr<Shader> m_StainShader;

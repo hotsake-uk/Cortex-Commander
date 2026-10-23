@@ -142,6 +142,7 @@ void SceneLighting::LoadShaders() {
 	m_DepthOfFieldShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/DepthOfField.frag");
 	m_RetroSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RetroScene.frag");
 	m_AfterglowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Afterglow.frag");
+	m_GhostMaskShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/GhostMask.frag");
 	m_GodRaysApplyShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/GodRaysApply.frag");
 	m_RainSplashShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RainSplash.frag");
 	m_WeatherEverywhereShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/WeatherEverywhere.frag");
@@ -451,6 +452,7 @@ void SceneLighting::DestroyScreenResources() {
 		m_GhostHistory[screen][1].Destroy();
 		m_GhostValid[screen] = false;
 	}
+	m_GhostMask.Destroy();
 	m_WeatherDrops.Destroy();
 	for (GLTarget& mip: m_BloomMips) {
 		mip.Destroy();
@@ -2673,6 +2675,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	std::vector<GLuint> emissiveTextures;
 	// How hot each glow quad is, 0..1, for the heat haze (LightingSettings::HazeFromHeat): fire and warm glows, not lamps.
 	std::vector<float> emissiveHeat;
+	// Which kind of thing each glow quad is, for the LCD ghosting (LightingSettings::LCDGhostKind), -1 for none. Filled in after each kind is added.
+	std::vector<int> emissiveGhost;
+	auto ghostKind = [&](int kind) { emissiveGhost.resize(emissiveTextures.size(), kind); };
 	for (const PostEffect& effect: screenEffects) {
 		if (!effect.m_Bitmap) {
 			continue;
@@ -2693,6 +2698,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 		emissiveTextures.push_back(effect.m_Bitmap->GetTextureId());
 	}
+	ghostKind(LightingSettings::GhostGlows);
 
 	// Visual sparks from explosions and impacts: short glowing streaks along their motion.
 	{
@@ -2705,6 +2711,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			markLayer(spark.Behind);
 			emissiveTextures.push_back(whiteTexture);
 			emissiveHeat.push_back(0.0F);
+			ghostKind(LightingSettings::GhostKindOf(spark.Layer));
 		}
 		// Lightning bolts: each straight piece a white-hot core in a wider blue halo.
 		std::vector<LightningBoltSegment> bolts;
@@ -2724,6 +2731,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			emissiveTextures.push_back(whiteTexture);
 			emissiveHeat.push_back(0.0F);
 		}
+		ghostKind(LightingSettings::GhostGlows);
 	}
 
 	// Energy beams (lightsaber blades): only a thin white-hot core, rounded at the tip. The colour round it is all light, from the beam's line light.
@@ -2747,6 +2755,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			emissiveTextures.push_back(puffTexture);
 			emissiveHeat.push_back(0.0F);
 		}
+		ghostKind(LightingSettings::GhostBlades);
 	}
 
 	// The fire of explosions: soft glowing balls, drawn into the glow buffer with the puff's round shape.
@@ -2760,6 +2769,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 			emissiveTextures.push_back(puffTexture);
 			emissiveHeat.push_back(1.0F);
 		}
+		ghostKind(LightingSettings::GhostFire);
 	}
 
 	// Burning terrain: each pixel flickers between yellow and deep orange as it burns down, and sometimes throws an ember.
@@ -2885,6 +2895,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		}
 	}
 
+	// Burning ground and candles stay put, so they never smear.
+	ghostKind(-1);
+
 	// Flame particles (Flame 1, Flame 2 and their copies, like the sandbox fire brush's): with the shader's flames they join the fire front's
 	// cells, so the same flames as the ground's burn over them (and their sprites are drawn under, unless the style is shader only). A lone one's flame stands about as big as its sprite.
 	if (fireShader) {
@@ -2941,7 +2954,9 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 				emissiveHeat.push_back(0.3F * fade);
 			}
 		}
+		ghostKind(LightingSettings::GhostEmbers);
 	}
+	ghostKind(-1);
 	// The flames of burning ground, one quad per cell of the fire front, after every other glow (drawn with their own shader). Each stands on the
 	// cell's lowest burning pixel and rises by how much burns there and how hot; now and then one throws an ember off its tip.
 	size_t flameStart = m_QuadVertices.size() / 4;
@@ -2987,10 +3002,12 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	size_t shockwaveCount = m_QuadVertices.size() / 4 - shockwaveStart;
 	// Dust puffs, lit and drawn over the scene after the composite.
 	size_t puffStart = m_QuadVertices.size() / 4;
+	std::vector<int> puffGhost; // Which kind of thing each puff is, for the LCD ghosting (LightingSettings::LCDGhostKind).
 	{
 		std::vector<EffectsParticles::Puff> puffs;
 		EffectsParticles::GetPuffs(origin, width, height, puffs);
 		for (const EffectsParticles::Puff& puff: puffs) {
+			puffGhost.push_back(LightingSettings::GhostKindOf(puff.Layer));
 			size_t firstVertex = m_QuadVertices.size();
 			// Each turned and maybe mirrored its own way (from when it was made), so puffs of spray and dust don't all show the same shape (PuffVariety).
 			bool varied = m_Settings.PuffVariety;
@@ -3910,13 +3927,18 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		m_AfterglowValid[screenIndex] = false;
 	}
 
-	// The Game Boy LCD's ghosting: its pixels are slow to change, so what the screen shows only drifts towards the picture now. Kept in screen space,
-	// as the pixels are, so scrolling the view smears the whole picture.
-	if (retro.LCDGhosting > 0.0F && screenIndex >= 0 && screenIndex < c_MaxScreens) {
+	// The LCD's ghosting: its pixels are slow to change, so what the screen shows only drifts towards the picture now. The LCD page's own
+	// (LightingSettings::LCDGhosting) in any screen style, else the screen style's (the Game Boy's). The whole picture is kept in screen space, as the
+	// pixels are, so scrolling the view smears the whole picture; only the effects picked (LCDGhostSelected) are kept where they were in the world,
+	// so the view moving smears nothing, and units and the ground stay sharp.
+	float ghosting = m_Settings.LCDGhosting > 0.0F ? m_Settings.LCDGhosting : retro.LCDGhosting;
+	bool ghostSelected = m_Settings.LCDGhosting > 0.0F && m_Settings.LCDGhostMode == LightingSettings::LCDGhostSelected;
+	if (ghosting > 0.0F && screenIndex >= 0 && screenIndex < c_MaxScreens) {
 		TracyGpuZone("LCD Ghosting");
 		GLTarget(&history)[2] = m_GhostHistory[screenIndex];
-		bool fresh = !m_GhostValid[screenIndex];
+		bool fresh = !m_GhostValid[screenIndex] || m_GhostWasSelected[screenIndex] != ghostSelected;
 		m_GhostValid[screenIndex] = true;
+		m_GhostWasSelected[screenIndex] = ghostSelected;
 		for (GLTarget& target: history) {
 			if (target.Width != width || target.Height != height || !target.Texture) {
 				target.Create(width, height, GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
@@ -3927,19 +3949,92 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		double nowSeconds = static_cast<double>(g_TimerMan.GetRealTickCount()) / static_cast<double>(g_TimerMan.GetTicksPerSecond());
 		float deltaSeconds = fresh ? 0.0F : static_cast<float>(std::clamp(nowSeconds - m_GhostLastSeconds[screenIndex], 0.0, 0.25));
 		m_GhostLastSeconds[screenIndex] = nowSeconds;
+		glm::vec2 shift = fresh ? glm::vec2(0.0F) : origin - m_GhostOrigin[screenIndex];
+		m_GhostOrigin[screenIndex] = origin;
 		int previous = m_GhostCurrent[screenIndex];
 		int next = 1 - previous;
+
+		if (ghostSelected) {
+			TracyGpuZone("LCD Ghosting Mask");
+			if (m_GhostMask.Width != width || m_GhostMask.Height != height || !m_GhostMask.Texture) {
+				m_GhostMask.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+			}
+			glBindFramebuffer(GL_FRAMEBUFFER, m_GhostMask.Framebuffer);
+			glViewport(0, 0, width, height);
+			glClearColor(0.0F, 0.0F, 0.0F, 0.0F);
+			glClear(GL_COLOR_BUFFER_BIT);
+			// Screen blended, so overlapping things add up to no more than covered.
+			glEnable(GL_BLEND);
+			glBlendEquation(GL_FUNC_ADD);
+			glBlendFunc(GL_ONE, GL_ONE_MINUS_SRC_COLOR);
+			m_GhostMaskShader->Enable();
+			m_GhostMaskShader->SetInt("rteTexture", 0);
+			m_GhostMaskShader->SetInt("rteSceneDepth", 3);
+			m_GhostMaskShader->SetVector2f("rteScreenSize", screenSize);
+			m_GhostMaskShader->SetBool("rteEffectsLayer", effectsLayerDepth != nullptr);
+			m_GhostMaskShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
+			glActiveTexture(GL_TEXTURE0);
+			// The glows picked, a run of quads at a time with the same texture.
+			m_GhostMaskShader->SetBool("rteGlow", true);
+			auto picked = [this](int kind) { return kind >= 0 && m_Settings.Ghosts(static_cast<LightingSettings::LCDGhostKind>(kind)); };
+			emissiveGhost.resize(emissiveTextures.size(), -1);
+			size_t runStart = 0;
+			for (size_t i = 1; i <= emissiveTextures.size(); ++i) {
+				if (i == emissiveTextures.size() || emissiveTextures[i] != emissiveTextures[runStart] || picked(emissiveGhost[i]) != picked(emissiveGhost[runStart])) {
+					if (picked(emissiveGhost[runStart])) {
+						glBindTexture(GL_TEXTURE_2D, emissiveTextures[runStart]);
+						m_GhostMaskShader->SetBool("rteUseAlpha", emissiveTextures[runStart] == EffectsParticles::GetPuffTexture());
+						DrawQuads(emissiveStart + runStart, i - runStart);
+					}
+					runStart = i;
+				}
+			}
+			// The puffs picked (dust, smoke, spray, froth), in their soft shape.
+			m_GhostMaskShader->SetBool("rteGlow", false);
+			m_GhostMaskShader->SetBool("rteUseAlpha", true);
+			glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
+			runStart = 0;
+			for (size_t i = 1; i <= puffGhost.size(); ++i) {
+				if (i == puffGhost.size() || picked(puffGhost[i]) != picked(puffGhost[runStart])) {
+					if (picked(puffGhost[runStart])) {
+						DrawQuads(puffStart + runStart, i - runStart);
+					}
+					runStart = i;
+				}
+			}
+			m_GhostMaskShader->SetBool("rteUseAlpha", false);
+			m_GhostMaskShader->SetBool("rteEffectsLayer", false);
+			// The sprites marked for it: tracers, splash drops, debris and the game's particles.
+			if (surface) {
+				m_AfterglowShader->Enable();
+				m_AfterglowShader->SetInt("rteMode", 4);
+				m_AfterglowShader->SetInt("rteSurface", 2);
+				glActiveTexture(GL_TEXTURE2);
+				glBindTexture(GL_TEXTURE_2D, surface->GetTextureId());
+				glActiveTexture(GL_TEXTURE0);
+				DrawFullscreen();
+			}
+			glDisable(GL_BLEND);
+		}
+
 		glDisable(GL_BLEND);
 		glBindFramebuffer(GL_FRAMEBUFFER, history[next].Framebuffer);
 		glViewport(0, 0, width, height);
 		m_AfterglowShader->Enable();
 		m_AfterglowShader->SetInt("rteScene", 0);
 		m_AfterglowShader->SetInt("rteHistory", 1);
-		m_AfterglowShader->SetInt("rteMode", 2);
+		m_AfterglowShader->SetInt("rteMask", 2);
+		m_AfterglowShader->SetInt("rteMode", ghostSelected ? 5 : 2);
 		m_AfterglowShader->SetVector2f("rteScreenSize", screenSize);
+		// The history is in screen space; a step of the camera to the right moves what it holds to the left (only the effects picked follow the world).
+		m_AfterglowShader->SetVector2f("rteShift", ghostSelected ? glm::vec2(shift.x, -shift.y) / screenSize : glm::vec2(0.0F));
 		m_AfterglowShader->SetBool("rteFresh", fresh);
 		// Strength 1 keeps about half of the last picture after a twentieth of a second, a short smear rather than a trail.
-		m_AfterglowShader->SetFloat("rteKeep", std::exp(-deltaSeconds * glm::mix(40.0F, 14.0F, std::clamp(retro.LCDGhosting, 0.0F, 1.0F))));
+		m_AfterglowShader->SetFloat("rteKeep", std::exp(-deltaSeconds * glm::mix(40.0F, 14.0F, std::clamp(ghosting, 0.0F, 1.0F))));
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, ghostSelected ? m_GhostMask.Texture : 0);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, history[previous].Texture);
 		glActiveTexture(GL_TEXTURE0);
@@ -3947,13 +4042,19 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		DrawFullscreen();
 		m_GhostCurrent[screenIndex] = next;
 
-		// The smeared picture replaces the scene.
+		// The smeared picture replaces the scene; the effects' trails are laid over it, premultiplied, keeping the scene's alpha.
 		glBindFramebuffer(GL_FRAMEBUFFER, m_HDRScene.Framebuffer);
+		if (ghostSelected) {
+			glEnable(GL_BLEND);
+			glBlendEquation(GL_FUNC_ADD);
+			glBlendFuncSeparate(GL_ONE, GL_ONE_MINUS_SRC_ALPHA, GL_ZERO, GL_ONE);
+		}
 		m_AfterglowShader->SetInt("rteMode", 3);
 		glActiveTexture(GL_TEXTURE1);
 		glBindTexture(GL_TEXTURE_2D, history[next].Texture);
 		glActiveTexture(GL_TEXTURE0);
 		DrawFullscreen();
+		glDisable(GL_BLEND);
 	} else if (screenIndex >= 0 && screenIndex < c_MaxScreens) {
 		m_GhostValid[screenIndex] = false;
 	}
