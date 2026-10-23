@@ -21,6 +21,8 @@
 #include "PostProcessMan.h"
 #include "PerformanceMan.h"
 #include "SettingsMan.h"
+#include "CameraMan.h"
+#include "FrameMan.h"
 
 #include <algorithm>
 #include <array>
@@ -362,6 +364,7 @@ namespace {
 		bool Asleep = false; //!< Falling-ground speedups: lying still, so it isn't stepped or drawn into the terrain again until something wakes it (see WakeBody) or its next look (SleepCheck).
 		int SleepCheck = 0; //!< Updates left asleep before it is stepped once anyway, for whatever changed round it unnoticed (liquid flowing in, the sandbox's tools).
 		bool Moved = false; //!< Whether its last step moved or turned it, so the pieces round it are woken.
+		bool SkipNext = false; //!< Far off every screen: whether it was stepped last update (two updates' worth), so this one is skipped.
 	};
 
 	/// Whether a piece is a tree coming down: some tree trunk, and nearly all of it trunk and leaves. (Every 7th pixel is enough to tell.)
@@ -410,6 +413,41 @@ namespace {
 	void WakeBody(Body& body) {
 		body.Asleep = false;
 		body.Quiet = 0;
+	}
+
+	/// The players' views this update, in the scene: middle and half size, each widened by a whole screen all round (falling-ground speedups:
+	/// what's further than that from every view is worked on less). Empty when there's no view to go by (the menus), when everything counts as near.
+	std::vector<glm::vec4> s_Views;
+
+	/// Takes this update's views from the cameras.
+	void ReadViews() {
+		s_Views.clear();
+		if (!g_SettingsMan.SlowdownFixes().FallingGroundOffScreen) {
+			return;
+		}
+		float halfWidth = static_cast<float>(g_FrameMan.GetPlayerScreenWidth()) * 0.5F;
+		float halfHeight = static_cast<float>(g_FrameMan.GetPlayerScreenHeight()) * 0.5F;
+		if (halfWidth <= 0.0F || halfHeight <= 0.0F) {
+			return;
+		}
+		for (int screen = 0; screen < g_FrameMan.GetScreenCount(); ++screen) {
+			Vector middle = g_CameraMan.GetOffset(screen) + Vector(halfWidth, halfHeight);
+			s_Views.emplace_back(middle.m_X, middle.m_Y, halfWidth * 3.0F, halfHeight * 3.0F);
+		}
+	}
+
+	/// Whether a place (with something of a size round it) is near any player's view this update, or there's no view to go by.
+	bool NearScreen(const glm::vec2& at, float size) {
+		if (s_Views.empty()) {
+			return true;
+		}
+		for (const glm::vec4& view: s_Views) {
+			Vector away = g_SceneMan.ShortestDistance(Vector(view.x, view.y), Vector(at.x, at.y), g_SceneMan.SceneWrapsX());
+			if (std::abs(away.m_X) <= view.z + size && std::abs(away.m_Y) <= view.w + size) {
+				return true;
+			}
+		}
+		return false;
 	}
 
 	/// Wakes the sleeping pieces near a place: something there changed that could knock them or take the ground from under them.
@@ -815,8 +853,27 @@ namespace {
 		int centerY = static_cast<int>(std::floor(body.Pos.y));
 		static std::vector<Displaced> displaced;
 		displaced.clear();
-		for (int wy = std::max(0, centerY - reach); wy <= std::min(s_Height - 1, centerY + reach); ++wy) {
-			for (int rawX = centerX - reach; rawX <= centerX + reach; ++rawX) {
+		// The box the piece's bitmap covers as it's turned now: a long piece lying flat covers far less than the square as wide as its reach (falling-ground speedups).
+		int firstX = centerX - reach;
+		int lastX = centerX + reach;
+		int firstY = centerY - reach;
+		int lastY = centerY + reach;
+		if (g_SettingsMan.SlowdownFixes().FallingGround) {
+			glm::vec2 low(std::numeric_limits<float>::max());
+			glm::vec2 high(std::numeric_limits<float>::lowest());
+			for (const glm::vec2& corner: {glm::vec2(0.0F), glm::vec2(static_cast<float>(body.W), 0.0F), glm::vec2(0.0F, static_cast<float>(body.H)), glm::vec2(static_cast<float>(body.W), static_cast<float>(body.H))}) {
+				glm::vec2 local = corner - body.Center;
+				glm::vec2 offset(local.x * c - local.y * s, local.x * s + local.y * c);
+				low = glm::min(low, offset);
+				high = glm::max(high, offset);
+			}
+			firstX = std::max(firstX, static_cast<int>(std::floor(body.Pos.x + low.x)) - 1);
+			lastX = std::min(lastX, static_cast<int>(std::ceil(body.Pos.x + high.x)) + 1);
+			firstY = std::max(firstY, static_cast<int>(std::floor(body.Pos.y + low.y)) - 1);
+			lastY = std::min(lastY, static_cast<int>(std::ceil(body.Pos.y + high.y)) + 1);
+		}
+		for (int wy = std::max(0, firstY); wy <= std::min(s_Height - 1, lastY); ++wy) {
+			for (int rawX = firstX; rawX <= lastX; ++rawX) {
 				glm::vec2 offset = glm::vec2(static_cast<float>(rawX) + 0.5F, static_cast<float>(wy) + 0.5F) - body.Pos;
 				// Turned back into the body's own bitmap.
 				float localX = offset.x * c + offset.y * s + body.Center.x;
@@ -1768,8 +1825,9 @@ namespace {
 		body.Done = true;
 	}
 
-	/// Moves a body for one update.
-	void StepBody(SLTerrain* terrain, Body& body) {
+	/// Moves a body for one update, or for several at once.
+	/// @param steps How many updates' worth: 2 for a piece far off every screen, stepped every other update (falling-ground speedups).
+	void StepBody(SLTerrain* terrain, Body& body, int steps = 1) {
 		// A tree coming down meets proper ground only: plants, liquid and loose ground such as sand don't hold it or stop it. Once it has landed
 		// and been stamped back into the terrain it is ground like any other.
 		struct ProperGroundScope {
@@ -1784,10 +1842,8 @@ namespace {
 		if (unstampStart != 0) {
 			s_StampMicros += g_TimerMan.GetAbsoluteTime() - unstampStart;
 		}
-		++body.Age;
-		if (body.BreakCooldown > 0) {
-			--body.BreakCooldown;
-		}
+		body.Age += steps;
+		body.BreakCooldown = std::max(body.BreakCooldown - steps, 0);
 		if (body.PixelCount < c_MinBodyPixels && CanThrow(static_cast<size_t>(body.PixelCount))) {
 			Crumble(body);
 			return;
@@ -1805,18 +1861,19 @@ namespace {
 			body.Done = true;
 			return;
 		}
-		body.Vel += gravity;
+		const float updates = static_cast<float>(steps);
+		body.Vel += gravity * updates;
 		if (weightless) {
 			// With no gravity a piece thrown loose drifts on, slowing a little, rather than flying until it hits something.
-			body.Vel *= 0.99F;
-			body.Spin *= 0.99F;
+			body.Vel *= std::pow(0.99F, updates);
+			body.Spin *= std::pow(0.99F, updates);
 		}
 		// A cut tree is pushed over until it leans well past its stump (about 30 degrees), as the last of the wood at the cut would tip it; then it falls on its own.
 		if (body.Topple != 0) {
 			if (std::abs(body.Angle) > 0.5F || body.Age > 300) {
 				body.Topple = 0;
 			} else if (body.Spin * static_cast<float>(body.Topple) < 0.02F) {
-				body.Spin += static_cast<float>(body.Topple) * 0.0008F;
+				body.Spin += static_cast<float>(body.Topple) * 0.0008F * updates;
 			}
 		}
 		// In liquid it sinks slowly instead of dropping.
@@ -1863,8 +1920,8 @@ namespace {
 			float fraction = std::min(1.0F, static_cast<float>(inLiquid) * 4.0F / static_cast<float>(body.Outline.size()));
 			// Heavy pieces plunge; light ones (wood, soil) are slowed more. Stone is about 2.5 a pixel, concrete and metal more.
 			float drag = std::clamp(0.1F / std::max(body.Mass / static_cast<float>(std::max(body.PixelCount, 1)), 0.5F), 0.02F, 0.09F);
-			body.Vel *= 1.0F - drag * fraction;
-			body.Spin *= 1.0F - 0.05F * fraction;
+			body.Vel *= std::pow(1.0F - drag * fraction, updates);
+			body.Spin *= std::pow(1.0F - 0.05F * fraction, updates);
 		}
 		float speed = glm::length(body.Vel);
 		if (speed > c_MaxSpeed) {
@@ -1874,14 +1931,15 @@ namespace {
 
 		glm::vec2 startPos = body.Pos;
 		float startAngle = body.Angle;
-		int subSteps = std::clamp(static_cast<int>(std::ceil(std::max(glm::length(body.Vel), std::abs(body.Spin) * body.Radius))), 1, 14);
+		// (Several updates at once move as far in as many sub-steps of the same length.)
+		int subSteps = std::clamp(static_cast<int>(std::ceil(std::max(glm::length(body.Vel), std::abs(body.Spin) * body.Radius) * updates)), 1, 14 * steps);
 		float hardestHit = 0.0F;
 		glm::vec2 hardestPoint(0.0F);
 		int responses = 0;
 		static std::vector<glm::vec2> contacts;
 		for (int subStep = 0; subStep < subSteps; ++subStep) {
-			glm::vec2 tryPos = body.Pos + body.Vel / static_cast<float>(subSteps);
-			float tryAngle = body.Angle + body.Spin / static_cast<float>(subSteps);
+			glm::vec2 tryPos = body.Pos + body.Vel * updates / static_cast<float>(subSteps);
+			float tryAngle = body.Angle + body.Spin * updates / static_cast<float>(subSteps);
 			contacts.clear();
 			for (const glm::vec2& point: body.Outline) {
 				glm::vec2 at = ToWorld(body, point, tryPos, tryAngle);
@@ -2179,11 +2237,11 @@ namespace {
 		// (With no gravity it needn't be lying on anything: it hangs where it stopped.)
 		bool calm = (responses > 0 || weightless) && glm::length(body.Vel) < 0.35F && std::abs(body.Spin) * body.Radius < 0.35F;
 		// A wobble sets the count back a little rather than to nothing, or a piece rocking on a point never comes to rest.
-		body.Still = (calm && body.Topple == 0) ? body.Still + 1 : (movedBy > 2.0F || body.Topple != 0 ? 0 : std::max(body.Still - 4, 0));
+		body.Still = (calm && body.Topple == 0) ? body.Still + steps : (movedBy > 2.0F * updates || body.Topple != 0 ? 0 : std::max(body.Still - 4 * steps, 0));
 		// Falling-ground speedups: one lying quite still, not a pixel's worth moved nor turned at all, for a few updates in a row sleeps. Asleep it would
 		// only be taken out of the terrain and drawn back in the same place each update, its crush check searching the same ground every time, until it settles.
 		body.Moved = body.Pos != startPos || body.Angle != startAngle;
-		body.Quiet = (calm && body.Topple == 0 && !body.Wet && !body.Moved) ? body.Quiet + 1 : 0;
+		body.Quiet = (calm && body.Topple == 0 && !body.Wet && !body.Moved) ? body.Quiet + steps : 0;
 		if (g_SettingsMan.SlowdownFixes().FallingGround && body.Quiet >= c_SleepAfter) {
 			body.Asleep = true;
 			body.SleepCheck = c_SleepCheck;
@@ -2214,6 +2272,7 @@ namespace {
 	void UpdateBodies(SLTerrain* terrain) {
 		s_DebrisThisUpdate = 0;
 		const bool sleeps = g_SettingsMan.SlowdownFixes().FallingGround;
+		const bool offScreenSlows = g_SettingsMan.SlowdownFixes().FallingGroundOffScreen;
 		for (size_t i = 0; i < s_Bodies.size(); ++i) {
 			Body& body = s_Bodies[i];
 			if (body.Done) {
@@ -2223,7 +2282,18 @@ namespace {
 				Doze(terrain, body);
 				continue;
 			}
-			StepBody(terrain, body);
+			// Falling-ground speedups: far off every screen, stepped every other update, two updates' worth at a time.
+			int steps = 1;
+			if (offScreenSlows && !NearScreen(body.Pos, body.Radius)) {
+				body.SkipNext = !body.SkipNext;
+				if (!body.SkipNext) {
+					continue;
+				}
+				steps = 2;
+			} else {
+				body.SkipNext = false;
+			}
+			StepBody(terrain, body, steps);
 			// One that moved, broke or crumbled away may have been holding others up or be lying on them now.
 			if (body.Moved || body.Done) {
 				WakeNear(body.Pos, 4.0F + body.Radius);
@@ -2385,6 +2455,44 @@ namespace {
 	/// the window's edge are the middles of hanging pieces. Each is grown back out to its own edge, and the ground touching it beyond that is its neck.
 	/// @param neckWidth The widest neck that snaps, in pixels.
 	/// @param cuts Pixels just knocked out (sorted keys) to count as still there, to see how things were before them; or none.
+	/// The thin neck search's map of the ground, kept from one of a check's searches to the next (one for each neck width): what's solid in its window, and
+	/// each solid pixel's own neck width (MaterialBehaviour::NeckWidth), -1 for none. The ground doesn't change between them, but for necks the check snaps,
+	/// which are cleared from it as they go (NoteNeckGridCleared). Falling-ground speedups.
+	struct NeckGrid {
+		unsigned Stamp = 0; //!< The check it was made for (s_CheckStamp), 0 for none.
+		int Left = 0, Top = 0, Side = 0;
+		const std::vector<int>* Cuts = nullptr;
+		const std::vector<int>* PretendDug = nullptr;
+		std::vector<unsigned char> Solid;
+		std::vector<signed char> Neck;
+	};
+	NeckGrid s_NeckGrid;
+	unsigned s_CheckStamp = 0; //!< Counts the checks (and their looks before, and the tunnels' cave-in looks), for s_NeckGrid.
+
+	/// Begins a check's searches: the ground they see is looked at afresh.
+	void BeginCheckSearches() {
+		if (++s_CheckStamp == 0) {
+			s_CheckStamp = 1;
+		}
+	}
+
+	/// A pixel a check made air (a neck it snapped): cleared from the thin neck search's map of the ground too, for its next search.
+	void NoteNeckGridCleared(int x, int y) {
+		if (s_NeckGrid.Stamp != s_CheckStamp || s_NeckGrid.Side <= 0) {
+			return;
+		}
+		int wx = x - s_NeckGrid.Left;
+		if (s_WrapX) {
+			wx = ((wx % s_Width) + s_Width) % s_Width;
+		}
+		int wy = y - s_NeckGrid.Top;
+		if (wx >= 0 && wy >= 0 && wx < s_NeckGrid.Side && wy < s_NeckGrid.Side) {
+			size_t cell = static_cast<size_t>(wy) * s_NeckGrid.Side + wx;
+			s_NeckGrid.Solid[cell] = 0;
+			s_NeckGrid.Neck[cell] = -1;
+		}
+	}
+
 	void FindHangingPieces(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, int neckWidth, const std::vector<int>* cuts = nullptr) {
 		AddTime timed(s_NeckMicros);
 		found.clear();
@@ -2423,43 +2531,67 @@ namespace {
 		pared.resize(cells);
 		pareBy.resize(cells);
 		owner.assign(cells, -1);
-		// A row at a time, as solidAt has it: below the world is solid, above it and off its sides (on a scene that doesn't wrap) isn't. x is wrapped once per row.
-		for (int wy = 0; wy < side; ++wy) {
-			size_t rowStart = static_cast<size_t>(wy) * side;
-			int y = top + wy;
-			if (y >= s_Height || y < 0) {
-				std::fill_n(solid.begin() + static_cast<std::ptrdiff_t>(rowStart), side, static_cast<unsigned char>(y >= s_Height ? 1 : 0));
-				std::fill_n(pareBy.begin() + static_cast<std::ptrdiff_t>(rowStart), side, static_cast<unsigned char>(pare));
-				continue;
-			}
-			const unsigned char* materialRow = materialBitmap->line[y];
-			size_t stateRow = static_cast<size_t>(y) * s_Width;
-			int x = left;
-			if (s_WrapX) {
-				x = ((x % s_Width) + s_Width) % s_Width;
-			}
-			for (int wx = 0; wx < side; ++wx) {
-				bool isSolid = false;
-				unsigned char by = static_cast<unsigned char>(pare);
-				if (x >= 0 && x < s_Width) {
-					int material = materialRow[x];
-					isSolid = material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[stateRow + x] & c_Falling);
-					if (int neck = s_Neck[material]; isSolid && neck >= 0 && neck < neckWidth) {
-						by = static_cast<unsigned char>((neck + 1) / 2);
+		// The map of the ground made by this check's last search (for another neck width) is used again; otherwise it's made.
+		NeckGrid& grid = s_NeckGrid;
+		const bool reuse = g_SettingsMan.SlowdownFixes().FallingGround && grid.Stamp == s_CheckStamp && grid.Left == left && grid.Top == top && grid.Side == side && grid.Cuts == cuts && grid.PretendDug == s_PretendDug;
+		if (!reuse) {
+			grid.Solid.resize(cells);
+			grid.Neck.resize(cells);
+			// A row at a time, as solidAt has it: below the world is solid, above it and off its sides (on a scene that doesn't wrap) isn't. x is wrapped once per row.
+			for (int wy = 0; wy < side; ++wy) {
+				size_t rowStart = static_cast<size_t>(wy) * side;
+				int y = top + wy;
+				if (y >= s_Height || y < 0) {
+					std::fill_n(grid.Solid.begin() + static_cast<std::ptrdiff_t>(rowStart), side, static_cast<unsigned char>(y >= s_Height ? 1 : 0));
+					std::fill_n(grid.Neck.begin() + static_cast<std::ptrdiff_t>(rowStart), side, static_cast<signed char>(-1));
+					continue;
+				}
+				const unsigned char* materialRow = materialBitmap->line[y];
+				size_t stateRow = static_cast<size_t>(y) * s_Width;
+				int x = left;
+				if (s_WrapX) {
+					x = ((x % s_Width) + s_Width) % s_Width;
+				}
+				for (int wx = 0; wx < side; ++wx) {
+					bool isSolid = false;
+					int neck = -1;
+					if (x >= 0 && x < s_Width) {
+						int material = materialRow[x];
+						isSolid = material != g_MaterialAir && !s_Flimsy[material] && !FluidSim::IsLiquid(material) && !(s_State[stateRow + x] & c_Falling);
+						if (isSolid) {
+							neck = std::clamp(s_Neck[material], -1, 127);
+						}
+						if (!isSolid && material == g_MaterialAir && wasCut(static_cast<int>(stateRow) + x)) {
+							isSolid = true;
+						}
+						if (isSolid && PretendDug(static_cast<int>(stateRow) + x)) {
+							isSolid = false;
+							neck = -1;
+						}
 					}
-					if (!isSolid && material == g_MaterialAir && wasCut(static_cast<int>(stateRow) + x)) {
-						isSolid = true;
-					}
-					if (isSolid && PretendDug(static_cast<int>(stateRow) + x)) {
-						isSolid = false;
+					grid.Solid[rowStart + wx] = isSolid ? 1 : 0;
+					grid.Neck[rowStart + wx] = static_cast<signed char>(neck);
+					if (++x >= s_Width && s_WrapX) {
+						x = 0;
 					}
 				}
-				solid[rowStart + wx] = isSolid ? 1 : 0;
-				pareBy[rowStart + wx] = by;
-				if (++x >= s_Width && s_WrapX) {
-					x = 0;
-				}
 			}
+			grid.Stamp = s_CheckStamp;
+			grid.Left = left;
+			grid.Top = top;
+			grid.Side = side;
+			grid.Cuts = cuts;
+			grid.PretendDug = s_PretendDug;
+		}
+		// How far each pixel is pared for this neck width: by its own material's, where that's narrower.
+		for (size_t cell = 0; cell < cells; ++cell) {
+			int neck = grid.Neck[cell];
+			solid[cell] = grid.Solid[cell];
+			pareBy[cell] = static_cast<unsigned char>((neck >= 0 && neck < neckWidth) ? (neck + 1) / 2 : pare);
+		}
+		if (!g_SettingsMan.SlowdownFixes().FallingGround) {
+			// (Made afresh for every search, as before.)
+			grid.Stamp = 0;
 		}
 		// Rows of solid first, then columns of those: a pixel is kept if everything within the paring distance of it is solid. Beyond the window counts as solid.
 		// Done with running counts of the cells that aren't (how many before each cell of its row, or above it in its column), so each cell is a subtraction, however far it's pared.
@@ -2980,6 +3112,7 @@ namespace {
 	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
 	/// @param cuts Pixels already knocked out by what's being looked before (sorted keys), when the look comes after the first of them; or none.
 	std::shared_ptr<Before> LookBefore(SLTerrain* terrain, const Check& check, const std::vector<int>* cuts = nullptr) {
+		BeginCheckSearches();
 		auto was = std::make_shared<Before>();
 		TerrainTrees::GetTrees(); // Which tree each pixel is part of, as it stands before the change (see Joins).
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
@@ -3175,6 +3308,7 @@ namespace {
 	}
 
 	void RunCheck(SLTerrain* terrain, const Check& check) {
+		BeginCheckSearches();
 		if (WeightlessAt(glm::vec2(static_cast<float>(check.X), static_cast<float>(check.Y)))) {
 			// No gravity here (a scene in space, or its no gravity area): what's cut loose stays where it is.
 			return;
@@ -3208,6 +3342,7 @@ namespace {
 					ThrowDebris(materialBitmap->line[y][x], terrain->GetFGColorPixel(x, y), glm::vec2(static_cast<float>(x) + 0.5F, static_cast<float>(y) + 0.5F), glm::vec2(Random01() - 0.5F, Random01() - 0.5F));
 					terrain->SetMaterialPixel(x, y, g_MaterialAir);
 					terrain->SetFGColorPixel(x, y, ColorKeys::g_MaskColor);
+					NoteNeckGridCleared(x, y);
 				}
 			}
 		};
@@ -3864,6 +3999,7 @@ void TerrainCollapse::Update() {
 	s_CrushMicros = 0;
 	s_StampMicros = 0;
 	s_CheckCounts = TerrainCollapse::CheckCounts();
+	ReadViews();
 	if (now % 60 == 0) {
 		// Changes long enough ago that no watch is left that could still be looking back to them.
 		for (auto changed = s_SquareChanged.begin(); changed != s_SquareChanged.end();) {
@@ -4046,25 +4182,35 @@ void TerrainCollapse::Update() {
 		stages.Next("Collapse: watched checks");
 		int checksLeft = 3;
 		const bool onlyChanged = g_SettingsMan.SlowdownFixes().FallingGround;
-		for (auto watch = s_Watches.begin(); watch != s_Watches.end();) {
-			if (checksLeft > 0 && now >= watch->second.NextCheck) {
-				// Falling-ground speedups: a check over ground that hasn't changed since the last one finds what that one found, so it's skipped
-				// (and doesn't count against the few an update). Its own lifting counts as a change, so a check that let something fall looks once more.
-				if (!onlyChanged || watch->second.LastChecked < 0 || ChangedNear(watch->first, watch->second.LastChecked)) {
-					--checksLeft;
-					RunCheck(terrain, {watch->first.second * c_WatchCell + c_WatchCell / 2, watch->first.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, watch->second.Was});
-					watch->second.LastChecked = now;
-					++s_CheckCounts.WatchedChecks;
-				} else {
-					++s_CheckCounts.SkippedChecks;
-				}
-				watch->second.NextCheck = now + 30;
-				if (now - watch->second.LastDamage > 120) {
-					watch = s_Watches.erase(watch);
-					continue;
-				}
+		const bool offScreenSlows = g_SettingsMan.SlowdownFixes().FallingGroundOffScreen;
+		// The watches due, in their fixed order; with the off-screen slowdown, those near a view first, so the few an update go where someone is looking.
+		std::vector<std::map<std::pair<int, int>, Watch>::iterator> due;
+		std::vector<std::map<std::pair<int, int>, Watch>::iterator> dueFar;
+		for (auto watch = s_Watches.begin(); watch != s_Watches.end(); ++watch) {
+			if (now >= watch->second.NextCheck) {
+				bool near = !offScreenSlows || NearScreen(glm::vec2(static_cast<float>(watch->first.second * c_WatchCell + c_WatchCell / 2), static_cast<float>(watch->first.first * c_WatchCell + c_WatchCell / 2)), static_cast<float>(c_WatchRadius));
+				(near ? due : dueFar).push_back(watch);
 			}
-			++watch;
+		}
+		due.insert(due.end(), dueFar.begin(), dueFar.end());
+		const size_t nearCount = due.size() - dueFar.size();
+		for (size_t i = 0; i < due.size() && checksLeft > 0; ++i) {
+			auto watch = due[i];
+			// Falling-ground speedups: a check over ground that hasn't changed since the last one finds what that one found, so it's skipped
+			// (and doesn't count against the few an update). Its own lifting counts as a change, so a check that let something fall looks once more.
+			if (!onlyChanged || watch->second.LastChecked < 0 || ChangedNear(watch->first, watch->second.LastChecked)) {
+				--checksLeft;
+				RunCheck(terrain, {watch->first.second * c_WatchCell + c_WatchCell / 2, watch->first.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, watch->second.Was});
+				watch->second.LastChecked = now;
+				++s_CheckCounts.WatchedChecks;
+			} else {
+				++s_CheckCounts.SkippedChecks;
+			}
+			// Far off every screen, looked at again a third as often.
+			watch->second.NextCheck = now + (i < nearCount ? 30 : 90);
+			if (now - watch->second.LastDamage > 120) {
+				s_Watches.erase(watch);
+			}
 		}
 	}
 	// The air's blast waves push falling pieces as they pass over them (Tuning::AirWavePushesPieces), as they push loose objects.
@@ -4286,6 +4432,7 @@ TerrainCollapse::CaveIn TerrainCollapse::TunnelWouldCaveIn(const std::vector<std
 		return result;
 	}
 	std::scoped_lock lock(s_CaveInMutex);
+	BeginCheckSearches();
 	Scene* scene = g_SceneMan.GetScene();
 	SLTerrain* terrain = scene ? scene->GetTerrain() : nullptr;
 	// Only once the system has seen this scene (its tables and pixel states are for it), as BeginChange.

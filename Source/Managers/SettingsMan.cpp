@@ -1192,6 +1192,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FixGasAreaShrinks", { reader >> m_SlowdownFixes.GasAreaShrinks; });
 	MatchProperty("FixLightingSplitsChanges", { reader >> m_SlowdownFixes.LightingSplitsChanges; });
 	MatchProperty("FixFallingGround", { reader >> m_SlowdownFixes.FallingGround; });
+	MatchProperty("FixFallingGroundOffScreen", { reader >> m_SlowdownFixes.FallingGroundOffScreen; });
 	MatchProperty("MaxLooseBits", { reader >> m_SlowdownFixes.MaxLooseBits; m_SlowdownFixes.MaxLooseBits = std::clamp(m_SlowdownFixes.MaxLooseBits, 0, 50000); });
 	MatchProperty("MaxLooseBitsOfKinds", {
 		for (int& most: m_SlowdownFixes.MaxLooseBitsOf) {
@@ -1997,6 +1998,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("FixGasAreaShrinks", m_SlowdownFixes.GasAreaShrinks);
 	writer.NewPropertyWithValue("FixLightingSplitsChanges", m_SlowdownFixes.LightingSplitsChanges);
 	writer.NewPropertyWithValue("FixFallingGround", m_SlowdownFixes.FallingGround);
+	writer.NewPropertyWithValue("FixFallingGroundOffScreen", m_SlowdownFixes.FallingGroundOffScreen);
 	writer.NewPropertyWithValue("MaxLooseBits", m_SlowdownFixes.MaxLooseBits);
 	{
 		std::string kinds;
