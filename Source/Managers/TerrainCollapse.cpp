@@ -24,6 +24,7 @@
 
 #include <algorithm>
 #include <array>
+#include <atomic>
 #include <cmath>
 #include <string>
 #include <unordered_map>
@@ -246,6 +247,7 @@ namespace {
 	struct Watch {
 		long long LastDamage = 0; //!< Sim update when the square last lost a pixel.
 		long long NextCheck = 0;
+		long long LastChecked = -1; //!< Sim update its last check ran, or -1 before the first.
 		std::shared_ptr<Before> Was;
 	};
 	std::map<std::pair<int, int>, Watch> s_Watches; //!< By square (row, column): ordered, so they are always gone through in the same order.
@@ -253,6 +255,10 @@ namespace {
 	/// an update, so a crash that chips fifty squares at once doesn't do all fifty in the update already paying for the gibs. First worn, first looked at.
 	std::deque<std::pair<int, int>> s_WatchesWaiting;
 	std::map<std::pair<int, int>, long long> s_WatchWaitingDamage; //!< The waiting squares, with when each last lost a pixel.
+	/// Falling-ground speedups: by square (row, column), the sim update the ground in it last changed: a pixel dug, shot or burnt out of it, or a
+	/// piece lifted out of it or settling into it. A watched square whose check would look at nothing changed since its last isn't checked again.
+	std::map<std::pair<int, int>, long long> s_SquareChanged;
+
 	struct DamageNote {
 		int X, Y;
 		float Force; //!< The hit's impulse, or negative for wear that always counts.
@@ -382,6 +388,23 @@ namespace {
 	constexpr int c_SleepCheck = 15; //!< Updates a sleeping piece sleeps before it is stepped once anyway.
 	uint64_t s_CrushMicros = 0; //!< Time this update in the crush check (scraps under pieces), for the performance readout.
 	uint64_t s_StampMicros = 0; //!< Time this update taking pieces out of the terrain and drawing them back in, for the performance readout.
+	std::atomic<uint64_t> s_LooseMicros{0}; //!< Time this update in the checks' searches for loose pieces, for the performance readout.
+	std::atomic<uint64_t> s_NeckMicros{0}; //!< Time this update in the checks' searches for thin necks.
+	std::atomic<uint64_t> s_OverhangMicros{0}; //!< Time this update in the checks' searches for overhangs.
+
+	/// Adds the time of the scope it lives in to a total, while the timings are being gathered.
+	struct AddTime {
+		explicit AddTime(std::atomic<uint64_t>& total) : Total(total), Start(PerformanceMan::IsTiming() ? g_TimerMan.GetAbsoluteTime() : 0) {}
+		~AddTime() {
+			if (Start != 0) {
+				Total += g_TimerMan.GetAbsoluteTime() - Start;
+			}
+		}
+		std::atomic<uint64_t>& Total;
+		uint64_t Start;
+	};
+
+	TerrainCollapse::CheckCounts s_CheckCounts; //!< Last update's, for the slowdown readout.
 
 	/// Wakes a sleeping piece: it is stepped again from the next update (or this one, if it hasn't had its turn yet).
 	void WakeBody(Body& body) {
@@ -526,6 +549,30 @@ namespace {
 	int s_Width = 0;
 	int s_Height = 0;
 	bool s_WrapX = false;
+
+	/// Notes that the ground at a place changed (see s_SquareChanged).
+	void NoteSquareChanged(int x, int y, long long when) {
+		if (x >= 0 && y >= 0) {
+			long long& last = s_SquareChanged[{y / c_WatchCell, x / c_WatchCell}];
+			last = std::max(last, when);
+		}
+	}
+
+	/// Whether the ground a watched square's check looks at changed at or since an update: the check's window (the necks' search reaches
+	/// c_WatchRadius + 60 pixels round its middle) is within three squares of it.
+	bool ChangedNear(const std::pair<int, int>& square, long long since) {
+		constexpr int c_Squares = 3;
+		int columns = (s_Width + c_WatchCell - 1) / c_WatchCell;
+		for (int row = square.first - c_Squares; row <= square.first + c_Squares; ++row) {
+			for (int column = square.second - c_Squares; column <= square.second + c_Squares; ++column) {
+				int wrapped = (s_WrapX && columns > 0) ? (column % columns + columns) % columns : column;
+				if (auto found = s_SquareChanged.find({row, wrapped}); found != s_SquareChanged.end() && found->second >= since) {
+					return true;
+				}
+			}
+		}
+		return false;
+	}
 
 	bool WrapInWorld(int& x, int y) {
 		if (s_WrapX) {
@@ -1714,6 +1761,7 @@ namespace {
 			s_Rested.push_back(std::move(rested));
 		}
 		float reach = body.Radius + 2.0F;
+		NoteSquareChanged(static_cast<int>(body.Pos.x), static_cast<int>(body.Pos.y), g_TimerMan.GetSimUpdateCount());
 		terrain->AddUpdatedMaterialArea(Box(Vector(body.Pos.x - reach, body.Pos.y - reach - 64.0F), reach * 2.0F, reach * 2.0F + 64.0F));
 		FluidSim::Disturb(Vector(body.Pos.x, body.Pos.y), reach + 6.0F);
 		body.Stamped.clear();
@@ -2338,6 +2386,7 @@ namespace {
 	/// @param neckWidth The widest neck that snaps, in pixels.
 	/// @param cuts Pixels just knocked out (sorted keys) to count as still there, to see how things were before them; or none.
 	void FindHangingPieces(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, int neckWidth, const std::vector<int>* cuts = nullptr) {
+		AddTime timed(s_NeckMicros);
 		found.clear();
 		if (cuts && cuts->empty()) {
 			cuts = nullptr;
@@ -2691,6 +2740,7 @@ namespace {
 	/// @param cuts Pixels just knocked out (sorted keys) to count as still there, to see how things were before them; or none.
 	/// @param longest The longest overhang that holds, in pixels; -1 for Tuning::OverhangLength.
 	void FindOverhangs(const BITMAP* materialBitmap, const Check& check, std::vector<HangingPiece>& found, const std::vector<int>* cuts = nullptr, int longest = -1) {
+		AddTime timed(s_OverhangMicros);
 		found.clear();
 		if (longest < 0) {
 			longest = TerrainCollapse::GetTuning().OverhangLength;
@@ -2935,6 +2985,7 @@ namespace {
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
 		std::vector<int> piece;
 		s_Touched.clear();
+		auto looseTimer = std::make_unique<AddTime>(s_LooseMicros);
 		for (bool treeRules: {true, false}) {
 			for (int y = std::max(0, check.Y - check.Radius); y <= std::min(s_Height - 1, check.Y + check.Radius); ++y) {
 				for (int rawX = check.X - check.Radius; rawX <= check.X + check.Radius; ++rawX) {
@@ -2959,6 +3010,7 @@ namespace {
 			s_State[key] &= static_cast<unsigned char>(~(c_Seen | c_Supported));
 		}
 		s_Touched.clear();
+		looseTimer.reset();
 		std::vector<HangingPiece> hanging;
 		for (int neckWidth: NeckWidths()) {
 			FindHangingPieces(materialBitmap, check, hanging, neckWidth, cuts);
@@ -3005,6 +3057,13 @@ namespace {
 		// A piece lying across the seam of a wrapping scene is left alone.
 		if (maxX - minX > width / 2) {
 			return;
+		}
+		// The ground round it changes as it comes out (and the watches near it look again: what it held up may hang now).
+		long long liftedAt = g_TimerMan.GetSimUpdateCount();
+		for (int y = minY; y <= maxY + c_WatchCell - 1; y += c_WatchCell) {
+			for (int x = minX; x <= maxX + c_WatchCell - 1; x += c_WatchCell) {
+				NoteSquareChanged(std::min(x, maxX), std::min(y, maxY), liftedAt);
+			}
 		}
 		Body body;
 		body.W = maxX - minX + 1;
@@ -3185,6 +3244,7 @@ namespace {
 		std::vector<int> cameFrom;
 		std::vector<int> piece;
 		s_Touched.clear();
+		auto looseTimer = std::make_unique<AddTime>(s_LooseMicros);
 		for (bool treeRules: {true, false}) {
 			for (int y = std::max(0, check.Y - check.Radius); y <= std::min(height - 1, check.Y + check.Radius); ++y) {
 				const unsigned char* materialRow = materialBitmap->line[y];
@@ -3215,6 +3275,7 @@ namespace {
 			s_State[key] &= static_cast<unsigned char>(~(c_Seen | c_Supported));
 		}
 		s_Touched.clear();
+		looseTimer.reset();
 		// What was cut from the world falls. Of the parts of a mass that was already in the air, the biggest stays where it was and the rest fall:
 		// chip the corner off a floating island and only the chip falls; cut it in two and the smaller half does.
 		std::vector<std::array<int, 4>> fallenTrees; // Left, top, right, bottom of each tree that comes down, for its stray leaves.
@@ -3802,6 +3863,13 @@ void TerrainCollapse::Update() {
 	long long now = g_TimerMan.GetSimUpdateCount();
 	s_CrushMicros = 0;
 	s_StampMicros = 0;
+	s_CheckCounts = TerrainCollapse::CheckCounts();
+	if (now % 60 == 0) {
+		// Changes long enough ago that no watch is left that could still be looking back to them.
+		for (auto changed = s_SquareChanged.begin(); changed != s_SquareChanged.end();) {
+			changed = now - changed->second > 600 ? s_SquareChanged.erase(changed) : std::next(changed);
+		}
+	}
 	std::vector<ChunkRequest> chunks;
 	std::vector<Footfall> footfalls;
 	std::vector<DropRequest> drops;
@@ -3817,7 +3885,7 @@ void TerrainCollapse::Update() {
 		drops.swap(s_DropRequests);
 	}
 	PerformanceMan::LogStages stages;
-	stages.Next("Collapse: ground checks");
+	stages.Next("Collapse: blast checks");
 	for (const Check& check: pending) {
 		WakeNear(glm::vec2(static_cast<float>(check.X), static_cast<float>(check.Y)), static_cast<float>(check.Radius));
 		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
@@ -3896,7 +3964,7 @@ void TerrainCollapse::Update() {
 		}
 	}
 	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
-	stages.Next("Collapse: ground checks");
+	stages.Next("Collapse: noting worn ground");
 	{
 		std::vector<DamageNote> damage;
 		std::vector<int> cuts;
@@ -3910,6 +3978,7 @@ void TerrainCollapse::Update() {
 		for (const DamageNote& note: damage) {
 			// Ground dug, shot or burnt away next to a sleeping piece, or out of it.
 			WakeNear(glm::vec2(static_cast<float>(note.X), static_cast<float>(note.Y)), static_cast<float>(c_WatchCell));
+			NoteSquareChanged(note.X, note.Y, now);
 			std::pair<int, int> square(note.Y / c_WatchCell, note.X / c_WatchCell);
 			if (auto found = s_Watches.find(square); found != s_Watches.end()) {
 				found->second.LastDamage = now;
@@ -3948,6 +4017,7 @@ void TerrainCollapse::Update() {
 			buildup = now - buildup->second.Last > c_ForceBuildupUpdates ? s_ForceBuildup.erase(buildup) : std::next(buildup);
 		}
 		// A few new squares an update, more when many are waiting so the wait stays short.
+		stages.Next("Collapse: first looks at worn ground");
 		constexpr int c_NewWatchesPerUpdate = 4;
 		for (size_t looks = std::max<size_t>(c_NewWatchesPerUpdate, s_WatchesWaiting.size() / 4); looks > 0 && !s_WatchesWaiting.empty(); --looks) {
 			std::pair<int, int> square = s_WatchesWaiting.front();
@@ -3971,12 +4041,23 @@ void TerrainCollapse::Update() {
 			knockedOut.erase(std::unique(knockedOut.begin(), knockedOut.end()), knockedOut.end());
 			watch.Was = LookBefore(terrain, {square.second * c_WatchCell + c_WatchCell / 2, square.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, nullptr}, &knockedOut);
 			s_Watches.emplace(square, std::move(watch));
+			++s_CheckCounts.FirstLooks;
 		}
+		stages.Next("Collapse: watched checks");
 		int checksLeft = 3;
+		const bool onlyChanged = g_SettingsMan.SlowdownFixes().FallingGround;
 		for (auto watch = s_Watches.begin(); watch != s_Watches.end();) {
 			if (checksLeft > 0 && now >= watch->second.NextCheck) {
-				--checksLeft;
-				RunCheck(terrain, {watch->first.second * c_WatchCell + c_WatchCell / 2, watch->first.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, watch->second.Was});
+				// Falling-ground speedups: a check over ground that hasn't changed since the last one finds what that one found, so it's skipped
+				// (and doesn't count against the few an update). Its own lifting counts as a change, so a check that let something fall looks once more.
+				if (!onlyChanged || watch->second.LastChecked < 0 || ChangedNear(watch->first, watch->second.LastChecked)) {
+					--checksLeft;
+					RunCheck(terrain, {watch->first.second * c_WatchCell + c_WatchCell / 2, watch->first.first * c_WatchCell + c_WatchCell / 2, c_WatchRadius, now, watch->second.Was});
+					watch->second.LastChecked = now;
+					++s_CheckCounts.WatchedChecks;
+				} else {
+					++s_CheckCounts.SkippedChecks;
+				}
 				watch->second.NextCheck = now + 30;
 				if (now - watch->second.LastDamage > 120) {
 					watch = s_Watches.erase(watch);
@@ -4011,7 +4092,7 @@ void TerrainCollapse::Update() {
 		PerformanceMan::AddLogTime("Collapse: crush check (in moving pieces)", s_CrushMicros);
 		PerformanceMan::AddLogTime("Collapse: redrawing pieces (in moving pieces)", s_StampMicros);
 	}
-	stages.Next("Collapse: ground checks");
+	stages.Next("Collapse: blast checks");
 	// The checks come due: a few an update (more when many are due, so the wait stays short), the longest due first, the rest carried over. A place
 	// and size already checked this update isn't checked again (a crater queued twice, or a check's second look come due while its first waited).
 	constexpr int c_ChecksPerUpdate = 4;
@@ -4035,8 +4116,19 @@ void TerrainCollapse::Update() {
 		--checksLeft;
 		RunCheck(terrain, check);
 		ran.push_back(std::move(check));
+		++s_CheckCounts.BlastChecks;
 	}
 	s_Scheduled.swap(kept);
+	stages.Next(nullptr);
+	if (PerformanceMan::IsTiming()) {
+		// Parts of all the checks' time (first looks, watched and blast checks alike), for the readout.
+		PerformanceMan::AddLogTime("Collapse: loose piece searches (in checks)", s_LooseMicros.exchange(0));
+		PerformanceMan::AddLogTime("Collapse: thin neck searches (in checks)", s_NeckMicros.exchange(0));
+		PerformanceMan::AddLogTime("Collapse: overhang searches (in checks)", s_OverhangMicros.exchange(0));
+	}
+	s_CheckCounts.Watched = static_cast<int>(s_Watches.size());
+	s_CheckCounts.Waiting = static_cast<int>(s_WatchesWaiting.size());
+	s_CheckCounts.Scheduled = static_cast<int>(s_Scheduled.size());
 }
 
 void TerrainCollapse::Clear() {
@@ -4052,6 +4144,7 @@ void TerrainCollapse::Clear() {
 	s_Watches.clear();
 	s_WatchesWaiting.clear();
 	s_WatchWaitingDamage.clear();
+	s_SquareChanged.clear();
 	s_ForceBuildup.clear();
 	s_WaitingCuts.clear();
 	s_Rested.clear();
@@ -4073,6 +4166,14 @@ void TerrainCollapse::Clear() {
 
 int TerrainCollapse::GetCollapsedCount() {
 	return s_CollapsedCount;
+}
+
+const TerrainCollapse::CheckCounts& TerrainCollapse::GetCheckCounts() {
+	return s_CheckCounts;
+}
+
+int TerrainCollapse::GetSleepingCount() {
+	return static_cast<int>(std::count_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return !body.Done && body.Asleep; }));
 }
 
 int TerrainCollapse::GetFallingCount() {
