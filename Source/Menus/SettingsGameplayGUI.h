@@ -42,6 +42,7 @@ namespace RTE {
 		GUICheckbox* m_EndlessMetaGameCheckbox;
 		GUICheckbox* m_NoSceneWrapCheckbox;
 		GUICheckbox* m_ShowEnemyHUDCheckbox;
+		GUICheckbox* m_CameraCentredOnUnitCheckbox;
 		GUICheckbox* m_EnableSmartBuyMenuNavigationCheckbox;
 		GUITextBox* m_MaxUnheldItemsTextbox;
 		GUITextBox* m_CrabBombThresholdTextbox;

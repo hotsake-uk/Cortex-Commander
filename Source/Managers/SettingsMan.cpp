@@ -362,6 +362,7 @@ void SettingsMan::Clear() {
 	m_LastMap.clear();
 	m_CrabBombThreshold = 42;
 	m_ShowEnemyHUD = true;
+	m_CameraCentredOnUnit = false;
 	m_ShowUnitTags = false;
 	m_ShowCPUAimReticles = true;
 	m_FreeAimThroughTerrain = false;
@@ -1425,6 +1426,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("ShowNotices", { reader >> m_ShowNotices; });
 	MatchProperty("CrabBombThreshold", { reader >> m_CrabBombThreshold; });
 	MatchProperty("ShowEnemyHUD", { reader >> m_ShowEnemyHUD; });
+	MatchProperty("CameraCentredOnUnit", { reader >> m_CameraCentredOnUnit; });
 	MatchProperty("ShowUnitTags", { reader >> m_ShowUnitTags; });
 	MatchProperty("ShowCPUAimReticles", { reader >> m_ShowCPUAimReticles; });
 	MatchProperty("FreeAimThroughTerrain", { reader >> m_FreeAimThroughTerrain; });
@@ -2223,6 +2225,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 		writer.NewPropertyWithValue("AlwaysDisplayUnheldItemsInStrategicMode", m_AlwaysDisplayUnheldItemsInStrategicMode);
 		writer.NewPropertyWithValue("SubPieMenuHoverOpenDelay", m_SubPieMenuHoverOpenDelay);
 		writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
+		writer.NewPropertyWithValue("CameraCentredOnUnit", m_CameraCentredOnUnit);
 		writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 		writer.NewPropertyWithValue("SandboxGroupBadges", m_SandboxGroupBadges);
 		writer.NewPropertyWithValue("CommanderBarKey", m_CommanderBarKey);
@@ -2687,6 +2690,7 @@ int SettingsMan::Save(Writer& writer) const {
 	writer.NewPropertyWithValue("ArmyOverview", m_ArmyOverview);
 	writer.NewPropertyWithValue("CrabBombThreshold", m_CrabBombThreshold);
 	writer.NewPropertyWithValue("ShowEnemyHUD", m_ShowEnemyHUD);
+	writer.NewPropertyWithValue("CameraCentredOnUnit", m_CameraCentredOnUnit);
 	writer.NewPropertyWithValue("SmartBuyMenuNavigation", m_EnableSmartBuyMenuNavigation);
 	writer.NewPropertyWithValue("ScrapCompactingHeight", g_SceneMan.m_ScrapCompactingHeight);
 	writer.NewPropertyWithValue("AutomaticGoldDeposit", m_AutomaticGoldDeposit);

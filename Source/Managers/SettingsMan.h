@@ -1320,6 +1320,14 @@ namespace RTE {
 		/// @param showHUD Whether the HUD of enemy Actors should be visible to the player or not.
 		void SetShowEnemyHUD(bool showHUD) { m_ShowEnemyHUD = showHUD; }
 
+		/// Gets whether the camera holds the controlled unit in the middle of the screen, instead of leaning towards where it aims.
+		/// @return Whether the camera is centred on the controlled unit.
+		bool CameraCentredOnUnit() const { return m_CameraCentredOnUnit; }
+
+		/// Sets whether the camera holds the controlled unit in the middle of the screen, instead of leaning towards where it aims.
+		/// @param centred Whether the camera is centred on the controlled unit.
+		void SetCameraCentredOnUnit(bool centred) { m_CameraCentredOnUnit = centred; }
+
 		/// Whether each unit's side (its team icon) and health are drawn beside it. In the Sandbox game mode every side's are, the side you
 		/// look from being only who the tools are for; elsewhere other sides' follow ShowEnemyHUD and what your side has seen.
 		bool ShowUnitTags() const { return m_ShowUnitTags; }
@@ -1688,6 +1696,7 @@ namespace RTE {
 		bool m_EnableCrabBombs; //!< Whether all actors (except Brains and Doors) should be annihilated if a number exceeding the crab bomb threshold is released at once.
 		int m_CrabBombThreshold; //!< The number of crabs needed to be released at once to trigger the crab bomb effect.
 		bool m_ShowEnemyHUD; //!< Whether the HUD of enemy actors should be visible to the player.
+		bool m_CameraCentredOnUnit; //!< Whether the camera holds the controlled unit in the middle of the screen, the aim reticle kept inside the view, instead of leaning towards the aim.
 		bool m_ShowUnitTags; //!< Whether each unit's side and health are drawn beside it.
 		bool m_ShowCPUAimReticles; //!< Whether the aim reticles of CPU-controlled units' held weapons are drawn.
 		bool m_FreeAimThroughTerrain; //!< Whether the player's sharp aim passes through terrain and objects instead of stopping at them.
