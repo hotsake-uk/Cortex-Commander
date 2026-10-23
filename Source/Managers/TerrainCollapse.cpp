@@ -19,11 +19,15 @@
 
 #include "glm/glm.hpp"
 #include "PostProcessMan.h"
+#include "PerformanceMan.h"
+#include "SettingsMan.h"
 
 #include <algorithm>
 #include <array>
 #include <cmath>
 #include <string>
+#include <unordered_map>
+#include <unordered_set>
 #include <limits>
 #include <map>
 #include <memory>
@@ -348,6 +352,10 @@ namespace {
 		int Drop = 0; //!< The sandbox drop it came from (TerrainCollapse::DropArea), or 0. The pieces it breaks into keep it.
 		long Id = 0; //!< Given the first time something is tied to it (TerrainCollapse::FindPiece); 0 before.
 		std::vector<std::pair<long, long long>> Hurt; //!< Units it hurt lately: unique ID and sim update, so a piece grinding on a unit hurts it once per blow, not every update.
+		int Quiet = 0; //!< Updates in a row it lay still without moving a pixel's worth or turning at all (see c_SleepAfter).
+		bool Asleep = false; //!< Falling-ground speedups: lying still, so it isn't stepped or drawn into the terrain again until something wakes it (see WakeBody) or its next look (SleepCheck).
+		int SleepCheck = 0; //!< Updates left asleep before it is stepped once anyway, for whatever changed round it unnoticed (liquid flowing in, the sandbox's tools).
+		bool Moved = false; //!< Whether its last step moved or turned it, so the pieces round it are woken.
 	};
 
 	/// Whether a piece is a tree coming down: some tree trunk, and nearly all of it trunk and leaves. (Every 7th pixel is enough to tell.)
@@ -369,6 +377,31 @@ namespace {
 	long s_NextPieceId = 1;
 	std::vector<Body> s_Bodies;
 	std::vector<Body> s_NewBodies; //!< Pieces made while the bodies are being stepped; they join afterwards.
+
+	constexpr int c_SleepAfter = 10; //!< Updates a piece lies quite still before it sleeps (falling-ground speedups).
+	constexpr int c_SleepCheck = 15; //!< Updates a sleeping piece sleeps before it is stepped once anyway.
+	uint64_t s_CrushMicros = 0; //!< Time this update in the crush check (scraps under pieces), for the performance readout.
+	uint64_t s_StampMicros = 0; //!< Time this update taking pieces out of the terrain and drawing them back in, for the performance readout.
+
+	/// Wakes a sleeping piece: it is stepped again from the next update (or this one, if it hasn't had its turn yet).
+	void WakeBody(Body& body) {
+		body.Asleep = false;
+		body.Quiet = 0;
+	}
+
+	/// Wakes the sleeping pieces near a place: something there changed that could knock them or take the ground from under them.
+	/// @param at The place, in the scene.
+	/// @param reach How far round it, past the pieces' own size.
+	void WakeNear(const glm::vec2& at, float reach) {
+		for (Body& body: s_Bodies) {
+			if (body.Asleep) {
+				Vector away = g_SceneMan.ShortestDistance(Vector(at.x, at.y), Vector(body.Pos.x, body.Pos.y), g_SceneMan.SceneWrapsX());
+				if (away.MagnitudeIsLessThan(reach + body.Radius + 2.0F)) {
+					WakeBody(body);
+				}
+			}
+		}
+	}
 
 	/// A piece of ground that broke loose this update, remembered so what was tied to that ground (a rope) can go with it (TerrainCollapse::FindLiftedPiece).
 	struct Lifted {
@@ -1696,7 +1729,13 @@ namespace {
 			~ProperGroundScope() { s_ProperGroundOnly = false; }
 		} properGroundScope(IsTree(body));
 		const BITMAP* materialBitmap = terrain->GetMaterialBitmap();
+		body.Asleep = false;
+		body.Moved = false;
+		uint64_t unstampStart = PerformanceMan::IsTiming() ? g_TimerMan.GetAbsoluteTime() : 0;
 		Unstamp(terrain, body);
+		if (unstampStart != 0) {
+			s_StampMicros += g_TimerMan.GetAbsoluteTime() - unstampStart;
+		}
 		++body.Age;
 		if (body.BreakCooldown > 0) {
 			--body.BreakCooldown;
@@ -1834,6 +1873,13 @@ namespace {
 			// Loose scraps in the way (a few leftover pixels of wall, a nugget, some grains) don't hold a big piece up: it flattens them and carries on.
 			if (int limit = std::min(TerrainCollapse::GetTuning().CrushPixels, body.PixelCount / 4); limit > 0) {
 				static std::vector<int> scrap;
+				// Falling-ground speedups: pixels of this sub-step's searches that were part of ground too big to be a scrap, with whether that search met
+				// ground that never falls. A piece lying on solid ground touches it at dozens of points, and each searched the same ground to the limit.
+				static std::unordered_map<int, bool> solidGround;
+				static std::unordered_set<int> inScrap;
+				const bool shareSearches = g_SettingsMan.SlowdownFixes().FallingGround;
+				solidGround.clear();
+				uint64_t crushStart = PerformanceMan::IsTiming() ? g_TimerMan.GetAbsoluteTime() : 0;
 				int crushed = 0;
 				for (const glm::vec2& contact: contacts) {
 					int startX = static_cast<int>(std::floor(contact.x));
@@ -1841,35 +1887,48 @@ namespace {
 					if (!WrapInWorld(startX, startY) || !SolidAt(materialBitmap, startX, startY)) {
 						continue;
 					}
-					// The connected bit of ground this point is part of, as far as the limit: any more than that and it's no scrap.
-					scrap.clear();
-					scrap.push_back(startY * s_Width + startX);
 					bool small = true;
 					bool fixed = false;
-					for (size_t next = 0; next < scrap.size() && small; ++next) {
-						int x = scrap[next] % s_Width;
-						int y = scrap[next] / s_Width;
-						fixed = fixed || s_Fixed[materialBitmap->line[y][x]] || Held(scrap[next]);
-						for (int dy = -1; dy <= 1 && small; ++dy) {
-							for (int dx = -1; dx <= 1; ++dx) {
-								int nx = x + dx;
-								int ny = y + dy;
-								if ((dx == 0 && dy == 0) || !SolidAt(materialBitmap, nx, ny)) {
-									continue;
-								}
-								if (!WrapInWorld(nx, ny)) {
-									// Joined to the bottom of the world.
-									small = false;
-									break;
-								}
-								int key = ny * s_Width + nx;
-								if (std::find(scrap.begin(), scrap.end(), key) == scrap.end()) {
-									scrap.push_back(key);
-									if (static_cast<int>(scrap.size()) > limit) {
+					if (auto known = shareSearches ? solidGround.find(startY * s_Width + startX) : solidGround.end(); known != solidGround.end()) {
+						// Ground already found too big this sub-step: it's the same ground whichever of its pixels the search starts from.
+						small = false;
+						fixed = known->second;
+					} else {
+						// The connected bit of ground this point is part of, as far as the limit: any more than that and it's no scrap.
+						scrap.clear();
+						scrap.push_back(startY * s_Width + startX);
+						inScrap.clear();
+						inScrap.insert(scrap.back());
+						for (size_t next = 0; next < scrap.size() && small; ++next) {
+							int x = scrap[next] % s_Width;
+							int y = scrap[next] / s_Width;
+							fixed = fixed || s_Fixed[materialBitmap->line[y][x]] || Held(scrap[next]);
+							for (int dy = -1; dy <= 1 && small; ++dy) {
+								for (int dx = -1; dx <= 1; ++dx) {
+									int nx = x + dx;
+									int ny = y + dy;
+									if ((dx == 0 && dy == 0) || !SolidAt(materialBitmap, nx, ny)) {
+										continue;
+									}
+									if (!WrapInWorld(nx, ny)) {
+										// Joined to the bottom of the world.
 										small = false;
 										break;
 									}
+									int key = ny * s_Width + nx;
+									if (shareSearches ? inScrap.insert(key).second : std::find(scrap.begin(), scrap.end(), key) == scrap.end()) {
+										scrap.push_back(key);
+										if (static_cast<int>(scrap.size()) > limit) {
+											small = false;
+											break;
+										}
+									}
 								}
+							}
+						}
+						if (!small && shareSearches) {
+							for (int key: scrap) {
+								solidGround.emplace(key, fixed);
 							}
 						}
 					}
@@ -1907,6 +1966,9 @@ namespace {
 						s_State[key] &= static_cast<unsigned char>(~c_Falling);
 					}
 					crushed += static_cast<int>(scrap.size());
+				}
+				if (crushStart != 0) {
+					s_CrushMicros += g_TimerMan.GetAbsoluteTime() - crushStart;
 				}
 				if (crushed > 0) {
 					// It costs the piece a little of its speed, by how much it crushed for its size.
@@ -2070,8 +2132,32 @@ namespace {
 		bool calm = (responses > 0 || weightless) && glm::length(body.Vel) < 0.35F && std::abs(body.Spin) * body.Radius < 0.35F;
 		// A wobble sets the count back a little rather than to nothing, or a piece rocking on a point never comes to rest.
 		body.Still = (calm && body.Topple == 0) ? body.Still + 1 : (movedBy > 2.0F || body.Topple != 0 ? 0 : std::max(body.Still - 4, 0));
+		// Falling-ground speedups: one lying quite still, not a pixel's worth moved nor turned at all, for a few updates in a row sleeps. Asleep it would
+		// only be taken out of the terrain and drawn back in the same place each update, its crush check searching the same ground every time, until it settles.
+		body.Moved = body.Pos != startPos || body.Angle != startAngle;
+		body.Quiet = (calm && body.Topple == 0 && !body.Wet && !body.Moved) ? body.Quiet + 1 : 0;
+		if (g_SettingsMan.SlowdownFixes().FallingGround && body.Quiet >= c_SleepAfter) {
+			body.Asleep = true;
+			body.SleepCheck = c_SleepCheck;
+		}
+		uint64_t stampStart = PerformanceMan::IsTiming() ? g_TimerMan.GetAbsoluteTime() : 0;
 		Stamp(terrain, body);
+		if (stampStart != 0) {
+			s_StampMicros += g_TimerMan.GetAbsoluteTime() - stampStart;
+		}
 		// A piece that has lain still long enough becomes ordinary ground again. Until then it can still tip, roll or be knocked.
+		if (body.Still >= std::max(static_cast<int>(TerrainCollapse::GetTuning().RestSeconds * 60.0F), 5) || body.Age > c_MaxAge) {
+			Settle(terrain, body);
+		}
+	}
+
+	/// An update of a sleeping piece: it lies where it is, still drawn in the terrain, and counts towards settling as a step lying still would.
+	void Doze(SLTerrain* terrain, Body& body) {
+		++body.Age;
+		if (body.BreakCooldown > 0) {
+			--body.BreakCooldown;
+		}
+		++body.Still;
 		if (body.Still >= std::max(static_cast<int>(TerrainCollapse::GetTuning().RestSeconds * 60.0F), 5) || body.Age > c_MaxAge) {
 			Settle(terrain, body);
 		}
@@ -2079,15 +2165,27 @@ namespace {
 
 	void UpdateBodies(SLTerrain* terrain) {
 		s_DebrisThisUpdate = 0;
-		for (Body& body: s_Bodies) {
-			if (!body.Done) {
-				StepBody(terrain, body);
+		const bool sleeps = g_SettingsMan.SlowdownFixes().FallingGround;
+		for (size_t i = 0; i < s_Bodies.size(); ++i) {
+			Body& body = s_Bodies[i];
+			if (body.Done) {
+				continue;
+			}
+			if (body.Asleep && sleeps && --body.SleepCheck > 0) {
+				Doze(terrain, body);
+				continue;
+			}
+			StepBody(terrain, body);
+			// One that moved, broke or crumbled away may have been holding others up or be lying on them now.
+			if (body.Moved || body.Done) {
+				WakeNear(body.Pos, 4.0F + body.Radius);
 			}
 		}
 		// Pieces that broke off this update take their place in the terrain and move from the next.
 		for (Body& piece: s_NewBodies) {
 			Stamp(terrain, piece);
 			s_Bodies.push_back(std::move(piece));
+			WakeNear(s_Bodies.back().Pos, 4.0F + s_Bodies.back().Radius);
 		}
 		s_NewBodies.clear();
 		s_Bodies.erase(std::remove_if(s_Bodies.begin(), s_Bodies.end(), [](const Body& body) { return body.Done; }), s_Bodies.end());
@@ -2826,6 +2924,7 @@ namespace {
 		body.Vel += glm::normalize(away) * strength;
 		body.Spin += (Random01() - 0.5F) * 0.12F * std::min(strength, 3.0F);
 		body.Still = 0;
+		WakeBody(body);
 	}
 
 	/// Notes how things are around a point before a blast digs its crater: which masses already hang in the air, and which pieces already hang by a thin neck.
@@ -3701,6 +3800,8 @@ void TerrainCollapse::Update() {
 		DrawHoldZones(s_Width, s_Height, s_WrapX);
 	}
 	long long now = g_TimerMan.GetSimUpdateCount();
+	s_CrushMicros = 0;
+	s_StampMicros = 0;
 	std::vector<ChunkRequest> chunks;
 	std::vector<Footfall> footfalls;
 	std::vector<DropRequest> drops;
@@ -3715,7 +3816,10 @@ void TerrainCollapse::Update() {
 		footfalls.swap(s_Footfalls);
 		drops.swap(s_DropRequests);
 	}
+	PerformanceMan::LogStages stages;
+	stages.Next("Collapse: ground checks");
 	for (const Check& check: pending) {
+		WakeNear(glm::vec2(static_cast<float>(check.X), static_cast<float>(check.Y)), static_cast<float>(check.Radius));
 		// The blast was this update or the last and its crater is only now being dug, so this is how things were before it.
 		std::shared_ptr<Before> was = check.Was ? check.Was : LookBefore(terrain, check);
 		Check first = check;
@@ -3727,6 +3831,7 @@ void TerrainCollapse::Update() {
 		s_Scheduled.push_back(std::move(first));
 		s_Scheduled.push_back(std::move(late));
 	}
+	stages.Next("Collapse: new pieces, footfalls and blasts");
 	for (const ChunkRequest& request: chunks) {
 		MakeChunk(terrain, request);
 	}
@@ -3757,6 +3862,8 @@ void TerrainCollapse::Update() {
 				return blast.Push * falloff * falloff * std::max(TerrainCollapse::GetTuning().BlastPush, 0.0F);
 			};
 			auto throwBody = [&](Body& body) { ThrowFromBlast(body, from, blast.Reach, blast.Push); };
+			// (The crater may take the ground from under pieces too far off to be thrown.)
+			WakeNear(from, blast.Reach);
 			for (Body& body: s_Bodies) {
 				if (!body.Done) {
 					throwBody(body);
@@ -3789,6 +3896,7 @@ void TerrainCollapse::Update() {
 		}
 	}
 	// Ground being dug or shot away: start watching the squares it's happening in, and check the ones being watched.
+	stages.Next("Collapse: ground checks");
 	{
 		std::vector<DamageNote> damage;
 		std::vector<int> cuts;
@@ -3800,6 +3908,8 @@ void TerrainCollapse::Update() {
 		}
 		float minForce = std::max(s_Tuning.CheckMinForce, 0.0F);
 		for (const DamageNote& note: damage) {
+			// Ground dug, shot or burnt away next to a sleeping piece, or out of it.
+			WakeNear(glm::vec2(static_cast<float>(note.X), static_cast<float>(note.Y)), static_cast<float>(c_WatchCell));
 			std::pair<int, int> square(note.Y / c_WatchCell, note.X / c_WatchCell);
 			if (auto found = s_Watches.find(square); found != s_Watches.end()) {
 				found->second.LastDamage = now;
@@ -3877,6 +3987,7 @@ void TerrainCollapse::Update() {
 		}
 	}
 	// The air's blast waves push falling pieces as they pass over them (Tuning::AirWavePushesPieces), as they push loose objects.
+	stages.Next("Collapse: moving pieces");
 	if (s_Tuning.AirWavePushesPieces) {
 		for (Body& body: s_Bodies) {
 			if (body.Done) {
@@ -3889,11 +4000,18 @@ void TerrainCollapse::Update() {
 			// m/s to pixels per update (20 pixels a metre, 60 updates a second), less for heavier pieces as an explosion's own throw.
 			body.Vel += glm::vec2(push.m_X, push.m_Y) * (std::max(s_Tuning.BlastPush, 0.0F) / (3.0F * (1.0F + body.Mass / 500.0F)));
 			body.Still = 0;
+			WakeBody(body);
 		}
 	}
 	UpdateBodies(terrain);
 	s_FallingNow.clear();
 	GetFallingPieces(s_FallingNow);
+	if (PerformanceMan::IsTiming()) {
+		// Parts of the moving pieces' time, for the readout.
+		PerformanceMan::AddLogTime("Collapse: crush check (in moving pieces)", s_CrushMicros);
+		PerformanceMan::AddLogTime("Collapse: redrawing pieces (in moving pieces)", s_StampMicros);
+	}
+	stages.Next("Collapse: ground checks");
 	// The checks come due: a few an update (more when many are due, so the wait stays short), the longest due first, the rest carried over. A place
 	// and size already checked this update isn't checked again (a crater queued twice, or a check's second look come due while its first waited).
 	constexpr int c_ChecksPerUpdate = 4;
@@ -4046,6 +4164,7 @@ void TerrainCollapse::PullPiece(long id, const Vector& point, const Vector& chan
 		float push = size / (1.0F / body.Mass + armCrossWay * armCrossWay / body.Inertia);
 		body.Vel += way * (push / body.Mass);
 		body.Spin += armCrossWay * push / body.Inertia;
+		WakeBody(body);
 		return;
 	}
 }

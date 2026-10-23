@@ -1176,6 +1176,7 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("FixDebrisRestsAcrossGaps", { reader >> m_SlowdownFixes.DebrisRestsAcrossGaps; });
 	MatchProperty("FixGasAreaShrinks", { reader >> m_SlowdownFixes.GasAreaShrinks; });
 	MatchProperty("FixLightingSplitsChanges", { reader >> m_SlowdownFixes.LightingSplitsChanges; });
+	MatchProperty("FixFallingGround", { reader >> m_SlowdownFixes.FallingGround; });
 	MatchProperty("MaxLooseBits", { reader >> m_SlowdownFixes.MaxLooseBits; m_SlowdownFixes.MaxLooseBits = std::clamp(m_SlowdownFixes.MaxLooseBits, 0, 50000); });
 	MatchProperty("MaxLooseBitsOfKinds", {
 		for (int& most: m_SlowdownFixes.MaxLooseBitsOf) {
@@ -1975,6 +1976,7 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("FixDebrisRestsAcrossGaps", m_SlowdownFixes.DebrisRestsAcrossGaps);
 	writer.NewPropertyWithValue("FixGasAreaShrinks", m_SlowdownFixes.GasAreaShrinks);
 	writer.NewPropertyWithValue("FixLightingSplitsChanges", m_SlowdownFixes.LightingSplitsChanges);
+	writer.NewPropertyWithValue("FixFallingGround", m_SlowdownFixes.FallingGround);
 	writer.NewPropertyWithValue("MaxLooseBits", m_SlowdownFixes.MaxLooseBits);
 	{
 		std::string kinds;
