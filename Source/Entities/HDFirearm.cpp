@@ -1263,6 +1263,38 @@ void HDFirearm::DrawHUD(BITMAP* pTargetBitmap, const Vector& targetPos, int whic
 	sharpLength -= static_cast<float>(pointSpacing * pointCount) * 0.5F;
 	Vector muzzleOffset(std::max(m_MuzzleOff.m_X, m_SpriteRadius), m_MuzzleOff.m_Y);
 
+	// With the camera held on the unit, a long sharp aim would run off the screen, so the dots are pulled in to stay inside the view, whatever the zoom.
+	// Only the drawing: the sharp aim itself, and what it does for accuracy, is left as it is.
+	if (g_SettingsMan.CameraCentredOnUnit() && rootActor && rootActor->IsPlayerControlled()) {
+		const float edgeMargin = 6.0F;
+		Vector start = RotateOffset(muzzleOffset) + m_Pos - targetPos;
+		g_SceneMan.WrapPosition(start);
+		Vector direction = RotateOffset(Vector(1.0F, 0.0F));
+		float minX = edgeMargin;
+		float minY = edgeMargin;
+		float maxX = static_cast<float>(pTargetBitmap->w) - edgeMargin;
+		float maxY = static_cast<float>(pTargetBitmap->h) - edgeMargin;
+		// A muzzle already off this view (another seam copy of the screen) is left alone.
+		if (start.m_X >= minX && start.m_X <= maxX && start.m_Y >= minY && start.m_Y <= maxY) {
+			float maxReach = std::numeric_limits<float>::max();
+			if (direction.m_X > 0.001F) {
+				maxReach = std::min(maxReach, (maxX - start.m_X) / direction.m_X);
+			} else if (direction.m_X < -0.001F) {
+				maxReach = std::min(maxReach, (minX - start.m_X) / direction.m_X);
+			}
+			if (direction.m_Y > 0.001F) {
+				maxReach = std::min(maxReach, (maxY - start.m_Y) / direction.m_Y);
+			} else if (direction.m_Y < -0.001F) {
+				maxReach = std::min(maxReach, (minY - start.m_Y) / direction.m_Y);
+			}
+			// The farthest dot sits at sharpLength plus the spacing of all but one point.
+			float farthestDot = sharpLength + static_cast<float>(pointSpacing * (pointCount - 1));
+			if (farthestDot > maxReach) {
+				sharpLength = std::max(sharpLength - (farthestDot - maxReach), 0.0F);
+			}
+		}
+	}
+
 	for (int i = 0; i < pointCount; ++i) {
 		Vector aimPoint(sharpLength + static_cast<float>(pointSpacing * i), 0);
 		aimPoint = RotateOffset(aimPoint + muzzleOffset) + m_Pos;
