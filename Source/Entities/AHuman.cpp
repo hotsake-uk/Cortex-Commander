@@ -2516,22 +2516,34 @@ void AHuman::PreControllerUpdate() {
 		if (aiNotFighting) {
 			const bool left = m_Controller.IsState(MOVE_LEFT);
 			const bool right = m_Controller.IsState(MOVE_RIGHT);
-			if (m_MovementState == JUMP && std::abs(m_Vel.m_X) > 1.5F) {
-				travel = m_Vel.m_X;
-			} else if (m_MovementState == JUMP && !m_MovePath.empty()) {
-				float toNext = g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_X;
-				travel = std::abs(toNext) > 4.0F ? toNext : 0.0F;
+			if (m_MovementState == JUMP) {
+				// (In the air it turns to its drift only when it is plainly going that way, and not within half a second of its last turn: on
+				// 1.5 m/s or a route point 4 px to one side, a unit steadying itself on the jet drifted to and fro and turned with each swing,
+				// several times a second. Otherwise it keeps the way it faces; the look is the head's and the arms'.)
+				const float facing = m_HFlipped ? -1.0F : 1.0F;
+				float toNext = m_MovePath.empty() ? 0.0F : g_SceneMan.ShortestDistance(m_Pos, m_MovePath.front()).m_X;
+				if (std::abs(m_Vel.m_X) > 3.0F) {
+					travel = m_Vel.m_X;
+				} else if (std::abs(toNext) > GetMoveHeight() * 0.5F) {
+					travel = toNext;
+				} else {
+					travel = facing;
+				}
+				if (travel * facing < 0.0F && !m_AimFlipTimer.IsPastSimMS(500)) {
+					travel = facing;
+				}
 			} else if (left != right) {
 				travel = right ? 1.0F : -1.0F;
 			}
 		}
 		if (travel != 0.0F) {
 			analogAim.m_X = travel > 0.0F ? std::abs(analogAim.m_X) + 0.01F : -std::abs(analogAim.m_X) - 0.01F;
-		} else if (m_Controller.GetInputMode() == Controller::CIM_AI && m_MovementState != JUMP && !m_Ladder.active && !m_RopeHold.active && !(m_pJetpack && m_pJetpack->IsEmitting())) {
-			// (An AI unit on the ground aiming near straight down or up keeps its facing. It aims from its gun or its eyes, which go to the
-			// other side of the body when it turns, so a target just below or above was on the other side after each turn and it turned back
-			// the next frame, every frame: it shook, its stride restarted and its lean snapped round. Just after a turn the margin is wider, so
-			// that jump can't turn it straight back. Not flying, jetting or on a ladder or rope, nor a player: those turn as they always did.)
+		} else if (m_Controller.GetInputMode() == Controller::CIM_AI && !m_Ladder.active && !m_RopeHold.active) {
+			// (An AI unit aiming near straight down or up keeps its facing, on the ground or in the air. It aims from its gun or its eyes, which
+			// go to the other side of the body when it turns, so a target just below or above was on the other side after each turn and it
+			// turned back the next frame, every frame: it shook, its stride restarted and its lean snapped round. Just after a turn the margin
+			// is wider, so that jump can't turn it straight back. Only the facing is held: the AI's jet is steered by its stick (PilotFlight),
+			// not its aim. Not on a ladder or rope, nor a player: those turn as they always did.)
 			const float noTurnTan = m_AimFlipTimer.IsPastSimMS(300) ? 0.27F : 1.0F; // About 15 degrees off vertical, 45 just after a turn.
 			if (std::abs(analogAim.m_X) < std::abs(analogAim.m_Y) * noTurnTan) {
 				analogAim.m_X = m_HFlipped ? -std::abs(analogAim.m_X) - 0.01F : std::abs(analogAim.m_X) + 0.01F;
