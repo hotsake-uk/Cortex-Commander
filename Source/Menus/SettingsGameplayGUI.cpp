@@ -38,7 +38,10 @@ SettingsGameplayGUI::SettingsGameplayGUI(GUIControlManager* parentControlManager
 	m_ShowEnemyHUDCheckbox->SetCheck(g_SettingsMan.ShowEnemyHUD());
 
 	m_CameraCentredOnUnitCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxCameraCentredOnUnit"));
-	m_CameraCentredOnUnitCheckbox->SetCheck(g_SettingsMan.CameraCentredOnUnit());
+	// (Guarded, so a settings layout without the checkbox, an older or modded one, doesn't stop the game starting.)
+	if (m_CameraCentredOnUnitCheckbox) {
+		m_CameraCentredOnUnitCheckbox->SetCheck(g_SettingsMan.CameraCentredOnUnit());
+	}
 
 	m_EnableSmartBuyMenuNavigationCheckbox = dynamic_cast<GUICheckbox*>(m_GUIControlManager->GetControl("CheckboxSmartBuyMenuNavigation"));
 	m_EnableSmartBuyMenuNavigationCheckbox->SetCheck(g_SettingsMan.SmartBuyMenuNavigationEnabled());
@@ -146,7 +149,7 @@ void SettingsGameplayGUI::HandleInputEvents(GUIEvent& guiEvent) {
 			g_SettingsMan.SetNoSceneWrap(m_NoSceneWrapCheckbox->GetCheck());
 		} else if (guiEvent.GetControl() == m_ShowEnemyHUDCheckbox) {
 			g_SettingsMan.SetShowEnemyHUD(m_ShowEnemyHUDCheckbox->GetCheck());
-		} else if (guiEvent.GetControl() == m_CameraCentredOnUnitCheckbox) {
+		} else if (m_CameraCentredOnUnitCheckbox && guiEvent.GetControl() == m_CameraCentredOnUnitCheckbox) {
 			g_SettingsMan.SetCameraCentredOnUnit(m_CameraCentredOnUnitCheckbox->GetCheck());
 		} else if (guiEvent.GetControl() == m_EnableSmartBuyMenuNavigationCheckbox) {
 			g_SettingsMan.SetSmartBuyMenuNavigation(m_EnableSmartBuyMenuNavigationCheckbox->GetCheck());
