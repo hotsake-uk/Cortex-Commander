@@ -14,6 +14,7 @@
 #include <memory>
 #include <functional>
 #include <vector>
+#include <string>
 #include <unordered_map>
 
 using namespace micropather;
@@ -439,6 +440,19 @@ namespace RTE {
 		/// How many nodes are marked as changed and not yet sampled again (see RecalculateAreaCosts).
 		size_t GetWaitingNodeCount() const { return m_WaitingNodes.size(); }
 
+		/// The route searches of every grid over the last full second, for the slowdown readout. Counted on the pathing threads.
+		struct SearchStats {
+			int Searches = 0; //!< Routes asked for and searched.
+			int Solves = 0; //!< Searches of the grid those took, the tries from a start beside the unit included.
+			int ThroughGround = 0; //!< Answers that only get there through ground the unit can't dig (cut short at it), or with no way at all.
+			int Retries = 0; //!< Tries from a start beside the unit, after an answer through ground.
+			int Reused = 0; //!< Answers given again from a recent search instead of searching (SlowdownFixTuning::PathSearchReuse).
+			float TotalMS = 0.0F; //!< The time the searches took on the pathing threads, all together.
+			float WorstMS = 0.0F; //!< The longest single search.
+		};
+		/// The last full second's search counts (see SearchStats). Call from the main thread; it rolls the second over.
+		static SearchStats GetSearchStats();
+
 		/// How many nodes the grid has; their ids are 0 up to this.
 		size_t GetNodeCount() const { return m_NodeGrid.size(); }
 
@@ -613,6 +627,22 @@ namespace RTE {
 		bool m_WrapsX; //!< Whether the pathing grid wraps on the X axis.
 		bool m_WrapsY; //!< Whether the pathing grid wraps on the Y axis.
 		std::atomic<int> m_CurrentPathingRequests; //!< The number of active async pathing requests.
+		std::atomic<unsigned> m_GridVersion{0}; //!< Goes up whenever a node's costs change (UpdateNodeList): a kept answer from before is out of date.
+		/// A search's answer through ground the searcher can't dig, or with no way, kept to give again (SlowdownFixTuning::PathSearchReuse).
+		struct KeptAnswer {
+			unsigned GridVersion = 0;
+			long long Until = 0; //!< The sim update it's kept until.
+			int Status = 0;
+			std::list<Vector> Path;
+			std::list<PathStepKind> Kinds;
+			float TotalCost = 0.0F;
+			int CutMaterial = 0;
+			bool CutAtDoor = false;
+		};
+		std::mutex m_KeptAnswersMutex;
+		std::unordered_map<std::string, KeptAnswer> m_KeptAnswers; //!< By start node, goal node and what the searcher is (KeptAnswerKey).
+		/// The key a search's answer is kept under, or empty for one that isn't kept (a dig-to, a sky order).
+		std::string KeptAnswerKey(const Vector& start, const Vector& end, const PathAgent& agent) const;
 		std::mutex m_HeldRequestsMutex; //!< Guards m_HoldingNewRequests, m_HeldRequests, and the count going up from zero when a search is sent.
 		bool m_HoldingNewRequests = false; //!< Whether new async searches are kept back (HoldNewRequests).
 		/// A search kept back by HoldNewRequests: how to send it, and how to answer it as no route if it never is.

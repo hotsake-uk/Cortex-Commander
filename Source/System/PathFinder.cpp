@@ -13,6 +13,7 @@
 #include "Scene.h"
 #include "SceneMan.h"
 #include "ThreadMan.h"
+#include "TimerMan.h"
 
 #include "tracy/Tracy.hpp"
 
@@ -52,6 +53,23 @@ struct MicroPatherWrapper {
 };
 
 thread_local MicroPatherWrapper s_Pather;
+
+namespace {
+	// The route searches of every grid this second, for the slowdown readout (PathFinder::GetSearchStats). Added to on the pathing threads.
+	std::atomic<int> s_StatSearches = 0;
+	std::atomic<int> s_StatSolves = 0;
+	std::atomic<int> s_StatThroughGround = 0;
+	std::atomic<int> s_StatRetries = 0;
+	std::atomic<int> s_StatReused = 0;
+	std::atomic<long long> s_StatMicros = 0;
+	std::atomic<long long> s_StatWorstMicros = 0;
+	PathFinder::SearchStats s_LastSecondStats;
+	std::chrono::steady_clock::time_point s_StatSecondStart = std::chrono::steady_clock::now();
+
+	/// What a kept answer through ground (SlowdownFixTuning::PathSearchReuse) is given again for: two seconds of sim updates.
+	constexpr long long c_KeptAnswerUpdates = 120;
+	constexpr size_t c_KeptAnswersMost = 512;
+}
 
 // How high the given agent can jump / jetpack vertically, in metres
 thread_local float s_JumpHeight = 0.0F;
@@ -171,6 +189,9 @@ void PathFinder::Clear() {
 	m_DebugLeaps.clear();
 	m_NodeDimension = SCENEGRIDSIZE;
 	m_Offset = Vector();
+	++m_GridVersion;
+	std::scoped_lock lock(m_KeptAnswersMutex);
+	m_KeptAnswers.clear();
 }
 
 int PathFinder::Create(int nodeDimension) {
@@ -542,6 +563,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 	// If end node is invalid, there's no path
 	if (startNode && endNode && endNode->m_Navigable) {
 		auto solveStart = std::chrono::steady_clock::now();
+		++s_StatSolves;
 		result = GetPather()->Solve(static_cast<void*>(startNode), static_cast<void*>(endNode), &statePath, &totalCostResult);
 		s_LastSolveMS = std::chrono::duration<double, std::milli>(std::chrono::steady_clock::now() - solveStart).count();
 		// A route that only exists through ground the searcher can't dig is usually down to the start node: a unit pressed into a bunker wall or
@@ -549,6 +571,7 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 		// (Always, as before the big-map speedups: gated on the start being boxed in, it changed which routes units got, and the retries only
 		// run on a search that has already come back through ground.)
 		if (result == MicroPather::SOLVED && totalCostResult > 100000.0F && digStrength <= c_PathFindingDefaultDigStrength + 1.0F) {
+			const bool reuseSearches = g_SettingsMan.SlowdownFixes().PathSearchReuse;
 			const PathNode* alternatives[] = {startNode->Up, startNode->Down, startNode->Left, startNode->Right, startNode->LeftUp, startNode->UpRight, startNode->DownLeft, startNode->RightDown};
 			for (const PathNode* alternative: alternatives) {
 				if (!alternative || !alternative->m_Navigable || TerrNav(static_cast<int>(alternative->Pos.m_X), static_cast<int>(alternative->Pos.m_Y)) != MaterialColorKeys::g_MaterialAir) {
@@ -557,6 +580,8 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 				std::vector<void*> otherPath;
 				float otherCost = 0.0F;
 				GetPather()->Reset();
+				++s_StatSolves;
+				++s_StatRetries;
 				int otherResult = GetPather()->Solve(const_cast<PathNode*>(alternative), static_cast<void*>(endNode), &otherPath, &otherCost);
 				if (otherResult == MicroPather::SOLVED && otherCost < totalCostResult) {
 					result = otherResult;
@@ -565,6 +590,12 @@ int PathFinder::CalculatePath(Vector start, Vector end, std::list<Vector>& pathR
 					if (totalCostResult <= 100000.0F) {
 						break;
 					}
+				}
+				// Route search speedups: a start beside it that comes back through the same ground, at all but the same cost, is on the same side of
+				// it, and so would the rest be. Each try is a search of everything the unit can reach, the whole map for one cut off by a collapse:
+				// nine of them for every route it asked for, all match long once the ground was broken up.
+				if (reuseSearches && otherResult == MicroPather::SOLVED && otherCost > 100000.0F && std::abs(otherCost - totalCostResult) < 50.0F) {
+					break;
 				}
 			}
 		}
@@ -1260,11 +1291,60 @@ std::shared_ptr<volatile PathRequest> PathFinder::CalculatePathAsync(Vector star
 			    };
 			    bool searched = false;
 			    try {
-				    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
-				    request.cutAtDoor = s_LastCutAtDoor;
-				    request.skyRoute = s_LastSkyRoute;
-				    request.cutMaterial = s_LastCutMaterial;
-				    request.pathLength = request.path.size();
+				    // Route search speedups: an answer through ground the unit can't dig (or with no way) is given again, for the same start, goal and kind
+				    // of unit, while the grid is as it was (see KeptAnswer).
+				    const bool reuse = g_SettingsMan.SlowdownFixes().PathSearchReuse;
+				    const std::string key = reuse ? KeptAnswerKey(start, end, agent) : std::string();
+				    const long long now = g_TimerMan.GetSimUpdateCount();
+				    bool reused = false;
+				    if (!key.empty()) {
+					    std::scoped_lock lock(m_KeptAnswersMutex);
+					    if (auto kept = m_KeptAnswers.find(key); kept != m_KeptAnswers.end()) {
+						    if (kept->second.GridVersion == m_GridVersion.load() && now <= kept->second.Until) {
+							    request.status = kept->second.Status;
+							    request.path = kept->second.Path;
+							    request.kinds = kept->second.Kinds;
+							    request.totalCost = kept->second.TotalCost;
+							    request.cutAtDoor = kept->second.CutAtDoor;
+							    request.skyRoute = false;
+							    request.cutMaterial = kept->second.CutMaterial;
+							    request.pathLength = request.path.size();
+							    reused = true;
+						    } else {
+							    m_KeptAnswers.erase(kept);
+						    }
+					    }
+				    }
+				    if (reused) {
+					    ++s_StatReused;
+				    } else {
+					    const unsigned gridVersion = m_GridVersion.load();
+					    auto searchStart = std::chrono::steady_clock::now();
+					    request.status = this->CalculatePath(start, end, request.path, request.totalCost, agent, &request.kinds);
+					    long long micros = std::chrono::duration_cast<std::chrono::microseconds>(std::chrono::steady_clock::now() - searchStart).count();
+					    request.cutAtDoor = s_LastCutAtDoor;
+					    request.skyRoute = s_LastSkyRoute;
+					    request.cutMaterial = s_LastCutMaterial;
+					    request.pathLength = request.path.size();
+					    ++s_StatSearches;
+					    s_StatMicros += micros;
+					    for (long long worst = s_StatWorstMicros.load(); micros > worst && !s_StatWorstMicros.compare_exchange_weak(worst, micros);) {}
+					    const bool throughGround = request.status == MicroPather::NO_SOLUTION || (request.status == MicroPather::SOLVED && request.totalCost > 100000.0F);
+					    if (throughGround) {
+						    ++s_StatThroughGround;
+					    }
+					    if (throughGround && !key.empty() && !request.skyRoute) {
+						    std::scoped_lock lock(m_KeptAnswersMutex);
+						    if (m_KeptAnswers.size() >= c_KeptAnswersMost) {
+							    for (auto kept = m_KeptAnswers.begin(); kept != m_KeptAnswers.end();) {
+								    kept = (kept->second.GridVersion != m_GridVersion.load() || now > kept->second.Until) ? m_KeptAnswers.erase(kept) : std::next(kept);
+							    }
+						    }
+						    if (m_KeptAnswers.size() < c_KeptAnswersMost) {
+							    m_KeptAnswers[key] = {gridVersion, now + c_KeptAnswerUpdates, request.status, request.path, request.kinds, request.totalCost, request.cutMaterial, request.cutAtDoor};
+						    }
+					    }
+				    }
 				    searched = true;
 			    } catch (const std::exception& exception) {
 				    noteThrow(exception.what(), "the search");
@@ -3700,6 +3780,7 @@ bool PathFinder::UpdateNodeList(const std::vector<int>& nodeVec) {
 	    });
 
 	if (anyChange) {
+		++m_GridVersion;
 		// UpdateNodeCosts only calculates Materials for Right and Down directions, so each PathNode's Up and Left direction Materials need to be matched to the respective neighbor's opposite direction Materials.
 		// For example, this PathNode's Left Material is its Left neighbor's Right Material.
 		std::for_each(
@@ -3857,4 +3938,69 @@ void PathFinder::DebugRender(BITMAP* targetBitmap, const Vector& targetPos) cons
 		Vector endPos = startPos + Vector(m_NodeDimension * m_GridWidth, 0.0F);
 		line(targetBitmap, startPos.GetX(), startPos.GetY(), endPos.GetX(), endPos.GetY(), g_BlackColor);
 	}
+}
+
+std::string PathFinder::KeptAnswerKey(const Vector& start, const Vector& end, const PathAgent& agent) const {
+	// (Not a dig-to, whose route is the straight line dug through, nor a flight order, whose route is the flight: both are worked out from the points themselves.)
+	if (agent.DigGoal || agent.StraightFlight || agent.SkyRoute || m_NodeDimension == 0) {
+		return std::string();
+	}
+	Vector from = start;
+	Vector to = end;
+	g_SceneMan.ForceBounds(from);
+	g_SceneMan.ForceBounds(to);
+	const float size = static_cast<float>(m_NodeDimension);
+	// The nodes the search goes from and to, and everything about the searcher the grid's costs are worked out from (whole pixels and
+	// tenths are plenty: units of one kind ask with the same). Its own taste in routes (RouteSeed) and its speed in the air are left out, so
+	// units of a kind share the answer: through ground they can't dig, any of their routes ends at the same face.
+	std::string key;
+	key.reserve(160);
+	auto add = [&key](float value) {
+		key += std::to_string(static_cast<long long>(std::lround(std::min(value, 1.0e9F) * 10.0F)));
+		key += ',';
+	};
+	add(std::floor(from.m_X / size));
+	add(std::floor(from.m_Y / size));
+	add(std::floor(to.m_X / size));
+	add(std::floor(to.m_Y / size));
+	for (float value: {agent.JumpHeight, agent.DigStrength, agent.FastDigStrength, agent.SlowDigFactor, agent.BreachStrength, agent.StandHeight, agent.CrawlHeight, agent.CrouchHeight, agent.HalfWidth, agent.MantleHeight, agent.JetTimeMS, agent.JetClimbMSPerPx, agent.LeapHeight, agent.LeapSpeed, agent.MaxSafeFall, agent.BreathSeconds, agent.Caution, agent.ThreatWeight, agent.DigCostScale, agent.FlightCostScale, agent.LineWeight, agent.ClimbOnFootScale}) {
+		add(value);
+	}
+	key += agent.WalksStairs ? 'w' : '-';
+	key += agent.ClimbsLadders ? 'l' : '-';
+	key += agent.Scrambles ? 's' : '-';
+	key += agent.Floats ? 'f' : '-';
+	key += agent.CrossesLava ? 'v' : '-';
+	key += agent.CallsLifts ? 'c' : '-';
+	key += std::to_string(agent.Climbs) + ',' + std::to_string(agent.ThreatTeam) + ',';
+	// The places and flights to keep away from (its own and its team's failures), which change what the search pays.
+	for (const Vector& place: agent.Avoid) {
+		add(std::floor(place.m_X));
+		add(std::floor(place.m_Y));
+	}
+	key += '|';
+	for (const std::pair<Vector, Vector>& link: agent.AvoidLinks) {
+		add(std::floor(link.first.m_X));
+		add(std::floor(link.first.m_Y));
+		add(std::floor(link.second.m_X));
+		add(std::floor(link.second.m_Y));
+	}
+	return key;
+}
+
+PathFinder::SearchStats PathFinder::GetSearchStats() {
+	auto now = std::chrono::steady_clock::now();
+	if (std::chrono::duration<float>(now - s_StatSecondStart).count() >= 1.0F) {
+		s_StatSecondStart = now;
+		SearchStats stats;
+		stats.Searches = s_StatSearches.exchange(0);
+		stats.Solves = s_StatSolves.exchange(0);
+		stats.ThroughGround = s_StatThroughGround.exchange(0);
+		stats.Retries = s_StatRetries.exchange(0);
+		stats.Reused = s_StatReused.exchange(0);
+		stats.TotalMS = static_cast<float>(s_StatMicros.exchange(0)) / 1000.0F;
+		stats.WorstMS = static_cast<float>(s_StatWorstMicros.exchange(0)) / 1000.0F;
+		s_LastSecondStats = stats;
+	}
+	return s_LastSecondStats;
 }
