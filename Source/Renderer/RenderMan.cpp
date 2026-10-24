@@ -224,13 +224,14 @@ namespace {
 	/// A sprite's authored maps for one draw: binds them on their units and says they're there, and says they're gone again after the draw, since the next draws share the program.
 	class SpriteMapsValue : public UniformValueType {
 	public:
-		SpriteMapsValue(const Shader::SpriteMapUniforms& uniforms, GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor, const SpriteStains& stains) :
-		    UniformValueType(uniforms.HasNormalMap), m_Uniforms(uniforms), m_NormalMap(normalMap), m_EmissiveMap(emissiveMap), m_SpriteUV(spriteUV), m_Strength(strength), m_TeamColor(teamColor), m_Stains(stains) {}
+		SpriteMapsValue(const Shader::SpriteMapUniforms& uniforms, GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor, const SpriteStains& stains, GLuint volumeMap, float volumeStrength) :
+		    UniformValueType(uniforms.HasNormalMap), m_Uniforms(uniforms), m_NormalMap(normalMap), m_EmissiveMap(emissiveMap), m_SpriteUV(spriteUV), m_Strength(strength), m_TeamColor(teamColor), m_Stains(stains), m_VolumeMap(volumeMap), m_VolumeStrength(volumeStrength) {}
 
 		void Enable() override {
 			static constexpr GLint c_NormalUnit = 12;
 			static constexpr GLint c_EmissiveUnit = 13;
 			static constexpr GLint c_TeamColorUnit = 14;
+			static constexpr GLint c_VolumeUnit = 15;
 			if (m_NormalMap && m_Uniforms.NormalMap >= 0) {
 				glActiveTexture(GL_TEXTURE0 + c_NormalUnit);
 				glBindTexture(GL_TEXTURE_2D, m_NormalMap);
@@ -253,6 +254,13 @@ namespace {
 				glUniform4f(m_Uniforms.TeamColor, m_TeamColor.Rgb.r, m_TeamColor.Rgb.g, m_TeamColor.Rgb.b, 1.0F);
 				glUniform4fv(m_Uniforms.TeamColorIndices, 2, m_TeamColor.Indices.data());
 			}
+			if (m_VolumeMap && m_Uniforms.VolumeMap >= 0) {
+				glActiveTexture(GL_TEXTURE0 + c_VolumeUnit);
+				glBindTexture(GL_TEXTURE_2D, m_VolumeMap);
+				glUniform1i(m_Uniforms.VolumeMap, c_VolumeUnit);
+				glUniform1i(m_Uniforms.HasVolumeMap, 1);
+				glUniform1f(m_Uniforms.VolumeStrength, m_VolumeStrength);
+			}
 			if (m_Stains.Count > 0 && m_Uniforms.StainCount >= 0) {
 				glUniform1i(m_Uniforms.StainCount, m_Stains.Count);
 				glUniform4fv(m_Uniforms.Stains, m_Stains.Count, &m_Stains.Spots[0].x);
@@ -268,6 +276,9 @@ namespace {
 			glUniform1i(m_Uniforms.HasNormalMap, 0);
 			glUniform1i(m_Uniforms.HasEmissiveMap, 0);
 			glUniform1i(m_Uniforms.HasTeamColorMap, 0);
+			if (m_Uniforms.HasVolumeMap >= 0) {
+				glUniform1i(m_Uniforms.HasVolumeMap, 0);
+			}
 			glUniform4f(m_Uniforms.TeamColor, 0.0F, 0.0F, 0.0F, 0.0F);
 			if (m_Stains.Count > 0 && m_Uniforms.StainCount >= 0) {
 				glUniform1i(m_Uniforms.StainCount, 0);
@@ -282,18 +293,20 @@ namespace {
 		float m_Strength;
 		SpriteTeamColor m_TeamColor;
 		SpriteStains m_Stains;
+		GLuint m_VolumeMap;
+		float m_VolumeStrength;
 	};
 } // namespace
 
-void RenderMan::BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor, const SpriteStains& stains) {
+void RenderMan::BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor, const SpriteStains& stains, GLuint volumeMap, float volumeStrength) {
 	m_ActiveBatch->m_ObjectMapUniforms.clear();
 	const Shader* shader = m_ActiveBatch->m_CurrentShader;
-	if (!shader || (!normalMap && !emissiveMap && !teamColor.Active && stains.Count == 0)) {
+	if (!shader || (!normalMap && !emissiveMap && !teamColor.Active && stains.Count == 0 && !volumeMap)) {
 		return;
 	}
 	const Shader::SpriteMapUniforms& uniforms = shader->GetSpriteMapUniforms();
-	if ((normalMap && uniforms.HasNormalMap >= 0) || (emissiveMap && uniforms.HasEmissiveMap >= 0) || (teamColor.Active && uniforms.TeamColor >= 0) || (stains.Count > 0 && uniforms.StainCount >= 0)) {
-		m_ActiveBatch->m_ObjectMapUniforms.push_back(std::make_shared<SpriteMapsValue>(uniforms, normalMap, emissiveMap, spriteUV, strength, teamColor, stains));
+	if ((normalMap && uniforms.HasNormalMap >= 0) || (emissiveMap && uniforms.HasEmissiveMap >= 0) || (teamColor.Active && uniforms.TeamColor >= 0) || (stains.Count > 0 && uniforms.StainCount >= 0) || (volumeMap && uniforms.HasVolumeMap >= 0)) {
+		m_ActiveBatch->m_ObjectMapUniforms.push_back(std::make_shared<SpriteMapsValue>(uniforms, normalMap, emissiveMap, spriteUV, strength, teamColor, stains, volumeMap, volumeStrength));
 	}
 }
 

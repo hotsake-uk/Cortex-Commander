@@ -25,6 +25,10 @@ uniform bool rteHasEmissiveMap; // How much each pixel glows, in its own colour:
 uniform sampler2D rteEmissiveMap;
 uniform vec4 rteMapUVRect; // Where the frame sits in rteTexture (xy corner, zw size, in UV): the sprite atlas puts it anywhere, the maps are the frame alone.
 uniform float rteMapStrength; // How much the authored maps count over the automatic ones, 0 to 1.
+// The sprite's volume map (SpriteVolume): the sprite rounded off from its outline, made by the game. One image per frame, the size of the frame.
+uniform bool rteHasVolumeMap; // RGB = normal * 0.5 + 0.5 in the frame's own axes, y down the image. A 0 outside the sprite.
+uniform sampler2D rteVolumeMap;
+uniform float rteVolumeStrength; // How steep the rounding is, 0 (flat) to 2.
 // The parts of a sprite drawn in its side's colour (MOSprite's TeamColorIndex and TeamColorMapFile).
 uniform vec4 rteTeamColor; // RGB the colour, A 1 when anything is recoloured, 0 when not.
 uniform vec4 rteTeamColorIndices[2]; // Up to 8 palette indices recoloured wherever they're drawn, -1 for none.
@@ -213,7 +217,21 @@ void main() {
 		FragColor.rgb = mix(FragColor.rgb, glow * (0.6 + 1.1 * brightness), heat * 0.75);
 		emissive = max(emissive, heat * 0.85);
 	}
-	vec3 normal = normalize(EdgeNormal(uvDx, uvDy) + vec3(relief, 0.0));
+	vec3 base = EdgeNormal(uvDx, uvDy);
+	if (rteHasVolumeMap) {
+		// The rounded surface, brought onto the screen the same way the automatic tilt is, which handles turning, flipping and scaling.
+		// The outline's own bevel is kept a little, so a part only a pixel or two wide, which the rounding can't tilt, still catches the light at its edge.
+		vec4 volume = texelFetch(rteVolumeMap, MapTexel(rteVolumeMap), 0);
+		if (volume.a > 0.5) {
+			vec2 tilt = volume.rg * 2.0 - 1.0;
+			vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+			vec2 screenTilt = transpose(mat2(uvDx / texel, uvDy / texel)) * tilt;
+			screenTilt = dot(screenTilt, screenTilt) > 1e-8 ? normalize(screenTilt) * length(tilt) : vec2(0.0);
+			vec3 rounded = normalize(vec3(screenTilt * rteVolumeStrength, max(volume.b * 2.0 - 1.0, 0.05)));
+			base = normalize(rounded + vec3(base.xy * 0.4, 0.0));
+		}
+	}
+	vec3 normal = normalize(base + vec3(relief, 0.0));
 	if (rteHasNormalMap) {
 		// The artist's normal, brought from the image's axes onto the screen the same way the automatic tilt is (which handles turning, flipping and scaling),
 		// and as steep as the relief setting makes the art's own shading.

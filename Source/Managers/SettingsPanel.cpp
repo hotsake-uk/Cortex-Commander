@@ -890,6 +890,19 @@ void DebugMan::SettingsGUI() {
 
 	auto surfaces = [&]() {
 		Slider("Edge lighting", &settings.EdgeLighting, 0.0F, 1.0F);
+		Slider("Sprite rounding", &settings.SpriteRounding, 0.0F, 2.0F);
+		Tip("Every sprite is rounded off from its outline, so lights and the sun shade units, guns, craft and the rest as solid shapes: the side towards a light lit, the far side in shade. 0: flat, with only a thin bevel at the outline.");
+		if (settings.SpriteRounding > 0.0F) {
+			Slider("Sprite rounding width", &settings.SpriteRoundingWidth, 1.0F, 24.0F, "%.0f px");
+			Tip("How far in from the outline the rounding reaches. Narrow: crisp bevelled plates. Wide: soft, clay-like bodies.");
+		}
+		Slider("Ground rounding", &settings.TerrainRounding, 0.0F, 2.0F);
+		Tip("The ground's surface rounds off where it meets the open air, so ledges, boulders and tunnel walls catch the light like solid shapes. 0: only the thin bevel at the edge.");
+		if (settings.TerrainRounding > 0.0F) {
+			Slider("Ground rounding width", &settings.TerrainRoundingWidth, 1.0F, 8.0F, "%.0f px");
+		}
+		Slider("Sun shading", &settings.SunShading, 0.0F, 1.0F);
+		Tip("The side of things turned to the sun (or moon) is lit more than the side turned away. 0: daylight lights every side alike.");
 		Slider("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
 		Check("Shine on units from lights", &settings.UnitShineLights);
 		Tip("Headlamps, fire, muzzle flashes and other lights throw highlights on units and brighten their edges facing the light. Off: units keep their art and only take the light's colour and brightness, so a unit's own headlamp can't wash it out white.");

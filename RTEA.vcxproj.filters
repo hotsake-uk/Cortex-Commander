@@ -127,6 +127,9 @@
     <ClInclude Include="Source\Renderer\SceneLighting.h">
       <Filter>Renderer</Filter>
     </ClInclude>
+    <ClInclude Include="Source\Renderer\SpriteVolume.h">
+      <Filter>Renderer</Filter>
+    </ClInclude>
     <ClInclude Include="Source\Renderer\Vertex.h">
       <Filter>Renderer</Filter>
     </ClInclude>
@@ -1539,6 +1542,9 @@
       <Filter>Entities</Filter>
     </ClCompile>
     <ClCompile Include="Source\Renderer\SceneLighting.cpp">
+      <Filter>Renderer</Filter>
+    </ClCompile>
+    <ClCompile Include="Source\Renderer\SpriteVolume.cpp">
       <Filter>Renderer</Filter>
     </ClCompile>
     <ClCompile Include="Source\Renderer\Vertex.cpp">

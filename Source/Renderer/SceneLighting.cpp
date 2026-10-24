@@ -1355,6 +1355,8 @@ const Shader* SceneLighting::PrepareTerrainShader() {
 		}
 	}
 	m_TerrainShader->SetFloat("rteRelief", m_Settings.Enabled ? m_Settings.Relief : 0.0F);
+	m_TerrainShader->SetFloat("rteRounding", m_Settings.Enabled ? m_Settings.TerrainRounding : 0.0F);
+	m_TerrainShader->SetFloat("rteRoundingWidth", std::clamp(m_Settings.TerrainRoundingWidth, 1.0F, 8.0F));
 	// The sprite shader reads sprites' own shading as relief too.
 	if (const Shader* spriteShader = g_RenderMan.GetDefaultShader()) {
 		spriteShader->Enable();
@@ -3354,6 +3356,7 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
+	m_CompositeShader->SetFloat("rteSunShading", (m_Settings.Enabled && normals) ? m_Settings.SunShading * m_SunLight : 0.0F);
 	m_CompositeShader->SetFloat("rteBackgroundShadows", m_Settings.Enabled ? m_BackgroundShadowStrength : 0.0F);
 	m_CompositeShader->SetFloat("rteBackgroundShadowLength", std::clamp(m_Settings.BackgroundShadowLength, 0.25F, 3.0F));
 	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));

@@ -105,7 +105,8 @@ namespace RTE {
 		/// @param spriteUV Where the frame sits in its GL texture (xy corner, zw size, in UV), which differs from the maps when it's in the sprite atlas.
 		/// @param strength The player's strength for authored maps, 0 to 1.
 		/// @param teamColor The parts drawn in the side's colour, if any.
-		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor = {}, const SpriteStains& stains = {});
+		/// @param volumeMap GL texture of the frame's volume map (SpriteVolume), or 0; bound on texture unit 15. @param volumeStrength How steep it makes the sprite's rounding, 0 for flat.
+		void BeginObjectMaps(GLuint normalMap, GLuint emissiveMap, const glm::vec4& spriteUV, float strength, const SpriteTeamColor& teamColor = {}, const SpriteStains& stains = {}, GLuint volumeMap = 0, float volumeStrength = 0.0F);
 
 		/// Stops drawing with a sprite's maps. Does nothing if none are on.
 		void EndObjectMaps() { m_ActiveBatch->m_ObjectMapUniforms.clear(); }

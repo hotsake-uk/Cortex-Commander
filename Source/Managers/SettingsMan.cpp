@@ -893,6 +893,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("LightingMetals", { g_PostProcessMan.GetLightingSettings().Metals = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingRelief", { g_PostProcessMan.GetLightingSettings().Relief = std::stof(reader.ReadPropValue()); });
 	MatchProperty("LightingEdgeLighting", { g_PostProcessMan.GetLightingSettings().EdgeLighting = std::stof(reader.ReadPropValue()); });
+	MatchProperty("SpriteRounding", { g_PostProcessMan.GetLightingSettings().SpriteRounding = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("SpriteRoundingWidth", { g_PostProcessMan.GetLightingSettings().SpriteRoundingWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 24.0F); });
+	MatchProperty("TerrainRounding", { g_PostProcessMan.GetLightingSettings().TerrainRounding = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 2.0F); });
+	MatchProperty("TerrainRoundingWidth", { g_PostProcessMan.GetLightingSettings().TerrainRoundingWidth = std::clamp(std::stof(reader.ReadPropValue()), 1.0F, 8.0F); });
+	MatchProperty("SunShading", { g_PostProcessMan.GetLightingSettings().SunShading = std::clamp(std::stof(reader.ReadPropValue()), 0.0F, 1.0F); });
 	MatchProperty("LightingEmissiveIntensity", { g_PostProcessMan.GetLightingSettings().EmissiveIntensity = std::stof(reader.ReadPropValue()); });
 	MatchProperty("DistortionEnabled", { g_PostProcessMan.GetLightingSettings().DistortionEnabled = std::stoi(reader.ReadPropValue()) != 0; });
 	MatchProperty("HeatHaze", { g_PostProcessMan.GetLightingSettings().HeatHaze = std::stof(reader.ReadPropValue()); });
@@ -1657,6 +1662,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("ContactShading", lighting.ContactShading);
 	writer.NewPropertyWithValue("LightingEmissiveIntensity", lighting.EmissiveIntensity);
 	writer.NewPropertyWithValue("LightingEdgeLighting", lighting.EdgeLighting);
+	writer.NewPropertyWithValue("SpriteRounding", lighting.SpriteRounding);
+	writer.NewPropertyWithValue("SpriteRoundingWidth", lighting.SpriteRoundingWidth);
+	writer.NewPropertyWithValue("TerrainRounding", lighting.TerrainRounding);
+	writer.NewPropertyWithValue("TerrainRoundingWidth", lighting.TerrainRoundingWidth);
+	writer.NewPropertyWithValue("SunShading", lighting.SunShading);
 	writer.NewPropertyWithValue("LightingSpecular", lighting.Specular);
 	writer.NewPropertyWithValue("UnitShineLights", lighting.UnitShineLights);
 	writer.NewPropertyWithValue("UnitShineLamps", lighting.UnitShineLamps);

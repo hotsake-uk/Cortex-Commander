@@ -17,6 +17,7 @@ uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest p
 uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
 uniform vec2 rteSunDirection; // Unit vector towards the sun (or the moon at night), in screen pixels (y down).
 uniform float rteSunShadows; // How much shade darkens the sky light, 0 (no directional daylight) to 1.
+uniform float rteSunShading; // How much the side of things turned to the sun (or moon) is lit more than the side turned away (LightingSettings::SunShading), after how strongly it shines; 0 for none.
 uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at full strength: darker and cooler.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
 uniform float rteBackgroundShadows; // How dark the terrain's shadows on the background scenery behind it are, 0 (off) to 1, after time of day and weather.
@@ -526,6 +527,7 @@ void main() {
 		vec3 skyColor = rteSkyColor;
 		float daylight = sky;
 		float terrainShade = 0.0;
+		float sunHere = 1.0;
 		if (rteSunShadows > 0.0) {
 			float sunVisible = rteSunMapOn ? SunFromMap(worldPos, terrainPixel) : texture(rteSkyLight, worldPos / rteGridWorldSize).g;
 			float cloudShade = rteCloudShadows > 0.0 ? rteCloudShadows * CloudShade(worldPos) : 0.0;
@@ -536,6 +538,7 @@ void main() {
 			if (rteUnitShadows > 0.0) {
 				sunVisible *= mix(1.0, ObjectSunShadow(gl_FragCoord.xy, solidObject), rteUnitShadows);
 			}
+			sunHere = sunVisible;
 			float shade = (1.0 - sunVisible) * rteSunShadows;
 			if (terrainPixel) {
 				// Solid ground is kept readable by a floor of light, which would hide the shade. So ground is shaded after that floor, in the band under its surface:
@@ -554,6 +557,15 @@ void main() {
 				// Wherever the sun does reach, it lights at nearly full strength however little sky light gets there: sunlight falling through a hatch or a doorway makes a bright patch on the walls inside.
 				daylight = max(sky, sunVisible * min(rteSunShadows * 1.6, 1.0));
 			}
+		}
+		if (rteSunShading > 0.0 && normalSample.a > 0.25 && sunHere > 0.0) {
+			// Sunlit, the side turned to the sun is lit more and the side turned away less, by the normals (sprites and the ground rounded off from their outlines).
+			// Normalised by a flat surface's, which is lit exactly as without it.
+			vec2 tiltXY = normalSample.xy * 2.0 - 1.0;
+			vec3 surfaceNormal = vec3(tiltXY, sqrt(max(1.0 - dot(tiltXY, tiltXY), 0.0)));
+			vec3 toSun = normalize(vec3(rteSunDirection * 0.8, 0.6));
+			float facing = clamp(dot(surfaceNormal, toSun) / toSun.z, 0.2, 1.8);
+			daylight = min(daylight * mix(1.0, facing, rteSunShading * sunHere), 1.6);
 		}
 		light = mix(rteAmbient, skyColor, daylight) + dynamicLight;
 		if (rteIndirectStrength > 0.0) {
