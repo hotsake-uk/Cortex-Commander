@@ -60,6 +60,8 @@ uniform sampler2D rteSkyline; // 1 row, R = grid row of the first solid cell in 
 uniform vec2 rteGridWorldSize;
 uniform sampler2D rteWorldGrid; // The light grid's terrain map: R = how solid each cell is, G = how metallic its material, B = how glossy.
 uniform float rteRelief; // How much the terrain's own texture counts as relief for the lighting, 0 for none.
+uniform float rteRounding; // How steeply the ground's surface rounds off from the open air (LightingSettings::TerrainRounding), 0 for only the outline's bevel.
+uniform float rteRoundingWidth; // How far into the ground the rounding reaches, in pixels, 1 to 8.
 const int c_MaxBlasts = 8;
 uniform int rteBlastCount;
 uniform vec4 rteBlasts[c_MaxBlasts]; // xy = world position, z = wavefront radius, w = strength.
@@ -99,6 +101,24 @@ vec3 EdgeNormal(vec2 uvDx, vec2 uvDy) {
 	}
 	vec2 outward = -normalize(screenGradient);
 	return normalize(vec3(outward * edge, 1.0 - 0.6 * edge));
+}
+
+// The tilt of the ground rounded off from the open air: which way the air around lies, over two rings of looks out to the rounding width.
+// Deep in the ground, or out in a wide flat face, nothing is open and it faces the viewer; at the brink it turns most of the way to the air, and between it eases over, like a rounded slab.
+vec2 RoundedTilt(vec2 uvDx, vec2 uvDy) {
+	vec2 texel = 1.0 / vec2(textureSize(rteTexture, 0));
+	vec2 open = vec2(0.0);
+	const vec2 c_Directions[8] = vec2[8](vec2(1.0, 0.0), vec2(0.7071, 0.7071), vec2(0.0, 1.0), vec2(-0.7071, 0.7071), vec2(-1.0, 0.0), vec2(-0.7071, -0.7071), vec2(0.0, -1.0), vec2(0.7071, -0.7071));
+	for (int i = 0; i < 8; ++i) {
+		vec2 direction = c_Directions[i];
+		// The near ring counts more, so the brink turns sharply and the turn eases off further in.
+		open += direction * (1.0 - Coverage(textureUV + direction * texel * max(rteRoundingWidth * 0.4, 1.0))) * 0.6;
+		open += direction * (1.0 - Coverage(textureUV + direction * texel * rteRoundingWidth)) * 0.4;
+	}
+	// A straight brink has open air on one half of each ring: about 2.4 of the 8 directions' worth, which turns it all the way.
+	open /= 2.4;
+	mat2 uvPerPixel = mat2(uvDx / texel, uvDy / texel);
+	return transpose(uvPerPixel) * open;
 }
 
 // How high a point of the terrain's texture stands, going by how bright it is. Below zero where there's nothing.
@@ -422,6 +442,13 @@ void main() {
 		FragColor.rgba = rteColor;
 	}
 	vec3 normal = EdgeNormal(uvDx, uvDy);
+	if (rteRounding > 0.0 && (!rteIndexed || LiquidLookAt(textureUV) == 0)) {
+		// Not liquids, whose surface is its own (the ripples below). The outline's bevel is kept a little, for a lip only a pixel thick.
+		vec2 tilt = RoundedTilt(uvDx, uvDy);
+		if (dot(tilt, tilt) > 1e-6) {
+			normal = normalize(normalize(vec3(tilt * rteRounding, 1.0)) + vec3(normal.xy * 0.4, 0.0));
+		}
+	}
 	float shine = 0.0;
 	float metalness = 0.0;
 	float gloss = 0.0;

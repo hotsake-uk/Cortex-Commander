@@ -78,6 +78,9 @@ namespace RTE {
 			WetnessMap = quality >= QualityMedium;
 			// The cloud layer: a few noise reads per sky pixel, from Medium up.
 			CloudLayer = quality >= QualityMedium;
+			// Sprites and the ground shaded as rounded solids: a draw call of its own for each sprite that has a volume map, and a few texture reads per ground pixel, from Medium up.
+			SpriteRounding = quality >= QualityMedium ? 1.0F : 0.0F;
+			TerrainRounding = quality >= QualityMedium ? 1.0F : 0.0F;
 		}
 
 		/// The ready-made looks: grading, grain, vignette and bloom together.
@@ -721,6 +724,11 @@ namespace RTE {
 		float TiltShiftStrength = 0.0F; //!< How strong its blur gets, 0 to 2.
 		bool FocusEffectsInPhotoModeOnly = false; //!< Depth of field and tilt-shift only while photo mode (F8) is open. Scripts' own focus effects apply regardless.
 		float EdgeLighting = 1.0F; //!< How strongly sprite and terrain edges (from automatic normals) catch and turn away from light, 0 to 1.
+		float SpriteRounding = 1.0F; //!< How steeply sprites are rounded off from their outlines (SpriteVolume), so lights and the sun shade them as solids rather than flat cut-outs, 0 (only the outline's bevel) to 2.
+		float SpriteRoundingWidth = 5.0F; //!< How far in from a sprite's outline its rounding reaches, in the sprite's pixels: narrow for crisp bevelled plates, wide for soft clay-like bodies.
+		float TerrainRounding = 1.0F; //!< The same for the ground: how steeply its surface rounds off from the open air, 0 (only the outline's bevel) to 2.
+		float TerrainRoundingWidth = 6.0F; //!< How far into the ground its rounding reaches, in pixels, up to 8.
+		float SunShading = 0.6F; //!< How much the side of things turned to the sun (or moon) is lit more than the side turned away, by their normals, 0 (all sides alike, as before) to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
 		float HeatHaze = 2.2F; //!< Heat haze shimmer, in pixels at full heat.

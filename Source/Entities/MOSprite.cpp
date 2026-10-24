@@ -6,6 +6,7 @@
 #include "FrameMan.h"
 #include "Draw.h"
 #include "RenderMan.h"
+#include "SpriteVolume.h"
 #include "PostProcessMan.h"
 #include "DebugMan.h"
 #include "ConsoleMan.h"
@@ -732,11 +733,17 @@ void MOSprite::ApplySpriteMaps() const {
 		}
 	}
 
-	if (!normalMap && !emissiveMap && !teamColor.Active && stains.Count == 0) {
+	// Rounded off from its outline, made the first time the frame is drawn. Under an authored normal map too, for the pixels the map leaves to the automatic normal.
+	GLuint volumeMap = 0;
+	if (lighting.Enabled && lighting.SpriteRounding > 0.0F) {
+		volumeMap = SpriteVolume::Get(m_Sprites[m_Frame], lighting.SpriteRoundingWidth);
+	}
+
+	if (!normalMap && !emissiveMap && !teamColor.Active && stains.Count == 0 && !volumeMap) {
 		return;
 	}
 	const FloatRect& spriteUV = m_Sprites[m_Frame]->GetUVRect();
-	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F), teamColor, stains);
+	g_RenderMan.BeginObjectMaps(normalMap, emissiveMap, glm::vec4(spriteUV.x, spriteUV.y, spriteUV.w, spriteUV.h), std::min(lighting.SpriteMapStrength, 1.0F), teamColor, stains, volumeMap, lighting.SpriteRounding);
 }
 
 void MOSprite::AddBloodStain(const Vector& offset, float radius, unsigned int rgb, float amount) {
