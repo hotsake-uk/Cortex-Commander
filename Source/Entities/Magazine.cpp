@@ -1,6 +1,7 @@
 #include "Magazine.h"
 #include "PresetMan.h"
 #include "AEmitter.h"
+#include "SettingsMan.h"
 
 using namespace RTE;
 
@@ -141,19 +142,34 @@ Round* Magazine::PopNextRound() {
 }
 
 namespace {
-	/// What one round's particles cut: their impulse, as Atom strikes the terrain with (velocity, mass and sharpness).
-	float RoundDigStrength(const Round* round) {
-		const MovableObject* pBullet = round ? round->GetNextParticle() : nullptr;
-		if (!pBullet) {
+	/// What one particle cuts: its impulse, as Atom strikes the terrain with (velocity, mass and sharpness), times the Weapon damage to
+	/// terrain setting for weapon fire (a particle that hits units), as Atom scales it.
+	float ParticleDigStrength(const MovableObject* particle, float velocity) {
+		if (!particle) {
+			return 0.0F;
+		}
+		const float struck = velocity * std::abs(particle->GetMass()) * std::max(particle->GetSharpness(), 0.0F);
+		return particle->HitsMOs() ? struck * g_SettingsMan.WeaponTerrainDamage() : struck;
+	}
+
+	/// What one round cuts: the strongest of its particles and, when the firearm throws it forward (a digger's "damage" particle, a casing
+	/// is thrown aside), its shell. The Mega Digger's blast is 360, short of metal (400), but its damage particle, weapon fire, is 408 as
+	/// defined and nearly 4000 with Weapon damage to terrain at 9.64: rated by the blast alone it was "too hard to dig: Metal" while it cut it.
+	float RoundDigStrength(const Round* round, bool shellsDig) {
+		if (!round) {
 			return 0.0F;
 		}
 		float velocity = round->GetAIFireVel() > 0 ? round->GetAIFireVel() : round->GetFireVel();
-		return velocity * std::abs(pBullet->GetMass()) * std::max(pBullet->GetSharpness(), 0.0F);
+		float strength = ParticleDigStrength(round->GetNextParticle(), velocity);
+		if (shellsDig) {
+			strength = std::max(strength, ParticleDigStrength(round->GetShell(), round->GetShellVel()));
+		}
+		return strength;
 	}
 } // namespace
 
-float Magazine::EstimateDigStrength() const {
-	auto penetration = [](const Round* round) { return RoundDigStrength(round); };
+float Magazine::EstimateDigStrength(bool shellsDig) const {
+	auto penetration = [shellsDig](const Round* round) { return RoundDigStrength(round, shellsDig); };
 	// What the regular rounds cut, which is what the tool keeps cutting: the tracer, one round in ten, is only taken when there are no
 	// regular rounds. (Rated by the stronger of the two, a Light Digger was planned through dense earth and stone that only its tracers
 	// scratch, at a dozen pixels a second, and a Heavy Digger through metal; the unit stood at the face firing.) The tracers are rated on
@@ -162,16 +178,16 @@ float Magazine::EstimateDigStrength() const {
 	return std::max(1.0F, regular > 0.0F ? regular : penetration(m_pTracerRound));
 }
 
-float Magazine::EstimateSlowDigStrength() const {
-	float strength = EstimateDigStrength();
+float Magazine::EstimateSlowDigStrength(bool shellsDig) const {
+	float strength = EstimateDigStrength(shellsDig);
 	if (m_pTracerRound && m_RTTRatio > 0) {
-		strength = std::max(strength, RoundDigStrength(m_pTracerRound));
+		strength = std::max(strength, RoundDigStrength(m_pTracerRound, shellsDig));
 	}
 	return strength;
 }
 
-float Magazine::GetSlowDigFactor() const {
-	return EstimateSlowDigStrength() > EstimateDigStrength() ? static_cast<float>(std::max(m_RTTRatio, 1)) : 1.0F;
+float Magazine::GetSlowDigFactor(bool shellsDig) const {
+	return EstimateSlowDigStrength(shellsDig) > EstimateDigStrength(shellsDig) ? static_cast<float>(std::max(m_RTTRatio, 1)) : 1.0F;
 }
 
 float Magazine::GetBulletAccScalar() {
