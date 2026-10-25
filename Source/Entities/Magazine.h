@@ -92,19 +92,22 @@ namespace RTE {
 		/// @return Whether this Magazine should be relesed into scene or deleted when released.
 		bool IsDiscardable() const { return m_Discardable; }
 
-		/// Estimates what material strength the rounds in the magazine can destroy.
+		/// Estimates what material strength the rounds in the magazine can destroy, weapon fire scaled by the Weapon damage to terrain setting.
+		/// @param shellsDig Whether the firearm throws the rounds' shells forward, so they strike the ground too (a digger's damage particle).
 		/// @return The material strength.
-		float EstimateDigStrength() const;
+		float EstimateDigStrength(bool shellsDig = false) const;
 
 		/// Estimates the strongest material the rounds in the magazine cut at all: the tracers too, the stronger round some diggers fire one
 		/// in RTTRatio of (the Heavy Digger's cuts Metal, which its regular rounds don't), so never less than EstimateDigStrength.
+		/// @param shellsDig See EstimateDigStrength.
 		/// @return The material strength.
-		float EstimateSlowDigStrength() const;
+		float EstimateSlowDigStrength(bool shellsDig = false) const;
 
 		/// Gets how many times slower than the regular rounds would the magazine cuts what only its tracers cut (EstimateSlowDigStrength):
 		/// one round in this many is a tracer. 1 when the tracers cut nothing more.
+		/// @param shellsDig See EstimateDigStrength.
 		/// @return The slowdown, 1 or more.
-		float GetSlowDigFactor() const;
+		float GetSlowDigFactor(bool shellsDig = false) const;
 
 		/// Tells the AI what muzzle velocity to assume when aiming this weapon.
 		/// @return Velocity in m/s.
