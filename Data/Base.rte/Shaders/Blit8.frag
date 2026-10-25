@@ -218,6 +218,7 @@ void main() {
 		emissive = max(emissive, heat * 0.85);
 	}
 	vec3 base = EdgeNormal(uvDx, uvDy);
+	float reliefScale = 1.0;
 	if (rteHasVolumeMap) {
 		// The rounded surface, brought onto the screen the same way the automatic tilt is, which handles turning, flipping and scaling.
 		// The outline's own bevel is kept a little, so a part only a pixel or two wide, which the rounding can't tilt, still catches the light at its edge.
@@ -229,9 +230,12 @@ void main() {
 			screenTilt = dot(screenTilt, screenTilt) > 1e-8 ? normalize(screenTilt) * length(tilt) : vec2(0.0);
 			vec3 rounded = normalize(vec3(screenTilt * rteVolumeStrength, max(volume.b * 2.0 - 1.0, 0.05)));
 			base = normalize(rounded + vec3(base.xy * 0.4, 0.0));
+			// The painted relief tilts every pixel against its neighbours, several times more steeply than the rounding, so at full strength it would bury the shape.
+			// Toned down the more the sprite is rounded: the detail still catches the light, on top of the shape.
+			reliefScale = mix(1.0, 0.3, clamp(rteVolumeStrength, 0.0, 1.0));
 		}
 	}
-	vec3 normal = normalize(base + vec3(relief, 0.0));
+	vec3 normal = normalize(base + vec3(relief * reliefScale, 0.0));
 	if (rteHasNormalMap) {
 		// The artist's normal, brought from the image's axes onto the screen the same way the automatic tilt is (which handles turning, flipping and scaling),
 		// and as steep as the relief setting makes the art's own shading.

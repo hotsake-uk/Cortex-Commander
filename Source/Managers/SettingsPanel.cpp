@@ -901,8 +901,8 @@ void DebugMan::SettingsGUI() {
 		if (settings.TerrainRounding > 0.0F) {
 			Slider("Ground rounding width", &settings.TerrainRoundingWidth, 1.0F, 8.0F, "%.0f px");
 		}
-		Slider("Sun shading", &settings.SunShading, 0.0F, 1.0F);
-		Tip("The side of things turned to the sun (or moon) is lit more than the side turned away. 0: daylight lights every side alike.");
+		Slider("Sun and sky shading", &settings.SunShading, 0.0F, 1.0F);
+		Tip("The side of things turned to the sun (or moon) is lit more than the side turned away, and tops more than undersides, day or night. Shapes the rounded sprites and ground. 0: every side lit alike.");
 		Slider("Shine (metal, wet ground)", &settings.Specular, 0.0F, 3.0F);
 		Check("Shine on units from lights", &settings.UnitShineLights);
 		Tip("Headlamps, fire, muzzle flashes and other lights throw highlights on units and brighten their edges facing the light. Off: units keep their art and only take the light's colour and brightness, so a unit's own headlamp can't wash it out white.");

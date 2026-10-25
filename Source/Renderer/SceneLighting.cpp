@@ -3356,7 +3356,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_CompositeShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
 	m_CompositeShader->SetVector2f("rteSunDirection", m_SunDirection);
 	m_CompositeShader->SetFloat("rteSunShadows", m_Settings.Enabled ? m_SunShadowStrength : 0.0F);
-	m_CompositeShader->SetFloat("rteSunShading", (m_Settings.Enabled && normals) ? m_Settings.SunShading * m_SunLight : 0.0F);
+	// Not scaled by how strongly the sun shines: the shading is a share of the daylight there is, so moonlight shapes things as much, only dimmer.
+	m_CompositeShader->SetFloat("rteSunShading", (m_Settings.Enabled && normals) ? m_Settings.SunShading : 0.0F);
 	m_CompositeShader->SetFloat("rteBackgroundShadows", m_Settings.Enabled ? m_BackgroundShadowStrength : 0.0F);
 	m_CompositeShader->SetFloat("rteBackgroundShadowLength", std::clamp(m_Settings.BackgroundShadowLength, 0.25F, 3.0F));
 	m_CompositeShader->SetVector3f("rteShadeTint", glm::vec3(0.5F, 0.56F, 0.72F));
