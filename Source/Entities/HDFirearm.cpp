@@ -1180,7 +1180,13 @@ float HDFirearm::EstimateDigStrength() const {
 	if (m_AIDigStrength > 0.0F) {
 		return m_AIDigStrength;
 	}
-	return m_pMagazine ? m_pMagazine->EstimateDigStrength() : m_pMagazineReference->EstimateDigStrength();
+	const Magazine* magazine = m_pMagazine ? m_pMagazine : m_pMagazineReference;
+	return magazine ? magazine->EstimateDigStrength(ShellsDig()) : 0.0F;
+}
+
+bool HDFirearm::ShellsDig() const {
+	// Thrown out ahead, within a few degrees of the aim, as the diggers throw their damage particle; a casing is thrown aside or back.
+	return std::abs(m_ShellEjectAngle) <= 30.0F;
 }
 
 float HDFirearm::EstimateSlowDigStrength() const {
@@ -1188,7 +1194,7 @@ float HDFirearm::EstimateSlowDigStrength() const {
 		return m_AIDigStrength;
 	}
 	const Magazine* magazine = m_pMagazine ? m_pMagazine : m_pMagazineReference;
-	return magazine ? magazine->EstimateSlowDigStrength() : EstimateDigStrength();
+	return magazine ? magazine->EstimateSlowDigStrength(ShellsDig()) : EstimateDigStrength();
 }
 
 float HDFirearm::GetSlowDigFactor() const {
@@ -1196,7 +1202,7 @@ float HDFirearm::GetSlowDigFactor() const {
 		return 1.0F;
 	}
 	const Magazine* magazine = m_pMagazine ? m_pMagazine : m_pMagazineReference;
-	return magazine ? magazine->GetSlowDigFactor() : 1.0F;
+	return magazine ? magazine->GetSlowDigFactor(ShellsDig()) : 1.0F;
 }
 
 void HDFirearm::Draw(BITMAP* pTargetBitmap, const Vector& targetPos, DrawMode mode, bool onlyPhysical) const {

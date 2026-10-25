@@ -568,6 +568,11 @@ namespace RTE {
 		/// @return The slowdown, 1 or more.
 		float GetSlowDigFactor() const;
 
+		/// Whether this throws its rounds' shells forward (ShellEjectAngle within 30 degrees of the aim), so they strike the ground as the
+		/// rounds do: the diggers' damage particle. Counted in the dig strength when so.
+		/// @return Whether the shells dig.
+		bool ShellsDig() const;
+
 		/// Gets what this says it digs, for a tool that cuts the ground in its own script rather than with its rounds (DG-3); 0 for none.
 		float GetAIDigStrength() const { return m_AIDigStrength; }
 
