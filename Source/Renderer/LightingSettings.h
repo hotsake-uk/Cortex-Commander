@@ -728,7 +728,7 @@ namespace RTE {
 		float SpriteRoundingWidth = 5.0F; //!< How far in from a sprite's outline its rounding reaches, in the sprite's pixels: narrow for crisp bevelled plates, wide for soft clay-like bodies.
 		float TerrainRounding = 1.0F; //!< The same for the ground: how steeply its surface rounds off from the open air, 0 (only the outline's bevel) to 2.
 		float TerrainRoundingWidth = 6.0F; //!< How far into the ground its rounding reaches, in pixels, up to 8.
-		float SunShading = 0.6F; //!< How much the side of things turned to the sun (or moon) is lit more than the side turned away, by their normals, 0 (all sides alike, as before) to 1.
+		float SunShading = 0.6F; //!< How much the side of things turned to the sun (or moon) is lit more than the side turned away, and their tops more than their undersides, by their normals, 0 (all sides alike, as before) to 1.
 
 		bool DistortionEnabled = true; //!< Heat haze above hot things and shockwaves from explosions.
 		float HeatHaze = 2.2F; //!< Heat haze shimmer, in pixels at full heat.

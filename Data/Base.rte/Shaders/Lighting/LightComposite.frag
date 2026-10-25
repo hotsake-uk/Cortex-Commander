@@ -17,7 +17,7 @@ uniform sampler2D rteOccluders; // Player screen: RG = position of the nearest p
 uniform sampler2D rteSurface; // Player screen surface values, B = 1 where a solid object was drawn.
 uniform vec2 rteSunDirection; // Unit vector towards the sun (or the moon at night), in screen pixels (y down).
 uniform float rteSunShadows; // How much shade darkens the sky light, 0 (no directional daylight) to 1.
-uniform float rteSunShading; // How much the side of things turned to the sun (or moon) is lit more than the side turned away (LightingSettings::SunShading), after how strongly it shines; 0 for none.
+uniform float rteSunShading; // How much the side of things turned to the sun (or moon) is lit more than the side turned away, and their tops more than their undersides (LightingSettings::SunShading); 0 for none.
 uniform vec3 rteShadeTint; // What sky light is multiplied by in full shade at full strength: darker and cooler.
 uniform float rteUnitShadows; // How dark the shadows of solid objects are, 0 (off) to 1.
 uniform float rteBackgroundShadows; // How dark the terrain's shadows on the background scenery behind it are, 0 (off) to 1, after time of day and weather.
@@ -564,7 +564,9 @@ void main() {
 			vec2 tiltXY = normalSample.xy * 2.0 - 1.0;
 			vec3 surfaceNormal = vec3(tiltXY, sqrt(max(1.0 - dot(tiltXY, tiltXY), 0.0)));
 			vec3 toSun = normalize(vec3(rteSunDirection * 0.8, 0.6));
-			float facing = clamp(dot(surfaceNormal, toSun) / toSun.z, 0.2, 1.8);
+			// It only takes light away from the far side, never adds to the near one: the lit scene feeds the bounced light (indirect light and radiance cascades),
+			// so any boost would build on itself frame after frame until units glow white.
+			float facing = clamp(dot(surfaceNormal, toSun) / toSun.z, 0.3, 1.0);
 			daylight = min(daylight * mix(1.0, facing, rteSunShading * sunHere), 1.6);
 		}
 		light = mix(rteAmbient, skyColor, daylight) + dynamicLight;
@@ -610,6 +612,15 @@ void main() {
 		}
 		if (sceneDepth < rteForegroundDepth) {
 			light = max(light, rteForegroundAmbient);
+		}
+		if (rteSunShading > 0.0 && normalSample.a > 0.25 && sceneDepth < rteForegroundDepth) {
+			// Light from the sky and the ambient light come from above more than below, day or night: tops lighter, undersides darker, by the normals,
+			// so rounded sprites and ground read as solid shapes even by moonlight or in a cave. Lamps' and fires' light keeps its own direction.
+			float facingUp = -(normalSample.y * 2.0 - 1.0);
+			// Never brighter than flat, for the same reason as the sun's above.
+			float above = clamp(1.0 + facingUp * 0.6, 0.45, 1.0);
+			vec3 steady = max(light - dynamicLight, vec3(0.0));
+			light = steady * mix(1.0, above, rteSunShading) + min(dynamicLight, light);
 		}
 		if (terrainShade > 0.0) {
 			// Shade dims daylight, not the light of lamps and fire falling on the same ground.
