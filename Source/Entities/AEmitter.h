@@ -420,6 +420,8 @@ namespace RTE {
 		// The scale factor that will be applied to the regular spread and emission
 		// velocity to get the the burst particle parameters.
 		float m_BurstScale;
+		// What is left over of a wound's share of blood when the blood settings scale it (SettingsMan::Blood), carried on to the next emission.
+		float m_BloodCarry;
 		// Damage dealt to the attached-to parent upon bursting.
 		float m_BurstDamage;
 		// Damage multiplier derived from penetrating particle. Affects both burst and emit damage values.

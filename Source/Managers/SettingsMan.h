@@ -16,6 +16,8 @@
 
 namespace RTE {
 
+	class MovableObject;
+
 	/// The singleton manager over the application and misc settings.
 	class SettingsMan : public Singleton<SettingsMan>, public Serializable {
 
@@ -383,6 +385,31 @@ namespace RTE {
 
 		/// Clamps every gib chunk setting into its range (after reading them).
 		void ClampGibChunks();
+
+		/// The blood settings ("Blood" in the settings panel): how much blood comes out of a unit when it is shot (its wounds' spurts and
+		/// bleeding) and when it bursts or loses a limb (the blood in its gibs), how big the puffs are, how far the drops fly and how wide
+		/// they spray. Only blood and flesh bits (MOPixels and MOSParticles, see IsBloodParticle), never gib chunks, sparks or oil. Each
+		/// member's default is how the game has always behaved, so BloodTuning() is the reset.
+		struct BloodTuning {
+			int ShotPercent = 100; //!< How much blood wounds give, in percent of what each says, 0 to 200. 100: all of it.
+			int DeathPercent = 100; //!< How much blood a body or limb gives when it bursts, in percent of what its gibs say, 0 to 200. 100: all of it.
+			int SizePercent = 100; //!< How big blood puffs, sprays and bursts are drawn, in percent, 25 to 300. Single-pixel drops stay a pixel. 100: as they come.
+			int DistancePercent = 100; //!< How fast blood flies out, so how far it lands, in percent, 10 to 300. 100: as it comes.
+			int SpreadPercent = 100; //!< How wide blood sprays, in percent of each emission's or gib's spread, 0 to 300. 100: as it comes.
+
+			/// Whether every setting is as the game comes, so nothing need be done.
+			bool IsUsual() const { return ShotPercent == 100 && DeathPercent == 100 && SizePercent == 100 && DistancePercent == 100 && SpreadPercent == 100; }
+		};
+
+		/// Gets the blood tuning, to read or change ("Blood" settings).
+		BloodTuning& Blood() { return m_Blood; }
+
+		/// Clamps every blood setting into its range (after reading them).
+		void ClampBlood();
+
+		/// Whether a particle preset is blood or flesh that the blood settings apply to: a MOPixel or MOSParticle of a body material
+		/// (see GetLooseBitKind) or with Blood in its name (the spray and burst puffs, which are water).
+		static bool IsBloodParticle(const MovableObject* preset);
 
 		/// The AI combat settings ("AI combat" on the AI behaviour page of the settings panel): how well AI units shoot, how quickly they react
 		/// and spot, how far they look, how long they remember a target, how readily they throw and how long they hold the trigger. Each
@@ -1612,6 +1639,7 @@ namespace RTE {
 		bool m_NoDismemberment; //!< Whether humanoids are never dismembered or blown apart (see NoDismemberment).
 		float m_RagdollBlowApartScale; //!< How big a hit still blows a ragdolling body apart (see RagdollBlowApartScale).
 		GibChunkTuning m_GibChunks; //!< How gib chunks come out, move and settle (see GibChunks).
+		BloodTuning m_Blood; //!< How much blood comes out, how big, how far and how wide (see Blood).
 		AICombatTuning m_AICombat; //!< How well AI units shoot, react, spot and throw (see AICombat).
 		bool m_EnableMantling; //!< Whether actors pull themselves up onto ledges and over low obstacles (players and the AI alike).
 		bool m_CreaturesClimbWalls = true; //!< See CreaturesClimbWalls.

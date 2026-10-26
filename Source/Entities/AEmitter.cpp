@@ -9,6 +9,8 @@
 #include "MOPixel.h"
 #include "Material.h"
 #include "EffectsParticles.h"
+#include "MOSParticle.h"
+#include "SettingsMan.h"
 
 using namespace RTE;
 
@@ -36,6 +38,7 @@ void AEmitter::Clear() {
 	m_Throttle = 0;
 	m_EmissionsIgnoreThis = false;
 	m_BurstScale = 1.0F;
+	m_BloodCarry = 0.5F;
 	m_BurstDamage = 0;
 	m_EmitterDamageMultiplier = 1.0F;
 	m_BurstTriggered = false;
@@ -475,17 +478,38 @@ void AEmitter::Update() {
 				emissionCountTotal += emissionCount;
 				emissionCount *= emission->GetParticleCount();
 
+				// A wound's blood, scaled by the blood settings (Blood in the settings panel): how much, how far and how wide. The damage and the
+				// emission count limit go by the count above, so they are unchanged.
+				float bloodSpeed = 1.0F;
+				float bloodSpread = 1.0F;
+				float bloodSize = 1.0F;
+				if (const SettingsMan::BloodTuning& blood = g_SettingsMan.Blood(); m_IsWound && emissionCount > 0 && !blood.IsUsual() && SettingsMan::IsBloodParticle(emission->GetEmissionParticlePreset())) {
+					if (blood.ShotPercent != 100) {
+						float share = static_cast<float>(emissionCount * blood.ShotPercent) / 100.0F + m_BloodCarry;
+						emissionCount = static_cast<int>(share);
+						m_BloodCarry = share - static_cast<float>(emissionCount);
+					}
+					bloodSpeed = static_cast<float>(blood.DistancePercent) / 100.0F;
+					bloodSpread = static_cast<float>(blood.SpreadPercent) / 100.0F;
+					bloodSize = static_cast<float>(blood.SizePercent) / 100.0F;
+				}
+
 				pParticle = 0;
 				emitVel.Reset();
 				parentVel = pRootParent->GetVel() * emission->InheritsVelocity();
 				Vector rotationalVel = (((RotateOffset(emission->GetOffset()) + (m_Pos - pRootParent->GetPos())) * pRootParent->GetAngularVel()).GetPerpendicular() / c_PPM) * emission->InheritsVelocity();
 
 				for (int i = 0; i < emissionCount; ++i) {
-					velMin = emission->GetMinVelocity() * scale;
-					velRange = (emission->GetMaxVelocity() - emission->GetMinVelocity()) * scale;
-					spread = emission->GetSpread() * scale;
+					velMin = emission->GetMinVelocity() * scale * bloodSpeed;
+					velRange = (emission->GetMaxVelocity() - emission->GetMinVelocity()) * scale * bloodSpeed;
+					spread = emission->GetSpread() * scale * bloodSpread;
 					// Make a copy after the reference particle
 					pParticle = dynamic_cast<MovableObject*>(emission->GetEmissionParticlePreset()->Clone());
+					if (bloodSize != 1.0F) {
+						if (MOSParticle* puff = dynamic_cast<MOSParticle*>(pParticle)) {
+							puff->SetDrawScale(bloodSize);
+						}
+					}
 					// Set up its position and velocity according to the parameters of this.
 					// Emission point offset not set
 

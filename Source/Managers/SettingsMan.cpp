@@ -250,6 +250,7 @@ void SettingsMan::Clear() {
 	m_NoDismemberment = false;
 	m_RagdollBlowApartScale = 3.0F;
 	m_GibChunks = GibChunkTuning();
+	m_Blood = BloodTuning();
 	m_AICombat = AICombatTuning();
 	m_SlowdownFixes = SlowdownFixTuning();
 	m_NoSceneWrap = true;
@@ -1181,6 +1182,11 @@ int SettingsMan::ReadPropertyUnchecked(const std::string_view& propName, Reader&
 	MatchProperty("GibChunkBounces", { reader >> m_GibChunks.MaxBounces; ClampGibChunks(); });
 	MatchProperty("GibChunkAtomSpacing", { reader >> m_GibChunks.AtomSpacing; ClampGibChunks(); });
 	MatchProperty("GibChunksSettleOnBodies", { reader >> m_GibChunks.SettleOnBodies; });
+	MatchProperty("BloodShotPercent", { reader >> m_Blood.ShotPercent; ClampBlood(); });
+	MatchProperty("BloodDeathPercent", { reader >> m_Blood.DeathPercent; ClampBlood(); });
+	MatchProperty("BloodSizePercent", { reader >> m_Blood.SizePercent; ClampBlood(); });
+	MatchProperty("BloodDistancePercent", { reader >> m_Blood.DistancePercent; ClampBlood(); });
+	MatchProperty("BloodSpreadPercent", { reader >> m_Blood.SpreadPercent; ClampBlood(); });
 	MatchProperty("AICombatAccuracy", { reader >> m_AICombat.Accuracy; ClampAICombat(); });
 	MatchProperty("AICombatReaction", { reader >> m_AICombat.Reaction; ClampAICombat(); });
 	MatchProperty("AICombatSpotting", { reader >> m_AICombat.Spotting; ClampAICombat(); });
@@ -1571,6 +1577,29 @@ SettingsMan::LooseBitKind SettingsMan::GetLooseBitKind(int materialIndex) {
 	}
 	s_Kinds[materialIndex] = static_cast<signed char>(kind);
 	return kind;
+}
+
+bool SettingsMan::IsBloodParticle(const MovableObject* preset) {
+	if (!preset) {
+		return false;
+	}
+	const std::string& className = preset->GetClassName();
+	if (className != "MOPixel" && className != "MOSParticle") {
+		return false;
+	}
+	if (preset->GetPresetName().find("Blood") != std::string::npos) {
+		return true;
+	}
+	const Material* material = preset->GetMaterial();
+	return material && GetLooseBitKind(material->GetIndex()) == BloodAndFlesh;
+}
+
+void SettingsMan::ClampBlood() {
+	m_Blood.ShotPercent = std::clamp(m_Blood.ShotPercent, 0, 200);
+	m_Blood.DeathPercent = std::clamp(m_Blood.DeathPercent, 0, 200);
+	m_Blood.SizePercent = std::clamp(m_Blood.SizePercent, 25, 300);
+	m_Blood.DistancePercent = std::clamp(m_Blood.DistancePercent, 10, 300);
+	m_Blood.SpreadPercent = std::clamp(m_Blood.SpreadPercent, 0, 300);
 }
 
 void SettingsMan::ClampGibChunks() {
@@ -1993,6 +2022,11 @@ void SettingsMan::SaveTunables(Writer& writer, const LightingSettings& lighting,
 	writer.NewPropertyWithValue("GibChunkBounces", m_GibChunks.MaxBounces);
 	writer.NewPropertyWithValue("GibChunkAtomSpacing", m_GibChunks.AtomSpacing);
 	writer.NewPropertyWithValue("GibChunksSettleOnBodies", m_GibChunks.SettleOnBodies);
+	writer.NewPropertyWithValue("BloodShotPercent", m_Blood.ShotPercent);
+	writer.NewPropertyWithValue("BloodDeathPercent", m_Blood.DeathPercent);
+	writer.NewPropertyWithValue("BloodSizePercent", m_Blood.SizePercent);
+	writer.NewPropertyWithValue("BloodDistancePercent", m_Blood.DistancePercent);
+	writer.NewPropertyWithValue("BloodSpreadPercent", m_Blood.SpreadPercent);
 	writer.NewPropertyWithValue("AICombatAccuracy", m_AICombat.Accuracy);
 	writer.NewPropertyWithValue("AICombatReaction", m_AICombat.Reaction);
 	writer.NewPropertyWithValue("AICombatSpotting", m_AICombat.Spotting);
