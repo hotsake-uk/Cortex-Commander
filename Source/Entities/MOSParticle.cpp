@@ -72,6 +72,7 @@ void MOSParticle::Clear() {
 	m_SpriteAnimMode = OVERLIFETIME;
 	m_PostEffectEnabled = true; // Default to true for backwards compatibility reasons
 	m_FlameSprite = false;
+	m_DrawScale = 1.0F;
 }
 
 int MOSParticle::Create() {
@@ -92,6 +93,7 @@ int MOSParticle::Create(const MOSParticle& reference) {
 	m_Atom = new Atom(*(reference.m_Atom));
 	m_Atom->SetOwner(this);
 	m_FlameSprite = reference.m_FlameSprite;
+	m_DrawScale = reference.m_DrawScale;
 
 	return 0;
 }
@@ -296,7 +298,7 @@ void MOSParticle::Draw(const Camera& camera) const {
 	if (m_Atom && !m_Atom->GetDrawnTrail().empty()) {
 		Draw::PixelsBatched(m_Atom->GetDrawnTrail(), Color(m_Atom->GetTrailColor().GetIndex()));
 	}
-	if (!camera.IsVisible(m_Pos, m_SpriteRadius)) {
+	if (!camera.IsVisible(m_Pos, m_SpriteRadius * std::max(m_DrawScale, 1.0F))) {
 		return;
 	}
 	// A flame gets the fire shader's flames, the same as burning ground, drawn over this sprite in the glow pass, and with the shader only, no sprite.
@@ -321,7 +323,13 @@ void MOSParticle::Draw(const Camera& camera) const {
 	Vector spritePos((GetRenderPos() + m_SpriteOffset).GetFloored());
 	Color tint = ApplyRenderBlendMode();
 	ApplySpriteMaps();
-	Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, tint);
+	if (m_DrawScale != 1.0F) {
+		// Scaled about its sprite offset (the middle of a puff), which stays where it would be drawn at its own size.
+		Vector pivot(GetRenderPos().GetFloored());
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), glm::vec2(pivot.m_X, pivot.m_Y), glm::vec2(m_SpriteOffset.m_X, m_SpriteOffset.m_Y), 0.0F, glm::vec2(m_DrawScale, m_DrawScale), tint);
+	} else {
+		Draw::DrawTexture(m_Sprites[m_Frame].get(), spritePos, tint);
+	}
 	RestoreRenderBlendMode();
 	g_RenderMan.SetCurrentZOffset(previousZOffset);
 	// Smoke scatters the light passing through it.

@@ -69,6 +69,13 @@ namespace RTE {
 		/// @return A const reference to the current Atom.
 		const Atom* GetAtom() const { return m_Atom; }
 
+		/// How big this is drawn, about its sprite offset: 1 as its sprite is. Only for looks (the blood settings' size, SettingsMan::Blood), it
+		/// doesn't change how it collides.
+		float GetDrawScale() const { return m_DrawScale; }
+
+		/// Sets how big this is drawn; see GetDrawScale.
+		void SetDrawScale(float drawScale) { m_DrawScale = drawScale; }
+
 		/// Replaces the current Atom of this MOSParticle with a new one.
 		/// @param newAtom A reference to the new Atom.
 		void SetAtom(Atom* newAtom);
@@ -119,6 +126,7 @@ namespace RTE {
 
 		Atom* m_Atom; //!< The Atom that will be the physical representation of this MOSParticle.
 		float m_TimeRest; //!< Accumulated time in seconds that did not cause a frame change.
+		float m_DrawScale; //!< How big this is drawn (see GetDrawScale).
 		bool m_FlameSprite; //!< Whether the sprite is the game's drawn flame, which the fire shader layers its flames over (LightingSettings::FireStyle).
 
 	private:
