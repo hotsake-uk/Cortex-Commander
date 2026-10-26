@@ -98,6 +98,11 @@ namespace {
 	    {"ChunkyPixels", &LightingSettings::RetroLayers::ChunkyPixels}, {"BlastFlash", &LightingSettings::RetroLayers::BlastFlash}, {"Bezel", &LightingSettings::RetroLayers::Bezel},
 	    {"ChipSound", &LightingSettings::RetroLayers::ChipSound}};
 
+	/// The retro layer settings that are on or off, by the name they're saved under after their prefix (apart from the older ones in c_RetroOtherFields).
+	const std::pair<const char*, bool LightingSettings::RetroLayers::*> c_RetroBoolFields[] = {
+	    {"PosterizeSky", &LightingSettings::RetroLayers::PosterizeSky}, {"PosterizeSmoke", &LightingSettings::RetroLayers::PosterizeSmoke},
+	    {"PosterizeBackWalls", &LightingSettings::RetroLayers::PosterizeBackWalls}, {"PosterizeRest", &LightingSettings::RetroLayers::PosterizeRest}};
+
 	/// The retro layer settings that aren't floats, by the name they're saved under after their prefix.
 	const char* const c_RetroOtherFields[] = {"Look", "Palette", "LCDPalette", "InkEdges", "GlitchOnBlasts", "PaperBackgroundOnly"};
 
@@ -116,6 +121,11 @@ namespace {
 		} else if (field == "PaperBackgroundOnly") {
 			layers.PaperBackgroundOnly = std::stoi(value) != 0;
 		} else {
+			for (const auto& [name, member]: c_RetroBoolFields) {
+				if (field == name) {
+					layers.*member = std::stoi(value) != 0;
+				}
+			}
 			for (const auto& [name, member]: c_RetroFloatFields) {
 				if (field == name) {
 					layers.*member = std::clamp(std::stof(value), 0.0F, 5.0F);
@@ -131,6 +141,9 @@ namespace {
 		writer.NewPropertyWithValue(prefix + "InkEdges", layers.InkEdges);
 		writer.NewPropertyWithValue(prefix + "GlitchOnBlasts", layers.GlitchOnBlasts);
 		writer.NewPropertyWithValue(prefix + "PaperBackgroundOnly", layers.PaperBackgroundOnly);
+		for (const auto& [name, member]: c_RetroBoolFields) {
+			writer.NewPropertyWithValue(prefix + name, layers.*member);
+		}
 		for (const auto& [name, member]: c_RetroFloatFields) {
 			writer.NewPropertyWithValue(prefix + name, layers.*member);
 		}
@@ -150,6 +163,9 @@ namespace {
 			std::string_view field = propName.substr(prefix.size());
 			bool known = std::find(std::begin(c_RetroOtherFields), std::end(c_RetroOtherFields), field) != std::end(c_RetroOtherFields);
 			for (const auto& [name, member]: c_RetroFloatFields) {
+				known = known || field == name;
+			}
+			for (const auto& [name, member]: c_RetroBoolFields) {
 				known = known || field == name;
 			}
 			if (known) {
@@ -2568,6 +2584,9 @@ std::string SettingsMan::SaveFilterPreset(const std::string& name, const Lightin
 	file << "InkEdges = " << (layers.InkEdges ? 1 : 0) << "\n";
 	file << "GlitchOnBlasts = " << (layers.GlitchOnBlasts ? 1 : 0) << "\n";
 	file << "PaperBackgroundOnly = " << (layers.PaperBackgroundOnly ? 1 : 0) << "\n";
+	for (const auto& [field, member]: c_RetroBoolFields) {
+		file << field << " = " << (layers.*member ? 1 : 0) << "\n";
+	}
 	for (const auto& [field, member]: c_RetroFloatFields) {
 		file << field << " = " << layers.*member << "\n";
 	}
@@ -2581,6 +2600,7 @@ bool SettingsMan::LoadFilterPreset(const std::string& name, LightingSettings::Re
 	}
 	// Fields missing from the file (one saved before they existed) keep how the game comes.
 	LightingSettings::RetroLayers loaded;
+	bool posterizeTargets = false;
 	std::string line;
 	while (std::getline(file, line)) {
 		size_t equals = line.find('=');
@@ -2593,10 +2613,16 @@ bool SettingsMan::LoadFilterPreset(const std::string& name, LightingSettings::Re
 			return first == std::string::npos ? std::string() : text.substr(first, last - first + 1);
 		};
 		try {
-			ReadRetroField(loaded, trim(line.substr(0, equals)), trim(line.substr(equals + 1)));
+			std::string field = trim(line.substr(0, equals));
+			posterizeTargets = posterizeTargets || (field.starts_with("Posterize") && field != "Posterize");
+			ReadRetroField(loaded, field, trim(line.substr(equals + 1)));
 		} catch (const std::logic_error&) {
 			g_ConsoleMan.PrintString("ERROR: The filter preset \"" + name + "\" has a value this version can't read: " + line);
 		}
+	}
+	// A Game Boy variant saved before the posterize could be limited keeps it over the whole battlefield, as the Game Boy style has it.
+	if (!posterizeTargets && loaded.Look == LightingSettings::StyleGameBoy) {
+		loaded.PosterizeSky = loaded.PosterizeSmoke = loaded.PosterizeBackWalls = loaded.PosterizeRest = true;
 	}
 	layers = loaded;
 	return true;

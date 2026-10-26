@@ -1557,6 +1557,19 @@ void DebugMan::SettingsGUI() {
 			Tip("Fewer colour levels, down to four per channel.");
 			Slider("Dither", &retro.Dither, 0.0F, 1.0F);
 			Tip("Ordered dithering between colour levels, for a cheap 80s computer look. Shows with Posterize, or the Game Boy and CGA palettes.");
+			if (retro.Posterize > 0.0F || retro.Dither > 0.0F) {
+				if (Plain()) {
+					ImGui::TextDisabled("Posterize and dither on:");
+				}
+				Check("Sky and distant backdrop", &retro.PosterizeSky);
+				Tip("The sky, with the sun, moon, stars and clouds on it, and the distant hills and backdrop layers behind the terrain's back walls.");
+				Check("Smoke, mist and haze", &retro.PosterizeSmoke);
+				Tip("The game's smoke sprites, the soft smoke they trail and explosions leave, spray mist, dust clouds, and mist and dust hanging in the air. Thin smoke over something else is posterized as much as it covers it.");
+				Check("Terrain back walls", &retro.PosterizeBackWalls);
+				Tip("The terrain's background layer: the walls behind tunnels and bunkers.");
+				Check("Everything else", &retro.PosterizeRest);
+				Tip("Terrain, units, buildings and the other effects. With all four on, the whole battlefield is posterized and dithered, as before. The HUD never is. The palette's colours go everywhere either way.");
+			}
 			Slider("Pixelate", &retro.Pixelate, 0.0F, 1.0F);
 			Tip("Chunkier pixels, up to 8 game pixels a block. Covers the HUD too.");
 			if (settings.ScreenStyleOn() && settings.ScreenVariant.empty() && Plain() && ToolUI::Button("Reset style")) {

@@ -273,8 +273,17 @@ void MOSParticle::Draw(BITMAP* targetBitmap, const Vector& targetPos, DrawMode m
 	}
 }
 
+bool MOSParticle::IsSmoke() const {
+	return m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir;
+}
+
 glm::u8vec4 MOSParticle::GetRenderSurface() const {
-	return g_PostProcessMan.GetLightingSettings().Ghosts(LightingSettings::GhostParticles) ? glm::u8vec4(0, 0, LightingSettings::c_GhostSurfaceMark, 0) : glm::u8vec4(0);
+	const LightingSettings& lighting = g_PostProcessMan.GetLightingSettings();
+	bool ghost = lighting.Ghosts(LightingSettings::GhostParticles);
+	if (lighting.MarksPosterizeSmoke() && IsSmoke()) {
+		return glm::u8vec4(0, 0, ghost ? LightingSettings::c_GhostPosterizeSmokeMark : LightingSettings::c_PosterizeSmokeMark, 0);
+	}
+	return ghost ? glm::u8vec4(0, 0, LightingSettings::c_GhostSurfaceMark, 0) : glm::u8vec4(0);
 }
 
 void MOSParticle::Draw(const Camera& camera) const {
@@ -303,7 +312,7 @@ void MOSParticle::Draw(const Camera& camera) const {
 		}
 	}
 	// Smoke: weightless air particles that float up.
-	bool smoke = m_GlobalAccScalar < 0.0F && m_Atom && m_Atom->GetMaterial() && m_Atom->GetMaterial()->GetIndex() == g_MaterialAir;
+	bool smoke = IsSmoke();
 	// It's drawn in the effects layer (LightingSettings::Behind), behind units and the ground in front: whatever is nearer hides it, whichever is drawn first.
 	float previousZOffset = g_RenderMan.GetCurrentZOffset();
 	if (smoke && g_PostProcessMan.GetLightingSettings().Behind(LightingSettings::LayerSmoke)) {
