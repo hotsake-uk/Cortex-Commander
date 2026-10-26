@@ -570,6 +570,7 @@ namespace {
 			MagicEffects::GetTuning() = MagicEffects::Tuning();
 			ZeroGravity::ResetSettings();
 			g_SettingsMan.GibChunks() = SettingsMan::GibChunkTuning();
+			g_SettingsMan.Blood() = SettingsMan::BloodTuning();
 			s_PresetMessage = "Everything is back to how the game comes.";
 		}
 		ImGui::SetItemTooltip("Puts every setting here back to how the game comes.");
@@ -599,6 +600,7 @@ void DebugMan::SettingsGUI() {
 	Normals(MagicEffects::GetTuning());
 	Normals(TerrainCollapse::GetTuning());
 	Normals(g_SettingsMan.GibChunks());
+	Normals(g_SettingsMan.Blood());
 	Normals(g_SettingsMan.DirectOrders());
 	Normals(g_SettingsMan.SlowdownFixes());
 
@@ -1393,6 +1395,28 @@ void DebugMan::SettingsGUI() {
 				chunks = SettingsMan::GibChunkTuning();
 			}
 			ImGui::SetItemTooltip("Puts every Gibs setting back to how the game comes, which is how gibs always behaved.");
+		}
+	};
+
+	// The blood that comes out of a unit when it is shot and when it dies or bursts. As they come, everything is as the game has always been.
+	auto blood = [&]() {
+		SettingsMan::BloodTuning& tuning = g_SettingsMan.Blood();
+		SliderI("Blood when shot (%)", &tuning.ShotPercent, 0, 200, "%d%%");
+		Tip("How much blood a wound gives: the spurt when a unit is hit and the bleeding after, against what each wound says. At 50 about half, at 0 none. The damage bleeding does is unchanged. 100: all of it, as the game comes.");
+		SliderI("Blood when killed (%)", &tuning.DeathPercent, 0, 200, "%d%%");
+		Tip("How much blood and flesh comes out when a body, head or limb bursts or is torn off, against what each says. The solid pieces are the Gibs page's. 100: all of it, as the game comes.");
+		SliderI("Blood size (%)", &tuning.SizePercent, 25, 300, "%d%%");
+		Tip("How big the blood puffs, sprays and bursts are drawn. Single drops of blood are one pixel and stay so. 100: as they come.");
+		SliderI("Blood distance (%)", &tuning.DistancePercent, 10, 300, "%d%%");
+		Tip("How fast blood flies out of a wound or a burst, so how far it lands. 100: as it comes.");
+		SliderI("Blood spread (%)", &tuning.SpreadPercent, 0, 300, "%d%%");
+		Tip("How wide blood sprays: lower is a tight jet, higher a wide fan. A burst that already goes all round can only get narrower. 100: as it comes.");
+		g_SettingsMan.ClampBlood();
+		if (Plain()) {
+			if (ToolUI::Button("Reset to defaults")) {
+				tuning = SettingsMan::BloodTuning();
+			}
+			ImGui::SetItemTooltip("Puts every Blood setting back to how the game comes.");
 		}
 	};
 
@@ -3024,6 +3048,7 @@ void DebugMan::SettingsGUI() {
 	    {Group::Gameplay, "Falling ground", fallingGround},
 	    {Group::Gameplay, "Zero G Settings", zeroG},
 	    {Group::Gameplay, "Gibs", gibs},
+	    {Group::Gameplay, "Blood", blood},
 	    {Group::Gameplay, "Magic & spells", magic},
 	    {Group::Gameplay, "AI behaviour", aiBehaviour},
 	    {Group::Gameplay, "Movement", movement},

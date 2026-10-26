@@ -1158,6 +1158,9 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 	// With fewer (or more) chunks asked for, what is left over of one gib's share is carried on to the next, so that half of three single chunks is
 	// one or two rather than always none or all. It starts from a fraction taken from this object's ID rather than from the random numbers.
 	float chunkCarry = static_cast<float>((static_cast<uint32_t>(GetUniqueID()) * 2654435761U) >> 16U) / 65536.0F;
+	// The blood settings (Blood in the settings panel) scale the blood and flesh bits the same way: how much, how far, how wide and how big.
+	const SettingsMan::BloodTuning& bloodTuning = g_SettingsMan.Blood();
+	float bloodCarry = chunkCarry;
 
 	for (const Gib* gibSettingsObject: m_Gibs) {
 		if (gibSettingsObject->GetCount() == 0) {
@@ -1193,6 +1196,12 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 			spawnCount = static_cast<int>(share);
 			chunkCarry = share - static_cast<float>(spawnCount);
 		}
+		const bool blood = !gibChunk && !bloodTuning.IsUsual() && SettingsMan::IsBloodParticle(gibPreset);
+		if (blood && bloodTuning.DeathPercent != 100) {
+			float share = static_cast<float>(count * bloodTuning.DeathPercent) / 100.0F + bloodCarry;
+			spawnCount = static_cast<int>(share);
+			bloodCarry = share - static_cast<float>(spawnCount);
+		}
 		float lifeVariation = gibSettingsObject->GetLifeVariation();
 		float spread = gibSettingsObject->GetSpread();
 		float minVelocity = gibSettingsObject->GetMinVelocity();
@@ -1218,6 +1227,22 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 			delete gibParticleClone;
 			continue;
 		}
+		float bloodSize = 1.0F;
+		float bloodSpreadScale = 1.0F;
+		if (blood) {
+			float bloodSpeed = static_cast<float>(bloodTuning.DistancePercent) / 100.0F;
+			minVelocity *= bloodSpeed;
+			maxVelocity *= bloodSpeed;
+			bloodSpreadScale = static_cast<float>(bloodTuning.SpreadPercent) / 100.0F;
+			bloodSize = static_cast<float>(bloodTuning.SizePercent) / 100.0F;
+		}
+		auto sizeBlood = [bloodSize](MovableObject* gib) {
+			if (bloodSize != 1.0F) {
+				if (MOSParticle* puff = dynamic_cast<MOSParticle*>(gib)) {
+					puff->SetDrawScale(bloodSize);
+				}
+			}
+		};
 
 		float velocityRange = maxVelocity - minVelocity;
 		Vector rotatedGibOffset = RotateOffset(gibSettingsObject->GetOffset());
@@ -1234,12 +1259,13 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					gibParticleClone = dynamic_cast<MovableObject*>(gibSettingsObject->GetParticlePreset()->Clone());
 				}
 				markChunk(gibParticleClone);
+				sizeBlood(gibParticleClone);
 
 				float radius = std::sqrt(static_cast<float>(spawnCount - i));
 				gibParticleClone->SetPos(m_Pos + rotatedGibOffset);
 				gibParticleClone->SetHFlipped(m_HFlipped);
 				Vector gibVelocity(radius * scale + minVelocity, 0);
-				gibVelocity.RadRotate(randAngle + RandomNum(0.0F, spread) + static_cast<float>(i) * goldenAngle);
+				gibVelocity.RadRotate(randAngle + RandomNum(0.0F, spread * bloodSpreadScale) + static_cast<float>(i) * goldenAngle);
 
 				Vector offsetFromRootParent = m_Pos - GetRootParent()->GetPos() + rotatedGibOffset;
 				Vector rotationalVelocity = (offsetFromRootParent.GetPerpendicular() * GetRootParent()->GetAngularVel() * gibSettingsObject->InheritsVelocity()) / c_PPM;
@@ -1269,6 +1295,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 					gibParticleClone = dynamic_cast<MovableObject*>(gibSettingsObject->GetParticlePreset()->Clone());
 				}
 				markChunk(gibParticleClone);
+				sizeBlood(gibParticleClone);
 
 				if (gibParticleClone->GetLifetime() != 0) {
 					gibParticleClone->SetLifetime(std::max(static_cast<int>(static_cast<float>(gibParticleClone->GetLifetime()) * (1.0F + (lifeVariation * RandomNormalNum()))), 1));
@@ -1290,6 +1317,7 @@ void MOSRotating::CreateGibsWhenGibbing(const Vector& impactImpulse, MovableObje
 
 				// TODO: Figure out how much the magnitude of an offset should affect spread
 				float gibSpread = (rotatedGibOffset.IsZero() && spread == 0.1F) ? c_PI : spread;
+				gibSpread = std::min(gibSpread * bloodSpreadScale, c_PI);
 				// Determine the primary direction of the gib particles.
 				if (gibSettingsObject->InheritsVelocity() > 0 && !impactImpulse.IsZero()) {
 					gibVelocity.RadRotate(impactImpulse.GetAbsRadAngle());
