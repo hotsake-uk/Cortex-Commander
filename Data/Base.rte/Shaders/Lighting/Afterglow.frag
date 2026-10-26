@@ -31,9 +31,9 @@ void main() {
 	} else if (rteMode == 3) {
 		FragColor = texture(rteHistory, textureUV);
 	} else if (rteMode == 4) {
-		// LightingSettings::c_GhostSurfaceMark.
+		// LightingSettings::c_GhostSurfaceMark, or c_GhostPosterizeSmokeMark on a smoke sprite while the posterize is limited too.
 		float mark = floor(texelFetch(rteSurface, ivec2(gl_FragCoord.xy), 0).b * 255.0 + 0.5);
-		FragColor = vec4(vec3(mark == 96.0 ? 1.0 : 0.0), 1.0);
+		FragColor = vec4(vec3(mark == 96.0 || mark == 92.0 ? 1.0 : 0.0), 1.0);
 	} else if (rteMode == 5) {
 		float cover = texture(rteMask, textureUV).r;
 		vec4 kept = vec4(0.0);

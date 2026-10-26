@@ -115,7 +115,8 @@ namespace RTE {
 		void Draw(BITMAP* targetBitmap, const Vector& targetPos = Vector(), DrawMode mode = g_DrawColor, bool onlyPhysical = false) const override;
 		void Draw(const Camera& camera) const override;
 
-		/// Gets the surface values its sprite is drawn with: none, but marked for the LCD ghosting when it smears the game's particles (LightingSettings::GhostParticles).
+		/// Gets the surface values its sprite is drawn with: none, but marked for the LCD ghosting when it smears the game's particles (LightingSettings::GhostParticles),
+		/// and smoke for the posterize's mask while it's limited (LightingSettings::c_PosterizeSmokeMark).
 		/// @return The surface values (see MovableObject::GetRenderSurface).
 		glm::u8vec4 GetRenderSurface() const override;
 #pragma endregion
@@ -129,6 +130,9 @@ namespace RTE {
 		bool m_FlameSprite; //!< Whether the sprite is the game's drawn flame, which the fire shader layers its flames over (LightingSettings::FireStyle).
 
 	private:
+		/// Gets whether this is smoke: a weightless air particle that floats up.
+		bool IsSmoke() const;
+
 		/// Clears all the member variables of this MOSParticle, effectively resetting the members of this abstraction level only.
 		void Clear();
 

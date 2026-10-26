@@ -334,6 +334,11 @@ namespace RTE {
 			float Flicker = 0.0F; //!< An old monitor's faint flicker and a brighter refresh band rolling down the screen, 0 to 1.
 			float Posterize = 0.0F; //!< Fewer colour levels, down to four per channel at 1.
 			float Dither = 0.0F; //!< Ordered dithering across the colour levels, 0 to 1.
+			// Where the posterize and the dither (its own and the palette's) go. The palette's colours themselves go everywhere.
+			bool PosterizeSky = true; //!< On the sky and the distant backdrop layers, behind the terrain's back walls.
+			bool PosterizeSmoke = true; //!< On smoke, mist and haze: the game's smoke sprites, the soft smoke, spray mist and dust puffs, and mist and dust hanging in the air.
+			bool PosterizeBackWalls = false; //!< On the terrain's back walls.
+			bool PosterizeRest = false; //!< On everything else: terrain, units, buildings and the other effects. All four on is the whole battlefield, as before.
 			float Pixelate = 0.0F; //!< Chunkier pixels, up to 8 game pixels a block at 1.
 			float ASCII = 0.0F; //!< The whole picture redrawn as text characters picked by brightness, 0 to 1.
 			float ASCIIBackground = 0.0F; //!< The same for the distant background only (the hills behind the battlefield), 0 to 1.
@@ -410,6 +415,8 @@ namespace RTE {
 					layers.Palette = PaletteGameBoy;
 					layers.PaletteStrength = 1.0F;
 					layers.Dither = 0.7F;
+					layers.PosterizeBackWalls = true;
+					layers.PosterizeRest = true;
 					layers.EdgeLines = 0.45F;
 					layers.InkEdges = true;
 					layers.RetroSky = 1.0F;
@@ -533,6 +540,13 @@ namespace RTE {
 			}
 			return layers;
 		}
+		/// Gets whether layers posterize or dither only some things (RetroLayers::PosterizeSky and the rest), so a mask of where is drawn each frame.
+		static bool PosterizeLimited(const RetroLayers& layers) {
+			bool posterizing = layers.Posterize > 0.0F || (layers.Dither > 0.0F && layers.Palette > PaletteOff && layers.PaletteStrength > 0.0F);
+			return posterizing && !(layers.PosterizeSky && layers.PosterizeSmoke && layers.PosterizeBackWalls && layers.PosterizeRest);
+		}
+		/// Gets whether smoke sprites are drawn marked for the posterize's mask (c_PosterizeSmokeMark): whenever it's limited, as it's told from the rest by the mark.
+		bool MarksPosterizeSmoke() const { return PosterizeLimited(!ScreenStyleOn() ? Retro : (ScreenVariant.empty() ? StyleRetro[ScreenStyle] : VariantRetro)); }
 		/// Gets the retro layers the settings edit now: the chosen variant's, the chosen screen style's, or the player's own with none.
 		RetroLayers& EditedRetro() { return !ScreenVariant.empty() ? VariantRetro : (ScreenStyle > StyleOff && ScreenStyle < StyleCount ? StyleRetro[ScreenStyle] : Retro); }
 		float Specular = 1.0F; //!< Strength of the highlights lights throw on shiny surfaces (metal, concrete, wet ground, water), 0 for none.
@@ -667,6 +681,10 @@ namespace RTE {
 		static constexpr unsigned char c_GhostSurfaceMark = 96;
 		/// The same for a shining thing (a tracer): still inside the shining band Blit8.frag reads (128 +-25), which writes it out as c_GhostSurfaceMark.
 		static constexpr unsigned char c_GhostShiningMark = 112;
+		/// The surface buffer's solid flag (B) of a smoke sprite while the posterize is limited (RetroLayers::PosterizeSmoke), and of one marked for the LCD
+		/// ghosting too: like c_GhostSurfaceMark, not solid, not water, not a unit and not shining.
+		static constexpr unsigned char c_PosterizeSmokeMark = 88;
+		static constexpr unsigned char c_GhostPosterizeSmokeMark = 92;
 		/// Which kind of ghosting an effect of the effects layer is.
 		static LCDGhostKind GhostKindOf(EffectLayer layer) {
 			switch (layer) {

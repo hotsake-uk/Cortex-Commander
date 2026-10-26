@@ -306,6 +306,7 @@ namespace RTE {
 		GLTarget m_Emissive;
 		GLTarget m_Distortion; //!< Screen space displacement in pixels, RG.
 		GLTarget m_PaperMask; //!< 1 where the paper grain may go when it's on the backdrop only (LightingSettings::RetroLayers::PaperBackgroundOnly).
+		GLTarget m_PosterizeMask; //!< How much the posterize and dither go on each pixel when they're limited to some things (LightingSettings::PosterizeLimited).
 		GLTarget m_OutlineRows; //!< Unit outlines: per pixel, the distance along its row to the nearest unit pixel, its side, and whether a stroke may go there (see UnitOutlineRow.frag).
 		GLTarget m_GodRays; //!< Half resolution light shafts.
 		static constexpr int c_IndirectMipCount = 4;
@@ -366,6 +367,7 @@ namespace RTE {
 		std::unique_ptr<Shader> m_TonemapShader;
 		std::unique_ptr<Shader> m_UnitOutlineRowShader; //!< The first half of the unit outlines' search (see LightingSettings::UnitOutline).
 		std::unique_ptr<Shader> m_PaperMaskShader; //!< Where the paper grain may go when it's on the backdrop only (see PaperMask.frag).
+		std::unique_ptr<Shader> m_PosterizeMaskShader; //!< Where the posterize and dither go when they're limited (see PosterizeMask.frag).
 		std::unique_ptr<Shader> m_LitParticleShader;
 		std::unique_ptr<Shader> m_SmokeScatterShader;
 		std::unique_ptr<Shader> m_RCSceneShader;

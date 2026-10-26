@@ -129,6 +129,7 @@ void SceneLighting::LoadShaders() {
 	m_TonemapShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Tonemap.frag");
 	m_UnitOutlineRowShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/UnitOutlineRow.frag");
 	m_PaperMaskShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/PaperMask.frag");
+	m_PosterizeMaskShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/PosterizeMask.frag");
 	m_LuminanceShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/Luminance.frag");
 	m_RCSceneShader = std::make_unique<Shader>(fullscreenVertex, "Base.rte/Shaders/Lighting/RCScene.frag");
 	m_LitParticleShader = std::make_unique<Shader>("Base.rte/Shaders/Lighting/Emissive.vert", "Base.rte/Shaders/Lighting/LitParticle.frag");
@@ -376,6 +377,7 @@ void SceneLighting::EnsureScreenResources(int width, int height) {
 	m_Distortion.Create(width, height, GL_RG16F, GL_RG, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_OutlineRows.Create(width, height, GL_RGBA8, GL_RGBA, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_PaperMask.Create(width, height, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
+	m_PosterizeMask.Create(width, height, GL_R8, GL_RED, GL_UNSIGNED_BYTE, GL_NEAREST, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	m_GodRays.Create(std::max(1, width / 2), std::max(1, height / 2), GL_RGBA16F, GL_RGBA, GL_FLOAT, GL_LINEAR, GL_CLAMP_TO_EDGE, GL_CLAMP_TO_EDGE, true);
 	int indirectWidth = width;
 	int indirectHeight = height;
@@ -432,6 +434,7 @@ void SceneLighting::DestroyScreenResources() {
 	m_Distortion.Destroy();
 	m_OutlineRows.Destroy();
 	m_PaperMask.Destroy();
+	m_PosterizeMask.Destroy();
 	m_GodRays.Destroy();
 	for (GLTarget& mip: m_IndirectMips) {
 		mip.Destroy();
@@ -4245,6 +4248,70 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 		DrawFullscreen();
 	}
 
+	// The posterize and dither on some things only (LightingSettings::RetroLayers::PosterizeSky and the rest): how much of each pixel they go on. The
+	// sky, back walls and the rest from the depth buffer, smoke sprites from their mark, mist and dust in the air from the fog, then the soft smoke,
+	// spray and dust puffs over it in their soft shape: screen blended in where smoke is picked, else taken out of what's under them.
+	const bool posterizeMask = LightingSettings::PosterizeLimited(retro) && sceneDepth;
+	if (posterizeMask) {
+		TracyGpuZone("Posterize Mask");
+		glDisable(GL_BLEND);
+		glBindFramebuffer(GL_FRAMEBUFFER, m_PosterizeMask.Framebuffer);
+		glViewport(0, 0, width, height);
+		m_PosterizeMaskShader->Enable();
+		m_PosterizeMaskShader->SetInt("rteSceneDepth", 0);
+		m_PosterizeMaskShader->SetInt("rteSurface", 1);
+		m_PosterizeMaskShader->SetInt("rteFog", 2);
+		m_PosterizeMaskShader->SetBool("rteHasSurface", surface != nullptr);
+		m_PosterizeMaskShader->SetFloat("rteForegroundDepth", foregroundDepth);
+		m_PosterizeMaskShader->SetFloat("rteBackgroundDepth", ((2.0F * ((c_BackgroundDepth + c_TerrainBGDepth) * 0.5F) - (c_FarDepth + c_NearDepth)) / (c_FarDepth - c_NearDepth)) * 0.5F + 0.5F);
+		m_PosterizeMaskShader->SetBool("rteSky", retro.PosterizeSky);
+		m_PosterizeMaskShader->SetBool("rteSmoke", retro.PosterizeSmoke);
+		m_PosterizeMaskShader->SetBool("rteBackWalls", retro.PosterizeBackWalls);
+		m_PosterizeMaskShader->SetBool("rteRest", retro.PosterizeRest);
+		m_PosterizeMaskShader->SetFloat("rteFogStrength", (m_Settings.Enabled && m_FogLive && m_Settings.DebugView == 0) ? std::clamp(m_Settings.FogVolume, 0.0F, 1.5F) : 0.0F);
+		m_PosterizeMaskShader->SetFloat("rteFogOpacity", std::clamp(m_Settings.FogOpacity, 0.0F, 1.0F));
+		m_PosterizeMaskShader->SetVector2f("rteScreenOrigin", origin);
+		m_PosterizeMaskShader->SetVector2f("rteGridWorldSize", gridWorldSize);
+		glActiveTexture(GL_TEXTURE2);
+		glBindTexture(GL_TEXTURE_2D, m_Fog[m_CurrentFog].Texture);
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, surface ? surface->GetTextureId() : 0);
+		glActiveTexture(GL_TEXTURE0);
+		glBindTexture(GL_TEXTURE_2D, sceneDepth->GetTextureId());
+		DrawFullscreen();
+
+		auto smokePuff = [](int kind) { return kind == LightingSettings::GhostSoftSmoke || kind == LightingSettings::GhostMist || kind == LightingSettings::GhostDust; };
+		if (puffCount > 0 && std::any_of(puffGhost.begin(), puffGhost.end(), smokePuff)) {
+			glEnable(GL_BLEND);
+			glBlendEquation(GL_FUNC_ADD);
+			glBlendFunc(retro.PosterizeSmoke ? GL_ONE : GL_ZERO, GL_ONE_MINUS_SRC_COLOR);
+			m_GhostMaskShader->Enable();
+			m_GhostMaskShader->SetInt("rteTexture", 0);
+			m_GhostMaskShader->SetInt("rteSceneDepth", 3);
+			m_GhostMaskShader->SetVector2f("rteScreenSize", screenSize);
+			m_GhostMaskShader->SetBool("rteEffectsLayer", effectsLayerDepth != nullptr);
+			m_GhostMaskShader->SetFloat("rteEffectsFrontDepth", effectsFrontDepth);
+			m_GhostMaskShader->SetBool("rteGlow", false);
+			m_GhostMaskShader->SetBool("rteUseAlpha", true);
+			glActiveTexture(GL_TEXTURE3);
+			glBindTexture(GL_TEXTURE_2D, effectsLayerDepth ? effectsLayerDepth->GetTextureId() : 0);
+			glActiveTexture(GL_TEXTURE0);
+			glBindTexture(GL_TEXTURE_2D, EffectsParticles::GetPuffTexture());
+			size_t runStart = 0;
+			for (size_t i = 1; i <= puffGhost.size(); ++i) {
+				if (i == puffGhost.size() || smokePuff(puffGhost[i]) != smokePuff(puffGhost[runStart])) {
+					if (smokePuff(puffGhost[runStart])) {
+						DrawQuads(puffStart + runStart, i - runStart);
+					}
+					runStart = i;
+				}
+			}
+			m_GhostMaskShader->SetBool("rteUseAlpha", false);
+			m_GhostMaskShader->SetBool("rteEffectsLayer", false);
+			glDisable(GL_BLEND);
+		}
+	}
+
 	logStages.Next("Lighting: tonemap");
 	// Tonemap back into the player screen.
 	playerScreen->Bind();
@@ -4287,6 +4354,8 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	m_TonemapShader->SetFloat("rtePaperGrain", std::clamp(retro.PaperGrain, 0.0F, 1.0F));
 	m_TonemapShader->SetBool("rtePaperBackgroundOnly", paperMask);
 	m_TonemapShader->SetInt("rtePaperMask", 6);
+	m_TonemapShader->SetBool("rtePosterizeLimited", posterizeMask);
+	m_TonemapShader->SetInt("rtePosterizeMask", 7);
 	m_TonemapShader->SetFloat("rteMisregister", std::clamp(retro.Misregister, 0.0F, 1.0F));
 	{
 		// The comic style's sound-effect burst (PostProcessMan::KickComicBurst), where it went off on this screen.
@@ -4359,7 +4428,11 @@ void SceneLighting::LightPlayerScreen(int screenIndex, RenderTarget* playerScree
 	glBindTexture(GL_TEXTURE_2D, m_OutlineRows.Texture);
 	glActiveTexture(GL_TEXTURE6);
 	glBindTexture(GL_TEXTURE_2D, paperMask ? m_PaperMask.Texture : 0);
+	glActiveTexture(GL_TEXTURE7);
+	glBindTexture(GL_TEXTURE_2D, posterizeMask ? m_PosterizeMask.Texture : 0);
 	DrawFullscreen();
+	glActiveTexture(GL_TEXTURE7);
+	glBindTexture(GL_TEXTURE_2D, 0);
 
 	glActiveTexture(GL_TEXTURE0);
 	glBindVertexArray(0);

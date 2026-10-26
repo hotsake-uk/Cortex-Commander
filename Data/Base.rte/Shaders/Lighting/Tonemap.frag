@@ -48,6 +48,8 @@ uniform vec3 rteLCDShades[4]; // The Game Boy palette's four shades (LightingSet
 uniform float rteChunkyBlock; // The battlefield's pixel size in screen pixels (LightingSettings::RetroLayers::ChunkyPixels), 1 for as is.
 uniform float rtePosterize; // Fewer colour levels, 0 (as is) to 1 (four a channel).
 uniform float rteDither; // Ordered dithering across those levels (or a palette's bands), 0 to 1.
+uniform bool rtePosterizeLimited; // The posterize and dither only go where rtePosterizeMask says (LightingSettings::RetroLayers::PosterizeSky and the rest).
+uniform sampler2D rtePosterizeMask; // PosterizeMask.frag: how much of each pixel they go on, 0 to 1.
 uniform float rteColorHalftone; // The picture printed as cyan, magenta and yellow dot screens at angles, 0 to 1.
 uniform float rtePaperGrain; // A faint, still paper grain and off-white paper under the picture, 0 to 1.
 uniform bool rtePaperBackgroundOnly; // The paper only on the backdrop behind the terrain, where rtePaperMask is 1.
@@ -327,8 +329,10 @@ void main() {
 	color *= 1.0 - rteVignette * smoothstep(0.35, 0.85, length(centered * vec2(rteScreenSize.x / rteScreenSize.y, 1.0)));
 
 	vec3 outputColor = pow(clamp(color, 0.0, 1.0), vec3(1.0 / 2.2));
+	// Limited to some things, the posterize and dither fade out where the mask does; the palette's colours stay everywhere.
+	float posterizeCover = rtePosterizeLimited ? texture(rtePosterizeMask, uv).r : 1.0;
 	if (rtePaletteStrength > 0.0 || rtePosterize > 0.0) {
-		float ditherOffset = Bayer4(ditherCell) * rteDither;
+		float ditherOffset = Bayer4(ditherCell) * rteDither * posterizeCover;
 		if (rtePaletteStrength > 0.0) {
 			// Night vision brings its own noise and a scope's dark rim.
 			vec3 mapped = RetroPalette(outputColor, rtePalette, ditherOffset);
@@ -339,9 +343,9 @@ void main() {
 			}
 			outputColor = mix(outputColor, mapped, rtePaletteStrength);
 		}
-		if (rtePosterize > 0.0) {
+		if (rtePosterize > 0.0 && posterizeCover > 0.0) {
 			float levels = mix(32.0, 4.0, rtePosterize);
-			outputColor = clamp(floor(outputColor * (levels - 1.0) + 0.5 + ditherOffset) / (levels - 1.0), 0.0, 1.0);
+			outputColor = mix(outputColor, clamp(floor(outputColor * (levels - 1.0) + 0.5 + ditherOffset) / (levels - 1.0), 0.0, 1.0), posterizeCover);
 		}
 	}
 	if (rteColorHalftone > 0.0) {
