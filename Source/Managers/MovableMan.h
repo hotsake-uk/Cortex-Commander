@@ -707,7 +707,7 @@ namespace RTE {
 		std::shared_mutex m_ObjectRegisteredMutex; //!< Guards m_KnownObjects: shared to look up, exclusive to register and unregister.
 
 		// Mutex to ensure actors don't change team roster from seperate threads at the same time
-		std::mutex m_ActorRosterMutex;
+		mutable std::mutex m_ActorRosterMutex;
 
 		// Async to draw MOIDs while rendering
 		std::future<void> m_DrawMOIDsTask;

@@ -417,7 +417,10 @@ Actor* MovableMan::GetPrevActorInGroup(std::string group, Actor* pBeforeThis) {
 }
 
 Actor* MovableMan::GetNextTeamActor(int team, Actor* pAfterThis) {
-	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount || m_ActorRoster[team].empty())
+	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount)
+		return 0;
+	std::lock_guard<std::mutex> lock(m_ActorRosterMutex); // (Scripts on other threads add and remove actors while this reads.)
+	if (m_ActorRoster[team].empty())
 		return 0;
 	/*
 	    // Begin at the beginning
@@ -492,7 +495,10 @@ Actor* MovableMan::GetNextTeamActor(int team, Actor* pAfterThis) {
 }
 
 Actor* MovableMan::GetPrevTeamActor(int team, Actor* pBeforeThis) {
-	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount || m_Actors.empty() || m_ActorRoster[team].empty())
+	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount || m_Actors.empty())
+		return 0;
+	std::lock_guard<std::mutex> lock(m_ActorRosterMutex); // (Scripts on other threads add and remove actors while this reads.)
+	if (m_ActorRoster[team].empty())
 		return 0;
 	/* Obsolete, now uses team rosters which are sorted
 	    // Begin at the reverse beginning
@@ -567,7 +573,7 @@ Actor* MovableMan::GetPrevTeamActor(int team, Actor* pBeforeThis) {
 }
 
 Actor* MovableMan::GetClosestTeamActor(int team, int player, const Vector& scenePoint, int maxRadius, Vector& getDistance, bool onlyPlayerControllableActors, const Actor* excludeThis) {
-	if (team < Activity::NoTeam || team >= Activity::MaxTeamCount || m_Actors.empty() || m_ActorRoster[team].empty())
+	if (team < Activity::NoTeam || team >= Activity::MaxTeamCount || m_Actors.empty() || (team != Activity::NoTeam && !TeamHasActors(team)))
 		return 0;
 
 	Activity* pActivity = g_ActivityMan.GetActivity();
@@ -592,6 +598,7 @@ Actor* MovableMan::GetClosestTeamActor(int team, int player, const Vector& scene
 	}
 	// A specific team, so use the rosters instead
 	else {
+		std::lock_guard<std::mutex> lock(m_ActorRosterMutex); // (Scripts on other threads add and remove actors while this reads.)
 		for (std::list<Actor*>::iterator aIt = m_ActorRoster[team].begin(); aIt != m_ActorRoster[team].end(); ++aIt) {
 			if ((*aIt) == excludeThis || (onlyPlayerControllableActors && !(*aIt)->IsPlayerControllable()) || (player != NoPlayer && ((*aIt)->GetController()->IsPlayerControlled(player) || (pActivity && pActivity->IsOtherPlayerBrain(*aIt, player))))) {
 				continue;
@@ -667,7 +674,10 @@ Actor* MovableMan::GetClosestActor(const Vector& scenePoint, int maxRadius, Vect
 }
 
 Actor* MovableMan::GetClosestBrainActor(int team, const Vector& scenePoint) const {
-	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount || m_ActorRoster[team].empty())
+	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount)
+		return 0;
+	std::lock_guard<std::mutex> lock(m_ActorRosterMutex); // (Scripts on other threads add and remove actors while this reads.)
+	if (m_ActorRoster[team].empty())
 		return 0;
 
 	float sqrShortestDistance = std::numeric_limits<float>::infinity();
@@ -694,6 +704,7 @@ bool MovableMan::HasGameBrain(int team) const {
 	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount) {
 		return false;
 	}
+	std::lock_guard<std::mutex> lock(m_ActorRosterMutex); // (Scripts on other threads add and remove actors while this reads.)
 	for (const Actor* actor: m_ActorRoster[team]) {
 		if (actor->HasObjectInGroup("Brains") && !actor->IsInGroup(Colony::c_BrainGroup)) {
 			return true;
@@ -715,6 +726,9 @@ Actor* MovableMan::GetClosestOtherBrainActor(int notOfTeam, const Vector& sceneP
 	for (int t = Activity::TeamOne; t < g_ActivityMan.GetActivity()->GetTeamCount(); ++t) {
 		if (t != notOfTeam) {
 			pContenderBrain = GetClosestBrainActor(t, scenePoint);
+			if (!pContenderBrain) {
+				continue;
+			}
 			float sqrDistance = (pContenderBrain->GetPos() - scenePoint).GetSqrMagnitude();
 			if (sqrDistance < sqrShortestDistance) {
 				sqrShortestDistance = sqrDistance;
@@ -726,13 +740,19 @@ Actor* MovableMan::GetClosestOtherBrainActor(int notOfTeam, const Vector& sceneP
 }
 
 Actor* MovableMan::GetUnassignedBrain(int team) const {
-	if (/*m_Actors.empty() || */ m_ActorRoster[team].empty())
+	if (team < Activity::TeamOne || team >= Activity::MaxTeamCount)
 		return 0;
 
-	for (std::list<Actor*>::const_iterator aIt = m_ActorRoster[team].begin(); aIt != m_ActorRoster[team].end(); ++aIt) {
-		// (Not the brain that runs a colony building: that is only ever the building's.)
-		if ((*aIt)->HasObjectInGroup("Brains") && !(*aIt)->IsInGroup(Colony::c_BrainGroup) && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aIt))
-			return *aIt;
+	{
+		std::lock_guard<std::mutex> lock(m_ActorRosterMutex); // (Scripts on other threads add and remove actors while this reads.)
+		if (m_ActorRoster[team].empty())
+			return 0;
+
+		for (std::list<Actor*>::const_iterator aIt = m_ActorRoster[team].begin(); aIt != m_ActorRoster[team].end(); ++aIt) {
+			// (Not the brain that runs a colony building: that is only ever the building's.)
+			if ((*aIt)->HasObjectInGroup("Brains") && !(*aIt)->IsInGroup(Colony::c_BrainGroup) && !g_ActivityMan.GetActivity()->IsAssignedBrain(*aIt))
+				return *aIt;
+		}
 	}
 
 	// Also need to look through all the actors added this frame, one might be a brain.
@@ -2218,6 +2238,7 @@ void MovableMan::Update() {
 	// Sort team rosters if necessary
 	for (int team = Activity::TeamOne; team < Activity::MaxTeamCount; ++team) {
 		if (m_SortTeamRoster[team]) {
+			std::lock_guard<std::mutex> lock(m_ActorRosterMutex);
 			m_ActorRoster[team].sort(MOXPosComparison());
 		}
 	}
